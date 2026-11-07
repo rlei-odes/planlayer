@@ -1,0 +1,126 @@
+# --- Local, never shared -----------------------------------------------------
+/docs_local/
+/research/
+
+# --- Secrets and local configuration -------------------------------------------
+.env
+.env.*
+!.env.example
+*.local.yml
+*.local.yaml
+*.local.toml
+docker-compose.override.yml
+compose.override.yml
+
+# --- Python ------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.so
+.venv/
+venv/
+env/
+*.egg-info/
+.eggs/
+build/
+dist/
+pip-wheel-metadata/
+.python-version
+
+# Tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.pyre/
+.pytype/
+.hypothesis/
+.tox/
+.nox/
+.ipynb_checkpoints/
+
+# Coverage
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# --- Node / frontend -----------------------------------------------------------
+node_modules/
+.pnpm-store/
+.npm/
+.yarn/*
+!.yarn/releases
+!.yarn/plugins
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.vite/
+.turbo/
+.eslintcache
+.stylelintcache
+*.tsbuildinfo
+coverage/
+/frontend/dist/
+/frontend/build/
+storybook-static/
+
+# Playwright / end-to-end tests
+playwright-report/
+test-results/
+blob-report/
+/playwright/.cache/
+
+# --- Generated code ------------------------------------------------------------
+# TypeScript client generated from the OpenAPI schema (F-04)
+/frontend/src/api/generated/
+
+# --- Data, databases, test output ------------------------------------------------
+# Output of the test data generator (section 4); the generator and its seeds are tracked
+/tools/gen_testdata/out/
+/data/
+*.dump
+*.sql.gz
+*.sqlite
+*.sqlite3
+*.duckdb
+*.duckdb.wal
+*.parquet
+!/tests/fixtures/**/*.parquet
+pgdata/
+.pgdata/
+
+# Benchmarks and spike results
+/spikes/**/results/
+*.prof
+*.speedscope.json
+
+# --- Docs build ------------------------------------------------------------------
+/site/
+/docs/_build/
+
+# --- Logs and temp -------------------------------------------------------------
+*.log
+logs/
+tmp/
+.tmp/
+*.tmp
+*.bak
+*.swp
+*.swo
+*~
+
+# --- Editors and OS ------------------------------------------------------------
+.idea/
+*.iml
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/launch.json
+.fleet/
+.history/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Claude Code local settings ----------------------------------------------------
+.claude/settings.local.json
