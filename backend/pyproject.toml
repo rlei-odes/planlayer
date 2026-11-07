@@ -1,0 +1,49 @@
+[project]
+name = "planlayer"
+version = "0.1.0.dev0"
+description = "Corporate budgeting and forecasting on Postgres"
+license = "Apache-2.0"
+requires-python = ">=3.13"
+dependencies = [
+    # Schema migrations of planlayer_app (planlayer.store.migrations).
+    "alembic==1.20.1",
+    "fastapi==0.162.2",
+    # Postgres driver for SQLAlchemy; the pool keeps connections per process.
+    "psycopg[binary,pool]==3.3.8",
+    # Settings from environment variables (planlayer.config).
+    "pydantic-settings==2.16.2",
+    "sqlalchemy==2.1.8",
+    "uvicorn==0.54.0",
+]
+
+[project.scripts]
+planlayer = "planlayer.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.13.1,<0.14.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    # FastAPI's TestClient runs on httpx2.
+    "httpx2==2.16.0",
+    "mypy==2.4.1",
+    "pytest==9.2.0",
+    "ruff==0.17.4",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
+
+[tool.mypy]
+strict = true
+packages = ["planlayer"]
+mypy_path = "src"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"

@@ -1,0 +1,39 @@
+# Development: Postgres 18 with the planlayer and dwh databases, and the app image.
+#   docker compose up --build        -> http://localhost:8000
+# For backend/frontend work with reload, start only the database (docker compose up db) and run
+# the backend and Vite locally (see README).
+name: planlayer
+
+services:
+  db:
+    image: postgres:18
+    environment:
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      # The postgres:18 image keeps its data in a versioned directory below /var/lib/postgresql.
+      - pgdata:/var/lib/postgresql
+      - ./deploy/sql/install.sql:/planlayer/install.sql:ro
+      - ./deploy/dev/initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 2s
+      retries: 30
+
+  app:
+    build: .
+    environment:
+      PLANLAYER_ENVIRONMENT: development
+      PLANLAYER_APP_DATABASE_URL: postgresql+psycopg://planlayer:planlayer@db/planlayer
+      PLANLAYER_SOURCE_DATABASE_URL: postgresql+psycopg://planlayer:planlayer@db/dwh
+      PLANLAYER_OUTPUT_DATABASE_URL: postgresql+psycopg://planlayer:planlayer@db/dwh
+    command: ["sh", "-c", "planlayer migrate && planlayer serve"]
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:
