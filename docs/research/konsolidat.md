@@ -73,10 +73,10 @@ This repo is the **data stack**: dbt models, ClickHouse DDL, Cube schemas, ERP e
 | Planned vs. analytical dimensions | A per-planning-area subset of dimensions (their `in_budget`). | D-04 |
 | Layers | Strong case for `layer` in the fact key from day one, with a per-role edit right per layer. | D-08 |
 | Alternate + dated hierarchies | Named hierarchies per dimension; dated member tranches; as-of roll-up vs. restatement is an explicit decision. | D-02, D-13 |
-| Spread rounding | They tolerate 0.01 drift. We want an exact tie (largest-remainder rounding). | D-14, T-14 |
+| Spread rounding | They tolerate 0.01 drift. We want an exact tie (largest-remainder rounding). | D-14, TD-14 |
 | Concurrency | Per-cell optimistic versioning. | D-19 |
 | Closed periods | An explicit close status per entity is more robust than inferring it from data. | D-03 |
 | Export timing | Only locked/approved data reaches the target, so drafts don't leak into BI. | D-12 |
-| Test method | SQL invariant suite + must-flag fixtures. | F-07 (new), T-12, T-14 |
-| Demo via adapter | The simulated warehouse is read through the real adapter, not loaded around it. | T-10, S-05 |
+| Test method | SQL invariant suite + must-flag fixtures. | F-07 (new), TD-12, TD-14 |
+| Demo via adapter | The simulated warehouse is read through the real adapter, not loaded around it. | TD-10, S-05 |
 | Stack weight | Confirms the brief: a Postgres-only app with no separate ETL/semantic layer is the differentiator. | — |

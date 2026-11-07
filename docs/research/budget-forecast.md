@@ -59,5 +59,5 @@ A Postgres schema plus a CLI that agent slash-commands call. It targets NZ/AU SM
 | Closed periods | Derive from actuals or store explicitly? | D-03 |
 | Import / sync discipline | Resolve fully before writing; idempotent; refuse silent overwrites; dry-run; record a hash and counts per sync run. | D-09, E-01 |
 | Audit log | Actor required; reason/evidence field; before/after. | D-23 |
-| Demo data | Seed with a documented defect list. Offer both a fixed-date mode (golden tests) and a relative-to-today mode (demo). | T-11 |
+| Demo data | Seed with a documented defect list. Offer both a fixed-date mode (golden tests) and a relative-to-today mode (demo). | TD-11 |
 | Attention view | Good later feature; it also covers reconciliation. | E-01, later |

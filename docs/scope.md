@@ -15,8 +15,8 @@ A mid-sized company whose actuals and master data already sit in a Postgres ware
 | Area | In v1 |
 |---|---|
 | Planning areas | **Cost center planning** (cost center × account × month) and **sales planning** (country × product group × month, amount and quantity). The plan grain is configurable per area, so planning can happen at an aggregate level. |
-| Data in | A live connection to the customer's **Postgres** for master data, hierarchies and actuals, through published data-contract views. Synced into the app store on demand or on a schedule, with a reconciliation report. |
-| Data out | Plan values exported to a target table in the customer's Postgres, plus documented, BI-readable views in the app's own database. |
+| Data in | Master data, hierarchies and actuals read from data-contract views in the customer's **Postgres**. Synced into Planlayer's schema on demand or on a schedule, with a reconciliation report. |
+| Data out | Approved plan values published to a dedicated output schema in the customer's Postgres (typically next to the warehouse's gold layer), as documented, BI-readable tables and views. |
 | Grid | Edit, paste from Excel/LibreOffice, fill-drag, keyboard navigation, computed subtotals, actuals and comparison versions shown alongside. |
 | Spreading | Top-down from totals, over time (year → months) and down the hierarchy (node → leaves): equal, seasonality profile, in proportion to existing values, or in proportion to a reference (prior-year actuals, another version). Results tie exactly to the entered total. |
 | Percentage mode | A line entered as a percentage of one reference line (e.g. COGS = 62% of sales). |
@@ -25,7 +25,7 @@ A mid-sized company whose actuals and master data already sit in a Postgres ware
 | Audit | Every change records actor, time, old and new value. Cell comments. |
 | Access | OIDC login, roles, and edit rights scoped to hierarchy members (e.g. "cost centers under Production"). |
 | Setup | Admin pages for connection, sign rules, fiscal calendar, seasonality profiles, roles. |
-| Hosting | `docker compose up`: app + Postgres. Single company per installation. |
+| Hosting | One container, connected to the customer's existing Postgres, where Planlayer keeps two schemas of its own: app data, and published output. They can be in the same database or in separate ones. A scheduled backup of the app data is built in. Single company per installation. |
 
 ## Fixed assumptions
 
@@ -33,7 +33,6 @@ A mid-sized company whose actuals and master data already sit in a Postgres ware
 - **Natural signs:** revenue and costs are stored as positive numbers, and the account type supplies the sign. Planlayer converts at sync and export as configured.
 - **Month grain:** months are the lowest time level, aggregated to quarters and years. Fiscal years may start in any month.
 - **Single tenant:** one company per installation, no multi-tenant hosting.
-
 ## v1 does not do
 
 These are excluded because each one grows the product into a different one, and established tools already cover them well:

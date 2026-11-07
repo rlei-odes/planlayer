@@ -50,9 +50,9 @@ Budgets are stored **as entered**, with no sign handling. The budgeting guide's 
 | Topic | Takeaway | Backlog |
 |---|---|---|
 | Entry modes | Konsolidat offers cell formulas, a plain form grid and annual-plus-profile. None of them is a real planning grid with paste, fill and visible spreading. That is the gap Planlayer targets. | D-29 (new), S-04 |
-| Spread basis | Proportional to a reference (prior-year actuals, prior plan, another version, current values) is missing in both reference projects. Make it first-class, together with its fallbacks. | D-28 (new), T-14 |
+| Spread basis | Proportional to a reference (prior-year actuals, prior plan, another version, current values) is missing in both reference projects. Make it first-class, together with its fallbacks. | D-28 (new), TD-14 |
 | Visible spreading | Spread at entry time in the grid, so the planner sees the months immediately; store the leaf values. | D-14, D-28 |
-| Zero vs. blank | Keep them distinct: a stored 0 is a plan value, and an absent row is "not planned". | D-18, T-07 |
+| Zero vs. blank | Keep them distinct: a stored 0 is a plan value, and an absent row is "not planned". | D-18, TD-07 |
 | Lock on every verb | Locks must cover insert, update **and** delete, in the database. | D-22 |
 | Signs | One convention, enforced at the boundary (sync in / export out), with a test that revenue is favourable when it is above plan. | D-26, F-07 |
 | Conflict granularity | Per cell, not per sheet. | D-19 |
