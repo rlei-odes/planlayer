@@ -34,7 +34,7 @@ from planlayer.store.schema import (
     sync_run,
     version,
 )
-from planlayer.store.uow import unit_of_work
+from planlayer.store.uow import Actor, unit_of_work
 
 ACTUALS_CODE = "ACT"
 
@@ -128,7 +128,7 @@ def run(
     engine: Engine,
     adapter: SourceAdapter,
     mapping: dict[str, Relation],
-    actor: str,
+    actor: Actor,
     entity: str | None = None,
 ) -> SyncResult:
     data = {name: _rows(adapter, mapping[name], contract) for name, contract in DATASETS.items()}
@@ -137,7 +137,9 @@ def run(
 
     with unit_of_work(engine, actor) as conn:
         run_id = conn.execute(
-            insert(sync_run).values(actor=actor, entity_filter=entity).returning(sync_run.c.id)
+            insert(sync_run)
+            .values(actor=actor.login, entity_filter=entity)
+            .returning(sync_run.c.id)
         ).scalar_one()
         ids = _write_members(conn, data)
         _write_hierarchy(conn, H_COST_CENTER, COST_CENTER, data["cost_center_hierarchy"], ids)

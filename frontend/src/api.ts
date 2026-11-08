@@ -21,6 +21,7 @@ export type PlanningUnit = {
   entity_code: string | null
   owner: string | null
   status: Status
+  can_write: boolean
 }
 export type Cell = { value: Amount; row_version: number | null }
 export type Row = {
@@ -71,6 +72,7 @@ export type StatusRow = {
   changed_at: string | null
   changed_by: string | null
   overdue: boolean
+  actions: Action[] // what the logged-in user may do now
 }
 export type Overview = {
   round: Version
@@ -78,6 +80,32 @@ export type Overview = {
   not_planned: { code: string; name: string; reason: 'new' | 'disabled' }[]
 }
 export type ActionRequest = { action: Action; cost_centers?: string[]; node?: string; comment?: string }
+
+export type Me = {
+  login: string
+  display_name: string
+  email: string | null
+  is_admin: boolean
+  is_controller: boolean
+  is_viewer: boolean
+}
+export type User = Me & { disabled: boolean }
+export type Responsibility = {
+  kind: 'node' | 'cost_center'
+  code: string
+  name: string
+  depth: number
+  owner: string | null // synced owner value
+  matched: string | null // login matched from it
+  planner: string | null // effective owner (login)
+  overridden: boolean
+  deputies: string[]
+  approvers: string[]
+}
+export type Responsibilities = { rows: Responsibility[]; unmatched_owners: string[]; users: string[] }
+
+/** The session is missing or has ended. */
+export class UnauthorizedError extends Error {}
 
 export class ConflictError extends Error {
   conflicts: Conflict[]
@@ -89,6 +117,10 @@ export class ConflictError extends Error {
 }
 
 async function json<T>(response: Response): Promise<T> {
+  if (response.status === 401) {
+    window.dispatchEvent(new Event('planlayer:unauthorized'))
+    throw new UnauthorizedError('not logged in')
+  }
   if (!response.ok) {
     const body = await response.json().catch(() => ({}))
     throw new Error(body.detail ?? `${response.status} ${response.statusText}`)
@@ -96,13 +128,37 @@ async function json<T>(response: Response): Promise<T> {
   return response.json() as Promise<T>
 }
 
-const post = (url: string, body: unknown) =>
-  fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+const send = (method: string, url: string, body?: unknown) =>
+  fetch(url, {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  })
+const post = (url: string, body: unknown) => send('POST', url, body)
+const r = (code: string) => `/api/responsibilities/${encodeURIComponent(code)}`
 
 const v = (version: string) => `/api/versions/${encodeURIComponent(version)}`
 const cc = (version: string, code: string) => `${v(version)}/cost-centers/${encodeURIComponent(code)}`
 
 export const api = {
+  me: () => fetch('/api/me').then((res) => json<Me>(res)),
+  loginOptions: () => fetch('/api/auth/options').then((res) => json<{ dev_login: boolean }>(res)),
+  devUsers: () => fetch('/api/auth/dev-users').then((res) => json<{ login: string; display_name: string }[]>(res)),
+  devLogin: (login: string) => post('/api/auth/dev-login', { login }).then((res) => json<Me>(res)),
+  logout: () => post('/api/auth/logout', {}).then((res) => json<null>(res)),
+  users: () => fetch('/api/users').then((res) => json<User[]>(res)),
+  createUser: (user: Omit<User, 'disabled'>) => post('/api/users', user).then((res) => json<null>(res)),
+  changeUser: (login: string, change: Partial<User>) =>
+    send('PATCH', `/api/users/${encodeURIComponent(login)}`, change).then((res) => json<null>(res)),
+  responsibilities: () => fetch('/api/responsibilities').then((res) => json<Responsibilities>(res)),
+  setOwner: (cc: string, login: string | null) => send('PUT', `${r(cc)}/owner`, { login }).then((res) => json<null>(res)),
+  clearOwner: (cc: string) => send('DELETE', `${r(cc)}/owner`).then((res) => json<null>(res)),
+  addDeputy: (code: string, login: string) => post(`${r(code)}/deputies`, { login }).then((res) => json<null>(res)),
+  removeDeputy: (code: string, login: string) =>
+    send('DELETE', `${r(code)}/deputies/${encodeURIComponent(login)}`).then((res) => json<null>(res)),
+  addApprover: (code: string, login: string) => post(`${r(code)}/approvers`, { login }).then((res) => json<null>(res)),
+  removeApprover: (code: string, login: string) =>
+    send('DELETE', `${r(code)}/approvers/${encodeURIComponent(login)}`).then((res) => json<null>(res)),
   versions: () => fetch('/api/versions').then((r) => json<Version[]>(r)),
   setRoundStatus: (version: string, status: RoundStatus) =>
     post(`${v(version)}/status`, { status }).then((r) => json<Version>(r)),

@@ -2,8 +2,7 @@
 the workflow and the status page.
 
 Amounts travel as strings (T-12); ``null`` is a blank cell, distinct from ``"0.00"``.
-Until login exists (E-09), every change is recorded with the actor ``dev``, who may take every
-action; roles and scopes come with D-21.
+Every endpoint acts for the logged-in user (ADR 0009).
 """
 
 from datetime import date, datetime
@@ -13,19 +12,14 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import Engine
 
-from planlayer import planning, rounds, workflow
+from planlayer import access, planning, rounds, workflow
+from planlayer.api.auth import CurrentUser, engine_of
 from planlayer.domain.entry_forms import Form
 from planlayer.domain.workflow import Action, RoundStatus, Status, WorkflowError
 
 router = APIRouter(prefix="/api")
-ACTOR = "dev"
-
-
-def _engine(request: Request) -> Engine:
-    engine: Engine = request.app.state.engine
-    return engine
+_engine = engine_of
 
 
 def _s(value: Decimal | None) -> str | None:
@@ -47,6 +41,7 @@ class PlanningUnit(BaseModel):
     entity_code: str | None
     owner: str | None
     status: Status
+    can_write: bool
 
 
 class CellOut(BaseModel):
@@ -141,6 +136,7 @@ class StatusRowOut(BaseModel):
     changed_at: datetime | None
     changed_by: str | None
     overdue: bool
+    actions: list[Action]
 
 
 class NotPlannedOut(BaseModel):
@@ -203,6 +199,8 @@ def _errors(e: Exception) -> HTTPException:
     match e:
         case rounds.NotFoundError():
             return HTTPException(404, str(e))
+        case access.AccessError():
+            return HTTPException(403, str(e))
         case planning.LockedError():
             return HTTPException(423, str(e))
         case planning.EditError() | WorkflowError() | rounds.RoundError():
@@ -212,6 +210,7 @@ def _errors(e: Exception) -> HTTPException:
 
 HANDLED = (
     rounds.NotFoundError,
+    access.AccessError,
     planning.LockedError,
     planning.EditError,
     WorkflowError,
@@ -220,15 +219,17 @@ HANDLED = (
 
 
 @router.get("/versions")
-def versions(request: Request) -> list[Version]:
+def versions(request: Request, user: CurrentUser) -> list[Version]:
     return [_version(r) for r in rounds.rounds(_engine(request))]
 
 
 @router.post("/versions/{version_code}/status", responses={404: {}, 422: {}})
-def round_status(request: Request, version_code: str, body: RoundStatusIn) -> Version:
+def round_status(
+    request: Request, user: CurrentUser, version_code: str, body: RoundStatusIn
+) -> Version:
     engine = _engine(request)
     try:
-        rounds.set_round_status(engine, ACTOR, version_code, body.status)
+        rounds.set_round_status(engine, user, version_code, body.status)
     except HANDLED as e:
         raise _errors(e) from None
     with engine.connect() as conn:
@@ -236,26 +237,28 @@ def round_status(request: Request, version_code: str, body: RoundStatusIn) -> Ve
 
 
 @router.get("/versions/{version_code}/cost-centers")
-def cost_centers(request: Request, version_code: str) -> list[PlanningUnit]:
+def cost_centers(request: Request, user: CurrentUser, version_code: str) -> list[PlanningUnit]:
     try:
-        units = planning.planning_units(_engine(request), version_code)
+        units = planning.planning_units(_engine(request), user, version_code)
     except HANDLED as e:
         raise _errors(e) from None
     return [PlanningUnit.model_validate(u) for u in units]
 
 
 @router.post("/versions/{version_code}/cost-centers/{cc_code}/enabled", responses={404: {}})
-def enable(request: Request, version_code: str, cc_code: str, body: EnableIn) -> None:
+def enable(
+    request: Request, user: CurrentUser, version_code: str, cc_code: str, body: EnableIn
+) -> None:
     try:
-        rounds.set_member_enabled(_engine(request), ACTOR, version_code, cc_code, body.enabled)
+        rounds.set_member_enabled(_engine(request), user, version_code, cc_code, body.enabled)
     except HANDLED as e:
         raise _errors(e) from None
 
 
 @router.get("/versions/{version_code}/cost-centers/{cc_code}/grid")
-def grid(request: Request, version_code: str, cc_code: str) -> GridOut:
+def grid(request: Request, user: CurrentUser, version_code: str, cc_code: str) -> GridOut:
     try:
-        return _grid_out(planning.read_grid(_engine(request), version_code, cc_code))
+        return _grid_out(planning.read_grid(_engine(request), user, version_code, cc_code))
     except HANDLED as e:
         raise _errors(e) from None
 
@@ -264,12 +267,14 @@ def grid(request: Request, version_code: str, cc_code: str) -> GridOut:
     "/versions/{version_code}/cost-centers/{cc_code}/edits",
     responses={409: {"model": list[ConflictOut]}, 422: {}, 423: {}},
 )
-def edit(request: Request, version_code: str, cc_code: str, body: EditsIn) -> GridOut:
+def edit(
+    request: Request, user: CurrentUser, version_code: str, cc_code: str, body: EditsIn
+) -> GridOut:
     """Apply edits atomically; returns the updated grid, or 409 with the conflicting cells."""
     engine = _engine(request)
     edits = [planning.Edit(e.account_code, e.month, e.value, e.expected) for e in body.edits]
     try:
-        planning.apply_edits(engine, ACTOR, version_code, cc_code, edits)
+        planning.apply_edits(engine, user, version_code, cc_code, edits)
     except planning.ConflictError as e:
         return JSONResponse(  # type: ignore[return-value]
             status_code=409,
@@ -277,11 +282,11 @@ def edit(request: Request, version_code: str, cc_code: str, body: EditsIn) -> Gr
         )
     except HANDLED as e:
         raise _errors(e) from None
-    return _grid_out(planning.read_grid(engine, version_code, cc_code))
+    return _grid_out(planning.read_grid(engine, user, version_code, cc_code))
 
 
 @router.get("/versions/{version_code}/accounts")
-def accounts(request: Request, version_code: str) -> list[AccountOut]:
+def accounts(request: Request, user: CurrentUser, version_code: str) -> list[AccountOut]:
     """Accounts a planner may add to a sheet."""
     try:
         found = planning.addable_accounts(_engine(request), version_code)
@@ -293,22 +298,24 @@ def accounts(request: Request, version_code: str) -> list[AccountOut]:
 @router.post(
     "/versions/{version_code}/cost-centers/{cc_code}/accounts", responses={422: {}, 423: {}}
 )
-def add_account(request: Request, version_code: str, cc_code: str, body: AddAccountIn) -> GridOut:
+def add_account(
+    request: Request, user: CurrentUser, version_code: str, cc_code: str, body: AddAccountIn
+) -> GridOut:
     engine = _engine(request)
     try:
-        planning.add_account(engine, ACTOR, version_code, cc_code, body.account_code)
-        return _grid_out(planning.read_grid(engine, version_code, cc_code))
+        planning.add_account(engine, user, version_code, cc_code, body.account_code)
+        return _grid_out(planning.read_grid(engine, user, version_code, cc_code))
     except HANDLED as e:
         raise _errors(e) from None
 
 
 @router.post("/versions/{version_code}/workflow", responses={404: {}, 422: {}})
-def act(request: Request, version_code: str, body: ActionIn) -> list[str]:
+def act(request: Request, user: CurrentUser, version_code: str, body: ActionIn) -> list[str]:
     """Submit, approve, reject or reopen cost centers; returns the codes changed."""
     try:
         return workflow.act(
             _engine(request),
-            ACTOR,
+            user,
             version_code,
             body.action,
             cost_centers=body.cost_centers,
@@ -320,10 +327,10 @@ def act(request: Request, version_code: str, body: ActionIn) -> list[str]:
 
 
 @router.get("/versions/{version_code}/overview")
-def overview(request: Request, version_code: str) -> OverviewOut:
+def overview(request: Request, user: CurrentUser, version_code: str) -> OverviewOut:
     """The status page: every enabled cost center, rolled up per hierarchy node."""
     try:
-        o = workflow.overview(_engine(request), version_code, date.today())
+        o = workflow.overview(_engine(request), user, version_code, date.today())
     except HANDLED as e:
         raise _errors(e) from None
     return OverviewOut(

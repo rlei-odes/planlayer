@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
-import { api, STATUS_LABEL, type Action, type ActionRequest, type Overview, type Status, type StatusRow } from './api'
+import { api, STATUS_LABEL, type Action, type ActionRequest, type Me, type Overview, type Status, type StatusRow } from './api'
 
 // The status page (T-20, ADR 0008): every enabled cost center of the round with its status and
 // approver, rolled up per hierarchy node; approve, reject and reopen; the round's status.
 
-type Filter = 'all' | 'overdue' | 'submitted'
+type Filter = 'all' | 'overdue' | 'submitted' | 'mine'
 type Pending = { request: ActionRequest; label: string }
 
 const STATUSES: Status[] = ['not_started', 'in_progress', 'submitted', 'approved']
@@ -13,6 +13,7 @@ const NEEDS_COMMENT: Action[] = ['reject', 'reopen']
 function matches(row: StatusRow, filter: Filter): boolean {
   if (filter === 'overdue') return row.overdue
   if (filter === 'submitted') return row.status === 'submitted'
+  if (filter === 'mine') return row.actions.includes('approve')
   return true
 }
 
@@ -27,7 +28,15 @@ function visible(rows: StatusRow[], filter: Filter): StatusRow[] {
   })
 }
 
-export default function StatusPage({ version, onRoundChanged }: { version: string; onRoundChanged: () => void }) {
+export default function StatusPage({
+  version,
+  me,
+  onRoundChanged,
+}: {
+  version: string
+  me: Me
+  onRoundChanged: () => void
+}) {
   const [overview, setOverview] = useState<Overview | null>(null)
   const [filter, setFilter] = useState<Filter>('all')
   const [pending, setPending] = useState<Pending | null>(null)
@@ -86,12 +95,12 @@ export default function StatusPage({ version, onRoundChanged }: { version: strin
           Round <span className={`badge round-${round.status}`}>{round.status}</span>
         </span>
         {round.deadline && <span className="muted">Deadline {round.deadline}</span>}
-        {round.status !== 'open' && (
+        {me.is_controller && round.status !== 'open' && (
           <button type="button" onClick={() => void setRound('open')}>
             Open round
           </button>
         )}
-        {round.status === 'open' && (
+        {me.is_controller && round.status === 'open' && (
           <button type="button" onClick={() => void setRound('closed')}>
             Close round
           </button>
@@ -102,6 +111,7 @@ export default function StatusPage({ version, onRoundChanged }: { version: strin
             <option value="all">All</option>
             <option value="overdue">Overdue</option>
             <option value="submitted">Waiting for approval</option>
+            <option value="mine">Waiting for me</option>
           </select>
         </label>
       </div>
@@ -166,8 +176,8 @@ export default function StatusPage({ version, onRoundChanged }: { version: strin
                 {row.changed_at && `${new Date(row.changed_at).toLocaleString()} · ${row.changed_by ?? ''}`}
               </td>
               <td className="actions">
-                {round.status === 'open' && <Actions row={row} start={start} />}
-                {row.kind === 'cost_center' && (
+                <Actions row={row} rows={overview.rows} start={start} />
+                {me.is_controller && row.kind === 'cost_center' && (
                   <button type="button" onClick={() => void guard(() => api.setEnabled(version, row.code, false))}>
                     Disable
                   </button>
@@ -177,7 +187,7 @@ export default function StatusPage({ version, onRoundChanged }: { version: strin
           ))}
         </tbody>
       </table>
-      {overview.not_planned.length > 0 && (
+      {me.is_controller && overview.not_planned.length > 0 && (
         <>
           <h2>Not planned in this round</h2>
           <table className="overview">
@@ -203,34 +213,46 @@ export default function StatusPage({ version, onRoundChanged }: { version: strin
   )
 }
 
-function Actions({ row, start }: { row: StatusRow; start: (r: ActionRequest, label: string) => void }) {
+const ACTION_LABEL: Record<Action, string> = {
+  submit: 'Submit',
+  approve: 'Approve',
+  reject: 'Reject',
+  reopen: 'Reopen',
+}
+
+/** The actions the server says this user may take; on a node, approving what they may below it. */
+function Actions({
+  row,
+  rows,
+  start,
+}: {
+  row: StatusRow
+  rows: StatusRow[]
+  start: (r: ActionRequest, label: string) => void
+}) {
   if (row.kind === 'node') {
-    const n = row.counts.submitted ?? 0
+    const at = rows.indexOf(row)
+    let n = 0
+    for (let j = at + 1; j < rows.length && rows[j].depth > row.depth; j++) {
+      if (rows[j].actions.includes('approve')) n++
+    }
     return n > 0 ? (
       <button type="button" onClick={() => start({ action: 'approve', node: row.code }, `Approve below ${row.name}`)}>
         Approve {n} submitted
       </button>
     ) : null
   }
-  const one = (action: Action, label: string) => (
-    <button
-      type="button"
-      key={action}
-      onClick={() => start({ action, cost_centers: [row.code] }, `${label} ${row.code}`)}
-    >
-      {label}
-    </button>
+  return (
+    <>
+      {row.actions.map((action) => (
+        <button
+          type="button"
+          key={action}
+          onClick={() => start({ action, cost_centers: [row.code] }, `${ACTION_LABEL[action]} ${row.code}`)}
+        >
+          {ACTION_LABEL[action]}
+        </button>
+      ))}
+    </>
   )
-  switch (row.status) {
-    case 'submitted':
-      return (
-        <>
-          {one('approve', 'Approve')} {one('reject', 'Reject')}
-        </>
-      )
-    case 'approved':
-      return one('reopen', 'Reopen')
-    default:
-      return one('submit', 'Submit')
-  }
 }

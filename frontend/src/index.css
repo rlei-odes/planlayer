@@ -162,3 +162,37 @@ revo-grid .readonly {
 revo-grid .fallback {
   color: #8a5a00;
 }
+
+.me {
+  margin-left: auto;
+}
+
+.login .users {
+  list-style: none;
+  padding: 0;
+}
+
+.login .users li {
+  margin: 4px 0;
+}
+
+button.link {
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  color: #8a1c1c;
+}
+
+.people select {
+  width: 3.2em;
+}
+
+select.overridden {
+  background: #fff4d6;
+}
+
+.users input[type='text'],
+.users input:not([type]) {
+  margin-right: 6px;
+}

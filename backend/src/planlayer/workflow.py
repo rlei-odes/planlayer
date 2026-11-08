@@ -1,8 +1,14 @@
 """Workflow per round x cost center (ADR 0008): transitions and the status page.
 
 A cost center's approvers are the users assigned to the nearest node above it in the cost
-center hierarchy; with none, the controller approves. Status counts roll up per node, over the
-enabled cost centers below it.
+center hierarchy; the controller may approve every cost center (ADR 0009). Who may act:
+
+- **submit:** whoever may write the cost center (owner, deputy, controller);
+- **approve, reject:** its approvers and the controller, but not someone who plans it;
+- **reopen:** the controller.
+
+The status page shows the enabled cost centers the user may read, with counts rolled up per
+node over them, and per cost center the actions the user may take.
 """
 
 from collections import defaultdict
@@ -13,14 +19,16 @@ from typing import Literal, cast
 from sqlalchemy import Connection, Engine, func, insert, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
+from planlayer.access import AccessError, User, approvers, cost_center_rights, plans
 from planlayer.domain.workflow import (
+    ACTIONS,
     STATUSES,
     Action,
     Status,
     WorkflowError,
     allows,
-    check_not_own,
     is_overdue,
+    refusal,
     transition,
 )
 from planlayer.rounds import NotFoundError, RoundRef, get_round, valid_cost_centers
@@ -28,7 +36,6 @@ from planlayer.store.schema import (
     COST_CENTER,
     H_COST_CENTER,
     MODULE_COST_CENTER,
-    approver_assignment,
     closure,
     hier_edge,
     member,
@@ -54,6 +61,7 @@ class StatusRow:
     changed_at: datetime | None = None
     changed_by: str | None = None
     overdue: bool = False
+    actions: list[Action] = field(default_factory=list)  # what this user may do now
 
 
 @dataclass
@@ -92,31 +100,25 @@ def status_of(conn: Connection, version_id: int, cc_id: int) -> Status:
     return cast(Status, found or "not_started")
 
 
-def approvers(conn: Connection, cc_ids: list[int]) -> dict[int, list[str]]:
-    """Users assigned to the nearest node above each cost center; missing: the controller."""
-    rows = conn.execute(
-        select(closure.c.descendant_id, closure.c.depth, approver_assignment.c.user_name)
-        .join(approver_assignment, approver_assignment.c.member_id == closure.c.ancestor_id)
-        .where(
-            closure.c.hier_id == H_COST_CENTER,
-            closure.c.depth >= 1,
-            closure.c.descendant_id.in_(cc_ids),
-        )
-        .order_by(closure.c.descendant_id, closure.c.depth, approver_assignment.c.user_name)
-    ).all()
-    nearest: dict[int, int] = {}
-    found: dict[int, list[str]] = defaultdict(list)
-    for cc, depth, user in rows:
-        if nearest.setdefault(cc, depth) == depth:
-            found[cc].append(user)
-    return dict(found)
+def _refusal(
+    action: Action, user: User, can_write: bool, approver_ids: set[int], plans_it: bool
+) -> str | None:
+    return refusal(
+        action,
+        can_write=can_write,
+        approves=user.user_id in approver_ids,
+        controller=user.is_controller,
+        plans_it=plans_it,
+    )
 
 
-def overview(engine: Engine, code: str, today: date) -> Overview:
-    with engine.connect() as conn:
+def overview(engine: Engine, user: User, code: str, today: date) -> Overview:
+    with unit_of_work(engine, user) as conn:
         r = get_round(conn, code)
         state = enabled_members(conn, r.version_id)
-        enabled = {m for m, e in state.items() if e}
+        rights = cost_center_rights(conn, user)
+        enabled = {m for m, e in state.items() if e and m in rights}
+        planned_by_me = plans(conn, user, sorted(enabled))
         info = {
             row.member_id: row
             for row in conn.execute(
@@ -140,7 +142,7 @@ def overview(engine: Engine, code: str, today: date) -> Overview:
         ):
             children[parent].append(m)
         assigned = approvers(conn, sorted(enabled))
-        valid = valid_cost_centers(conn, r.fiscal_year)
+        valid = valid_cost_centers(conn, r.fiscal_year) if user.is_controller else []
 
     rows: list[StatusRow] = []
 
@@ -152,6 +154,14 @@ def overview(engine: Engine, code: str, today: date) -> Overview:
                 return {}
             s = statuses.get(node)
             status = cast(Status, s.status if s else "not_started")
+            ids = {u for u, _ in assigned.get(node, [])}
+            actions = [
+                a
+                for a in ACTIONS
+                if r.status == "open"
+                and allows(a, status)
+                and _refusal(a, user, rights[node], ids, node in planned_by_me) is None
+            ]
             rows.append(
                 StatusRow(
                     "cost_center",
@@ -160,10 +170,11 @@ def overview(engine: Engine, code: str, today: date) -> Overview:
                     depth,
                     status=status,
                     owner=m.owner,
-                    approvers=assigned.get(node, []),
+                    approvers=[login for _, login in assigned.get(node, [])],
                     changed_at=s.changed_at if s else None,
                     changed_by=s.changed_by if s else None,
                     overdue=is_overdue(status, r.deadline, today),
+                    actions=actions,
                 )
             )
             return {status: 1}
@@ -192,7 +203,7 @@ def overview(engine: Engine, code: str, today: date) -> Overview:
 
 def act(
     engine: Engine,
-    actor: str,
+    actor: User,
     code: str,
     action: Action,
     cost_centers: list[str] | None = None,
@@ -200,7 +211,8 @@ def act(
     comment: str | None = None,
 ) -> list[str]:
     """Apply ``action`` to the named cost centers, or to every enabled cost center below
-    ``node`` that the action applies to (bulk approve). All or nothing; returns the codes."""
+    ``node`` that the action applies to and the actor may act on (bulk approve). All or
+    nothing; returns the codes."""
     if (cost_centers is None) == (node is None):
         raise WorkflowError("name either cost centers or a node")
     with unit_of_work(engine, actor) as conn:
@@ -242,7 +254,24 @@ def act(
             ids = list(found.values())
         if not ids:
             raise WorkflowError("no enabled cost centers")
+        rights = cost_center_rights(conn, actor)
+        mine = plans(conn, actor, ids)
+        assigned = approvers(conn, ids)
 
+        def why_not(cc: int) -> str | None:
+            if cc not in rights:
+                return "you can't see this cost center"
+            approver_ids = {u for u, _ in assigned.get(cc, [])}
+            return _refusal(action, actor, rights[cc], approver_ids, cc in mine)
+
+        if node is not None:
+            ids = [
+                m
+                for m in ids
+                if allows(action, status_of(conn, r.version_id, m)) and why_not(m) is None
+            ]
+            if not ids:
+                raise WorkflowError(f"nothing below {node} you may {action}")
         conn.execute(
             pg_insert(workflow_status)
             .values(
@@ -254,8 +283,7 @@ def act(
             .on_conflict_do_nothing()
         )
         current = conn.execute(
-            select(workflow_status.c.cost_center_id, workflow_status.c.status, member.c.code,
-                   member.c.owner)
+            select(workflow_status.c.cost_center_id, workflow_status.c.status, member.c.code)
             .join(member, member.c.member_id == workflow_status.c.cost_center_id)
             .where(
                 workflow_status.c.version_id == r.version_id,
@@ -263,14 +291,12 @@ def act(
             )
             .order_by(member.c.code)
             .with_for_update(of=workflow_status)
-        ).all()  # fmt: skip
-        if node is not None:
-            current = [c for c in current if allows(action, c.status)]
-            if not current:
-                raise WorkflowError(f"nothing below {node} to {action}")
+        ).all()
         changes: list[tuple[int, Status, Status]] = []
-        for cc_id, status, cc_code, owner in current:
-            check_not_own(action, actor, owner)
+        for cc_id, status, cc_code in current:
+            reason = why_not(cc_id)
+            if reason is not None:
+                raise AccessError(f"{cc_code}: {reason}")
             try:
                 changes.append((cc_id, status, transition(status, action, comment)))
             except WorkflowError as e:
@@ -282,7 +308,7 @@ def act(
                     workflow_status.c.version_id == r.version_id,
                     workflow_status.c.cost_center_id.in_([m for m, _, t in changes if t == target]),
                 )
-                .values(status=target, changed_at=func.now(), changed_by=actor)
+                .values(status=target, changed_at=func.now(), changed_by=actor.login)
             )
         conn.execute(
             insert(workflow_event),
@@ -290,7 +316,7 @@ def act(
                 {
                     "version_id": r.version_id,
                     "cost_center_id": m,
-                    "actor": actor,
+                    "actor": actor.login,
                     "from_status": s,
                     "to_status": t,
                     "comment": comment,

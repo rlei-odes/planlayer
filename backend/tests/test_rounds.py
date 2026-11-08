@@ -4,6 +4,7 @@ The ``client`` fixture syncs ``conftest.SOURCE`` and opens round B2026; ``dev`` 
 """
 
 from collections.abc import Iterator
+from dataclasses import replace
 from datetime import date
 from decimal import Decimal
 
@@ -12,10 +13,9 @@ from fastapi.testclient import TestClient
 from sqlalchemy import Engine, create_engine, insert, select, text
 from sqlalchemy.exc import DBAPIError
 
-from planlayer import rounds, workflow
+from planlayer import access, rounds, workflow
 from planlayer.config import Settings
 from planlayer.domain.spreading import Profile
-from planlayer.domain.workflow import WorkflowError
 from planlayer.store import migrate
 from planlayer.store.db import create_app_engine
 from planlayer.store.schema import (
@@ -26,8 +26,19 @@ from planlayer.store.schema import (
     version,
     workflow_event,
 )
+from planlayer.store.uow import unit_of_work
 
-from .conftest import BLANK, TEST_DATABASE_URL, URL, plan, rows, run_sync, versions_of
+from .conftest import (
+    APPROVER,
+    BLANK,
+    CONTROLLER,
+    TEST_DATABASE_URL,
+    URL,
+    plan,
+    rows,
+    run_sync,
+    versions_of,
+)
 
 R = "B2026"
 
@@ -51,9 +62,18 @@ def post(client: TestClient, *edits: dict, cc: str = "CC1") -> object:  # type: 
     return client.post(f"/api/versions/{R}/cost-centers/{cc}/edits", json={"edits": list(edits)})
 
 
+def system(engine: Engine) -> access.User:
+    return access.system_user(engine)
+
+
+def as_user(engine: Engine, login: str) -> access.User:
+    with engine.connect() as conn:
+        return access.user_by_login(conn, login)
+
+
 def raw_insert(engine: Engine, account: str = "6000", cc: str = "CC1") -> None:
-    """A plan value written past the API, as a bug or a script would."""
-    with engine.begin() as conn:
+    """A plan value written past the API, as a bug or a script would (as the controller)."""
+    with unit_of_work(engine, system(engine)) as conn:
         ids = dict(conn.execute(select(member.c.code, member.c.member_id)).all())
         vid = conn.execute(select(version.c.version_id).where(version.c.code == R)).scalar_one()
         conn.execute(
@@ -86,7 +106,7 @@ def act(client: TestClient, action: str, comment: str | None = None, **target: o
 
 
 def test_new_round_is_in_setup_and_refuses_edits(engine: Engine, client: TestClient) -> None:
-    rounds.create_round(engine, "test", "F2026", "Forecast 2026", "forecast", 2026)
+    rounds.create_round(engine, system(engine), "F2026", "Forecast 2026", "forecast", 2026)
     grid = client.get("/api/versions/F2026/cost-centers/CC1/grid").json()
     assert grid["round_status"] == "setup"
     assert grid["lock_reason"] == "the planning round is setup"
@@ -98,14 +118,14 @@ def test_new_round_is_in_setup_and_refuses_edits(engine: Engine, client: TestCli
 
 def test_lock_trigger_refuses_writes_past_the_api(engine: Engine, client: TestClient) -> None:
     raw_insert(engine)  # open round, cost center not started: allowed
-    rounds.set_round_status(engine, "test", R, "closed")
+    rounds.set_round_status(engine, system(engine), R, "closed")
     with pytest.raises(DBAPIError, match="the planning round is closed"):
         raw_insert(engine, account="6010")
-    rounds.set_round_status(engine, "test", R, "open")
+    rounds.set_round_status(engine, system(engine), R, "open")
     act(client, "submit")
     with pytest.raises(DBAPIError, match="the cost center is submitted"):
         raw_insert(engine, account="6010")
-    rounds.set_member_enabled(engine, "test", R, "CC2", False)
+    rounds.set_member_enabled(engine, system(engine), R, "CC2", False)
     with pytest.raises(DBAPIError, match="the cost center is not enabled"):
         raw_insert(engine, cc="CC2")
 
@@ -120,7 +140,7 @@ def test_round_status_transitions(engine: Engine, client: TestClient) -> None:
 
 
 def test_actuals_sync_is_not_locked(engine: Engine, migrated: Settings, source_schema: str) -> None:
-    rounds.set_round_status(engine, "test", R, "closed")
+    rounds.set_round_status(engine, system(engine), R, "closed")
     assert run_sync(migrated, source_schema).actual_rows == 16
 
 
@@ -135,7 +155,7 @@ def test_first_save_starts_the_cost_center(engine: Engine, client: TestClient) -
         events = conn.execute(
             select(workflow_event.c.actor, workflow_event.c.from_status, workflow_event.c.to_status)
         ).all()
-    assert [tuple(e) for e in events] == [("dev", "not_started", "in_progress")]
+    assert [tuple(e) for e in events] == [(CONTROLLER, "not_started", "in_progress")]
 
 
 def test_submit_reject_approve_reopen(client: TestClient) -> None:
@@ -162,21 +182,23 @@ def test_empty_cost_center_can_be_submitted(client: TestClient) -> None:
 
 def test_bulk_approve_below_a_node_and_no_self_approval(engine: Engine, client: TestClient) -> None:
     act(client, "submit", cost_centers=["CC1", "CC2"])
-    # CC1's owner can't approve it; the whole bulk action is refused.
-    with pytest.raises(WorkflowError, match="your own"):
-        workflow.act(engine, "anna@x.example", R, "approve", node="DEP")
+    # CC1's owner can't approve it.
+    with pytest.raises(access.AccessError, match="CC1: you can't approve a cost center you plan"):
+        workflow.act(engine, as_user(engine, "anna"), R, "approve", cost_centers=["CC1"])
     assert act(client, "approve", node="DEP", cost_centers=None).json() == ["CC1", "CC2"]  # type: ignore[attr-defined]
     assert act(client, "approve", node="DEP", cost_centers=None).status_code == 422  # type: ignore[attr-defined]
 
 
 def test_overview_rolls_up_and_finds_approvers(engine: Engine, client: TestClient) -> None:
-    rounds.assign_approver(engine, "test", "NW", "cfo")
-    rounds.assign_approver(engine, "test", "DEP", "head")
-    rounds.assign_approver(engine, "test", "DEP", "deputy")
-    rounds.set_deadline(engine, "test", R, date(2026, 1, 31))
+    admin = replace(system(engine), is_admin=True)
+    for login in ("cfo", "head"):
+        access.create_user(engine, admin, login, login)
+    access.add_approver(engine, system(engine), "NW", "cfo")
+    access.add_approver(engine, system(engine), "DEP", "head")
+    rounds.set_deadline(engine, system(engine), R, date(2026, 1, 31))
     post(client, month("6000", 0, "5"))
     act(client, "submit", cost_centers=["CC2"])
-    o = workflow.overview(engine, R, today=date(2026, 2, 1))
+    o = workflow.overview(engine, system(engine), R, today=date(2026, 2, 1))
     assert [(r.kind, r.code, r.depth) for r in o.rows] == [
         ("node", "NW", 0),
         ("node", "DEP", 1),
@@ -185,7 +207,7 @@ def test_overview_rolls_up_and_finds_approvers(engine: Engine, client: TestClien
     ]
     nw, _, cc1, cc2 = o.rows
     assert nw.counts == {"not_started": 0, "in_progress": 1, "submitted": 1, "approved": 0}
-    assert cc1.approvers == ["deputy", "head"]  # the nearest node above wins
+    assert cc1.approvers == [APPROVER, "head"]  # the nearest node above wins
     assert (cc1.status, cc1.overdue, cc2.overdue) == ("in_progress", True, False)
     assert o.not_planned == []
 
@@ -196,14 +218,14 @@ def test_new_and_disabled_cost_centers_are_not_planned(engine: Engine, client: T
         # As if CC2 had first arrived with a sync after the round was created.
         conn.execute(round_member.delete().where(round_member.c.member_id == cc2))
     assert [u["code"] for u in client.get(f"/api/versions/{R}/cost-centers").json()] == ["CC1"]
-    o = workflow.overview(engine, R, today=date(2026, 1, 1))
+    o = workflow.overview(engine, system(engine), R, today=date(2026, 1, 1))
     assert [(n.code, n.reason) for n in o.not_planned] == [("CC2", "new")]
     assert post(client, month("6000", 0, "1"), cc="CC2").status_code == 423  # type: ignore[attr-defined]
     enable = f"/api/versions/{R}/cost-centers/CC2/enabled"
     client.post(enable, json={"enabled": True})
     assert post(client, month("6000", 0, "1"), cc="CC2").status_code == 200  # type: ignore[attr-defined]
     client.post(f"/api/versions/{R}/cost-centers/CC1/enabled", json={"enabled": False})
-    o = workflow.overview(engine, R, today=date(2026, 1, 1))
+    o = workflow.overview(engine, system(engine), R, today=date(2026, 1, 1))
     assert [(n.code, n.reason) for n in o.not_planned] == [("CC1", "disabled")]
 
 
@@ -211,9 +233,12 @@ def test_new_and_disabled_cost_centers_are_not_planned(engine: Engine, client: T
 
 
 def test_comparisons_in_order(engine: Engine, client: TestClient) -> None:
-    rounds.create_round(engine, "test", "B2025", "Budget 2025", "budget", 2025)
+    rounds.create_round(engine, system(engine), "B2025", "Budget 2025", "budget", 2025)
     rounds.set_comparisons(
-        engine, "test", R, [("version", "B2025"), ("prior_year_actuals", None), ("actuals", None)]
+        engine,
+        system(engine),
+        R,
+        [("version", "B2025"), ("prior_year_actuals", None), ("actuals", None)],
     )
     grid = client.get(f"{URL}/grid").json()
     assert [c["label"] for c in grid["comparisons"]] == [
@@ -233,7 +258,7 @@ def test_added_account_appears_and_hidden_ones_cannot_be_added(
     grid = client.post(f"{cc2}/accounts", json={"account_code": "7000"}).json()
     assert [r["code"] for r in grid["rows"]] == ["A", "6000", "B", "7000"]
     assert plan(grid, "7000") == BLANK
-    rounds.hide_account(engine, "test", R, "6010")
+    rounds.hide_account(engine, system(engine), R, "6010")
     assert client.post(f"{cc2}/accounts", json={"account_code": "6010"}).status_code == 422
     codes = [a["code"] for a in client.get(f"/api/versions/{R}/accounts").json()]
     assert codes == ["6000", "7000"]
@@ -242,15 +267,15 @@ def test_added_account_appears_and_hidden_ones_cannot_be_added(
 def test_hidden_account(engine: Engine, client: TestClient) -> None:
     post(client, month("6010", 0, "5"))
     with pytest.raises(rounds.RoundError, match="still has plan values on CC1"):
-        rounds.hide_account(engine, "test", R, "6010")
+        rounds.hide_account(engine, system(engine), R, "6010")
     post(client, month("6010", 0, None, versions_of(client.get(f"{URL}/grid").json(), "6010")))
-    rounds.hide_account(engine, "test", R, "6010")
+    rounds.hide_account(engine, system(engine), R, "6010")
     grid = client.get(f"{URL}/grid").json()
     assert "6010" not in rows(grid)  # even with prior-year actuals
     assert post(client, month("6010", 0, "5")).status_code == 422  # type: ignore[attr-defined]
     with pytest.raises(DBAPIError, match="the account is hidden"):
         raw_insert(engine, account="6010")
-    rounds.unhide_account(engine, "test", R, "6010")
+    rounds.unhide_account(engine, system(engine), R, "6010")
     assert "6010" in rows(client.get(f"{URL}/grid").json())
 
 
@@ -258,8 +283,8 @@ def test_hidden_account(engine: Engine, client: TestClient) -> None:
 
 
 def test_group_form_inherited_account_form_wins(engine: Engine, client: TestClient) -> None:
-    rounds.set_entry_form(engine, "test", R, "A", "annual_even")
-    rounds.set_entry_form(engine, "test", R, "6010", "monthly")
+    rounds.set_entry_form(engine, system(engine), R, "A", "annual_even")
+    rounds.set_entry_form(engine, system(engine), R, "6010", "monthly")
     r = rows(client.get(f"{URL}/grid").json())
     assert (r["6000"]["entry_form"], r["6000"]["months_editable"]) == ("annual_even", False)
     assert (r["6010"]["entry_form"], r["6010"]["months_editable"]) == ("monthly", True)
@@ -270,7 +295,7 @@ def test_group_form_inherited_account_form_wins(engine: Engine, client: TestClie
 
 
 def test_annual_hides_months(engine: Engine, client: TestClient) -> None:
-    rounds.set_entry_form(engine, "test", R, None, "annual")
+    rounds.set_entry_form(engine, system(engine), R, None, "annual")
     row = rows(client.get(f"{URL}/grid").json())["7000"]
     assert (row["months_visible"], row["months_editable"], row["total_editable"]) == (
         False,
@@ -281,20 +306,20 @@ def test_annual_hides_months(engine: Engine, client: TestClient) -> None:
 
 def test_annual_profile(engine: Engine, client: TestClient) -> None:
     rounds.add_profile(
-        engine, "test", "SHUT", "August shutdown", Profile.relative([1] * 7 + [0] + [1] * 4)
+        engine, system(engine), "SHUT", "August shutdown", Profile.relative([1] * 7 + [0] + [1] * 4)
     )
-    rounds.set_entry_form(engine, "test", R, "6000", "annual_profile", profile_code="SHUT")
+    rounds.set_entry_form(engine, system(engine), R, "6000", "annual_profile", profile_code="SHUT")
     grid = post(client, year("6000", "1100")).json()  # type: ignore[attr-defined]
     assert plan(grid, "6000") == ["100.00"] * 7 + ["0.00"] + ["100.00"] * 4
     assert rows(grid)["6000"]["basis"] == "profile August shutdown"
     with pytest.raises(rounds.RoundError):
-        rounds.set_entry_form(engine, "test", R, "6000", "annual_profile")
+        rounds.set_entry_form(engine, system(engine), R, "6000", "annual_profile")
 
 
 def test_reference_version_and_fallback(engine: Engine, client: TestClient) -> None:
-    rounds.create_round(engine, "test", "B2025", "Budget 2025", "budget", 2025)
+    rounds.create_round(engine, system(engine), "B2025", "Budget 2025", "budget", 2025)
     rounds.set_entry_form(
-        engine, "test", R, "7000", "annual_reference", reference_version_code="B2025"
+        engine, system(engine), R, "7000", "annual_reference", reference_version_code="B2025"
     )
     grid = client.get(f"{URL}/grid").json()
     # Budget 2025 has no values for 7000: the line spreads evenly, and says so.
@@ -305,11 +330,11 @@ def test_reference_version_and_fallback(engine: Engine, client: TestClient) -> N
 
 
 def test_copy_setup_from_round(engine: Engine, client: TestClient) -> None:
-    rounds.set_entry_form(engine, "test", R, "A", "annual_even")
-    rounds.hide_account(engine, "test", R, "7000")
-    rounds.set_member_enabled(engine, "test", R, "CC2", False)
-    rounds.create_round(engine, "test", "F2026", "Forecast", "forecast", 2026, copy_from=R)
-    rounds.set_round_status(engine, "test", "F2026", "open")
+    rounds.set_entry_form(engine, system(engine), R, "A", "annual_even")
+    rounds.hide_account(engine, system(engine), R, "7000")
+    rounds.set_member_enabled(engine, system(engine), R, "CC2", False)
+    rounds.create_round(engine, system(engine), "F2026", "Forecast", "forecast", 2026, copy_from=R)
+    rounds.set_round_status(engine, system(engine), "F2026", "open")
     grid = client.get("/api/versions/F2026/cost-centers/CC1/grid").json()
     assert rows(grid)["6000"]["entry_form"] == "annual_even"
     assert "7000" not in rows(grid)

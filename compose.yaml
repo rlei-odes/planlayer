@@ -25,6 +25,7 @@ services:
     build: .
     environment:
       PLANLAYER_ENVIRONMENT: development
+      PLANLAYER_DEV_LOGIN: "true"
       PLANLAYER_APP_DATABASE_URL: postgresql+psycopg://planlayer:planlayer@db/planlayer
       PLANLAYER_SOURCE_DATABASE_URL: postgresql+psycopg://planlayer:planlayer@db/dwh
       PLANLAYER_OUTPUT_DATABASE_URL: postgresql+psycopg://planlayer:planlayer@db/dwh

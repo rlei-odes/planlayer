@@ -11,6 +11,7 @@ from typing import Literal
 from sqlalchemy import Connection, Engine, and_, delete, insert, literal, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
+from planlayer.access import User
 from planlayer.domain.entry_forms import FORMS, Form
 from planlayer.domain.periods import fiscal_year_periods
 from planlayer.domain.spreading import Profile
@@ -19,7 +20,6 @@ from planlayer.store.schema import (
     ACCOUNT,
     COST_CENTER,
     MODULE_COST_CENTER,
-    approver_assignment,
     comparison,
     entry_form,
     fact_cost_center,
@@ -118,7 +118,7 @@ def _version_id(conn: Connection, code: str) -> int:
 
 def create_round(
     engine: Engine,
-    actor: str,
+    actor: User,
     code: str,
     name: str,
     kind: Literal["budget", "forecast"],
@@ -133,6 +133,7 @@ def create_round(
     prior-year actuals as the only comparison. Every cost center valid in the fiscal year is
     enabled, except those disabled in the copied round.
     """
+    actor.require_controller()
     with unit_of_work(engine, actor) as conn:
         source = get_round(conn, copy_from) if copy_from is not None else None
         vid = int(
@@ -202,7 +203,8 @@ def _copy_setup(conn: Connection, source_id: int, target_id: int) -> None:
         )
 
 
-def set_round_status(engine: Engine, actor: str, code: str, status: RoundStatus) -> None:
+def set_round_status(engine: Engine, actor: User, code: str, status: RoundStatus) -> None:
+    actor.require_controller()
     with unit_of_work(engine, actor) as conn:
         r = get_round(conn, code, lock="update")
         round_transition(r.status, status)
@@ -213,7 +215,8 @@ def set_round_status(engine: Engine, actor: str, code: str, status: RoundStatus)
         )
 
 
-def set_deadline(engine: Engine, actor: str, code: str, deadline: date | None) -> None:
+def set_deadline(engine: Engine, actor: User, code: str, deadline: date | None) -> None:
+    actor.require_controller()
     with unit_of_work(engine, actor) as conn:
         r = get_round(conn, code, lock="update")
         conn.execute(
@@ -223,7 +226,8 @@ def set_deadline(engine: Engine, actor: str, code: str, deadline: date | None) -
         )
 
 
-def set_member_enabled(engine: Engine, actor: str, code: str, cc_code: str, enabled: bool) -> None:
+def set_member_enabled(engine: Engine, actor: User, code: str, cc_code: str, enabled: bool) -> None:
+    actor.require_controller()
     with unit_of_work(engine, actor) as conn:
         r = get_round(conn, code)
         cc_id = _member_id(conn, COST_CENTER, cc_code, leaf=True)
@@ -238,7 +242,8 @@ def set_member_enabled(engine: Engine, actor: str, code: str, cc_code: str, enab
         )
 
 
-def add_profile(engine: Engine, actor: str, code: str, name: str, profile: Profile) -> int:
+def add_profile(engine: Engine, actor: User, code: str, name: str, profile: Profile) -> int:
+    actor.require_controller()
     with unit_of_work(engine, actor) as conn:
         return int(
             conn.execute(
@@ -253,7 +258,7 @@ def add_profile(engine: Engine, actor: str, code: str, name: str, profile: Profi
 
 def set_entry_form(
     engine: Engine,
-    actor: str,
+    actor: User,
     code: str,
     account_code: str | None,
     form: Form | None,
@@ -262,6 +267,7 @@ def set_entry_form(
 ) -> None:
     """Set the entry form of an account group or account, or with ``account_code`` None the
     module default. ``form`` None removes an account's own setting."""
+    actor.require_controller()
     if form is not None and form not in FORMS:
         raise RoundError(f"unknown entry form {form}")
     with unit_of_work(engine, actor) as conn:
@@ -316,9 +322,10 @@ def set_entry_form(
 
 
 def set_comparisons(
-    engine: Engine, actor: str, code: str, columns: list[tuple[ComparisonKind, str | None]]
+    engine: Engine, actor: User, code: str, columns: list[tuple[ComparisonKind, str | None]]
 ) -> None:
     """The comparison columns, in order: (kind, version code for kind ``version``)."""
+    actor.require_controller()
     with unit_of_work(engine, actor) as conn:
         r = get_round(conn, code)
         rows = []
@@ -344,8 +351,9 @@ def set_comparisons(
             conn.execute(insert(comparison), rows)
 
 
-def hide_account(engine: Engine, actor: str, code: str, account_code: str) -> None:
+def hide_account(engine: Engine, actor: User, code: str, account_code: str) -> None:
     """Hide an account in a round; refused while any cost center has plan values on it."""
+    actor.require_controller()
     with unit_of_work(engine, actor) as conn:
         r = get_round(conn, code)
         account_id = _member_id(conn, ACCOUNT, account_code, leaf=True)
@@ -370,7 +378,8 @@ def hide_account(engine: Engine, actor: str, code: str, account_code: str) -> No
         )
 
 
-def unhide_account(engine: Engine, actor: str, code: str, account_code: str) -> None:
+def unhide_account(engine: Engine, actor: User, code: str, account_code: str) -> None:
+    actor.require_controller()
     with unit_of_work(engine, actor) as conn:
         r = get_round(conn, code)
         account_id = _member_id(conn, ACCOUNT, account_code, leaf=True)
@@ -380,16 +389,6 @@ def unhide_account(engine: Engine, actor: str, code: str, account_code: str) -> 
                 hidden_account.c.module == MODULE_COST_CENTER,
                 hidden_account.c.account_id == account_id,
             )
-        )
-
-
-def assign_approver(engine: Engine, actor: str, node_code: str, user_name: str) -> None:
-    with unit_of_work(engine, actor) as conn:
-        node_id = _member_id(conn, COST_CENTER, node_code)
-        conn.execute(
-            pg_insert(approver_assignment)
-            .values(member_id=node_id, user_name=user_name)
-            .on_conflict_do_nothing()
         )
 
 

@@ -7,8 +7,8 @@ from planlayer.domain.entry_forms import EntryForm, resolve, weights
 from planlayer.domain.spreading import Profile
 from planlayer.domain.workflow import (
     WorkflowError,
-    check_not_own,
     is_overdue,
+    refusal,
     round_transition,
     transition,
 )
@@ -23,9 +23,22 @@ def test_transitions() -> None:
         transition("submitted", "reject", "  ")
     with pytest.raises(WorkflowError, match="can't approve a cost center that is in progress"):
         transition("in_progress", "approve", None)
-    with pytest.raises(WorkflowError):
-        check_not_own("approve", "anna", "anna")
-    check_not_own("submit", "anna", "anna")
+
+
+def test_who_may_act() -> None:
+    def why(action: str, **kw: bool) -> str | None:
+        args = {"can_write": False, "approves": False, "controller": False, "plans_it": False}
+        return refusal(action, **{**args, **kw})  # type: ignore[arg-type]
+
+    assert why("submit", can_write=True) is None
+    assert why("submit") == "you don't plan this cost center"
+    assert why("approve", approves=True) is None
+    assert why("approve", controller=True) is None
+    assert (
+        why("approve", controller=True, plans_it=True) == "you can't approve a cost center you plan"
+    )
+    assert why("reject") == "you aren't its approver"
+    assert why("reopen", approves=True) == "only a controller may reopen"
 
 
 def test_round_transitions_and_overdue() -> None:

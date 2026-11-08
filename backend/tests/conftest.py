@@ -1,19 +1,23 @@
 """Test fixtures.
 
 Database tests need ``PLANLAYER_TEST_DATABASE_URL``, a Postgres 18 connection allowed to create
-schemas (CI sets it). Each test session works in its own pair of random schemas, so tests never
+schemas and roles (CI sets it). Each test works in its own pair of random schemas, so tests never
 touch existing data. Without the variable, database tests are skipped.
+
+Planlayer itself connects as the unprivileged role ``planlayer_test``, which owns the test
+schemas, as the app role does in an installation: a superuser would bypass row-level security.
 """
 
 import os
 import secrets
 from collections.abc import Iterator
+from dataclasses import replace
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, make_url, text
 
-from planlayer import rounds, sync
+from planlayer import access, rounds, sync
 from planlayer.adapters.source import PostgresSource
 from planlayer.api.app import create_app
 from planlayer.config import Settings
@@ -21,6 +25,13 @@ from planlayer.store import migrate
 from planlayer.store.db import create_app_engine
 
 TEST_DATABASE_URL = os.environ.get("PLANLAYER_TEST_DATABASE_URL")
+APP_ROLE = "planlayer_test"
+
+
+def _app_url() -> str:
+    assert TEST_DATABASE_URL
+    url = make_url(TEST_DATABASE_URL).set(username=APP_ROLE, password=APP_ROLE)
+    return url.render_as_string(hide_password=False)
 
 
 @pytest.fixture
@@ -32,15 +43,25 @@ def db_settings() -> Iterator[Settings]:
     app_schema, output_schema = f"test_app_{suffix}", f"test_out_{suffix}"
     admin = create_engine(TEST_DATABASE_URL)
     with admin.begin() as conn:
-        conn.execute(text(f"CREATE SCHEMA {app_schema}"))
-        conn.execute(text(f"CREATE SCHEMA {output_schema}"))
+        conn.execute(
+            text(f"""
+            DO $$ BEGIN
+                IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '{APP_ROLE}') THEN
+                    CREATE ROLE {APP_ROLE} LOGIN PASSWORD '{APP_ROLE}' NOSUPERUSER;
+                END IF;
+            END $$
+        """)
+        )
+        conn.execute(text(f"CREATE SCHEMA {app_schema} AUTHORIZATION {APP_ROLE}"))
+        conn.execute(text(f"CREATE SCHEMA {output_schema} AUTHORIZATION {APP_ROLE}"))
     try:
         yield Settings(
             _env_file=None,  # type: ignore[call-arg]
             environment="development",
-            app_database_url=TEST_DATABASE_URL,  # type: ignore[arg-type]
+            app_database_url=_app_url(),  # type: ignore[arg-type]
             app_schema=app_schema,
             output_schema=output_schema,
+            dev_login=True,
         )
     finally:
         with admin.begin() as conn:
@@ -106,6 +127,8 @@ def source_schema(migrated: Settings) -> Iterator[str]:
     with admin.begin() as conn:
         conn.execute(text(f"CREATE SCHEMA {schema}"))
         conn.execute(text(SOURCE.format(s=schema)))
+        conn.execute(text(f"GRANT USAGE ON SCHEMA {schema} TO {APP_ROLE}"))
+        conn.execute(text(f"GRANT SELECT ON ALL TABLES IN SCHEMA {schema} TO {APP_ROLE}"))
     try:
         yield schema
     finally:
@@ -117,21 +140,46 @@ def source_schema(migrated: Settings) -> Iterator[str]:
 def run_sync(settings: Settings, schema: str) -> sync.SyncResult:
     engine, source = create_app_engine(settings), PostgresSource(settings.app_url)
     try:
-        return sync.run(engine, source, sync.default_mapping(schema), actor="test")
+        actor = access.system_user(engine)
+        return sync.run(engine, source, sync.default_mapping(schema), actor=actor)
     finally:
         engine.dispose()
         source.dispose()
 
 
+# Users of the slice: CC1's owner is matched by e-mail; CC2 has no owner.
+CONTROLLER = "ctrl@x.example"
+OWNER = "anna"  # login; owner of CC1 through the e-mail below
+OWNER_EMAIL = "anna@x.example"
+APPROVER = "appr@x.example"  # approver at DEP
+VIEWER = "view@x.example"
+NOBODY = "bob@x.example"  # no rights
+
+
 @pytest.fixture
 def client(migrated: Settings, source_schema: str) -> Iterator[TestClient]:
+    """The slice synced, round B2026 open, users created; logged in as the controller."""
     run_sync(migrated, source_schema)
     engine = create_app_engine(migrated)
-    rounds.create_round(engine, "test", "B2026", "Budget 2026", "budget", 2026)
-    rounds.set_round_status(engine, "test", "B2026", "open")
+    system = access.system_user(engine)
+    admin = replace(system, is_admin=True)
+    access.create_user(engine, admin, CONTROLLER, "Ctrl", is_controller=True)
+    access.create_user(engine, admin, OWNER, "Anna", OWNER_EMAIL)
+    access.create_user(engine, admin, APPROVER, "Appr")
+    access.create_user(engine, admin, VIEWER, "View", is_viewer=True)
+    access.create_user(engine, admin, NOBODY, "Bob")
+    access.add_approver(engine, system, "DEP", APPROVER)
+    rounds.create_round(engine, system, "B2026", "Budget 2026", "budget", 2026)
+    rounds.set_round_status(engine, system, "B2026", "open")
     engine.dispose()
     with TestClient(create_app(migrated)) as c:
+        login(c, CONTROLLER)
         yield c
+
+
+def login(client: TestClient, user: str) -> None:
+    response = client.post("/api/auth/dev-login", json={"login": user})
+    assert response.status_code == 200, response.text
 
 
 def rows(grid: dict) -> dict[str, dict]:  # type: ignore[type-arg]

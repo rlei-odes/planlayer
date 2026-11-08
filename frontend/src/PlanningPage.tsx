@@ -189,6 +189,7 @@ export default function PlanningPage({ version }: { version: string }) {
             {units.map((u) => (
               <option key={u.code} value={u.code}>
                 {u.code} {u.name} · {STATUS_LABEL[u.status]}
+                {u.can_write ? '' : ' · read only'}
               </option>
             ))}
           </select>
@@ -228,7 +229,7 @@ export default function PlanningPage({ version }: { version: string }) {
         </p>
       )}
       {message && <div className={message.kind}>{message.text}</div>}
-      {units.length === 0 && <p>No cost center is enabled in this round.</p>}
+      {units.length === 0 && <p>No cost center of this round is yours to plan or read.</p>}
       {grid && (
         <RevoGrid
           className="grid"

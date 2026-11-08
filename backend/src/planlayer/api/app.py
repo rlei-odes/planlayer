@@ -11,6 +11,8 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from planlayer import __version__
+from planlayer.api.access import router as access_router
+from planlayer.api.auth import router as auth_router
 from planlayer.api.planning import router as planning_router
 from planlayer.config import Settings
 from planlayer.store.db import create_app_engine
@@ -35,6 +37,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(title="Planlayer", version=__version__, lifespan=lifespan)
     app.state.engine = engine
+    app.state.settings = settings
+    app.include_router(auth_router)
+    app.include_router(access_router)
     app.include_router(planning_router)
 
     @app.get("/api/health")

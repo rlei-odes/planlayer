@@ -52,9 +52,10 @@ Sync the test company into the app and create a budget to plan (the planning pag
 ```
 docker compose exec app planlayer sync --entity DE
 docker compose exec app planlayer create-version B2026 --name "Budget 2026" --fiscal-year 2026
+docker compose exec app planlayer seed-dev-users
 ```
 
-A new planning round starts in status `setup`; open it on the status page before planning.
+The development login (`PLANLAYER_DEV_LOGIN`, on in `compose.yaml`, refused in production) lets you log in as any of these users without a password: the cost center owners, `controller@nordwerk.example`, `admin@nordwerk.example`, `cfo@nordwerk.example` and `auditor@nordwerk.example`. A new planning round starts in status `setup`; the controller opens it on the status page.
 
 Checks, as run in CI:
 

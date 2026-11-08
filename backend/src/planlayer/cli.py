@@ -1,11 +1,11 @@
-"""The ``planlayer`` command: ``migrate`` and ``serve``."""
+"""The ``planlayer`` command."""
 
 import argparse
 from datetime import date
 
 import uvicorn
 
-from planlayer import rounds, sync
+from planlayer import access, devdata, rounds, sync
 from planlayer.adapters.source import PostgresSource
 from planlayer.config import Settings
 from planlayer.store import migrate
@@ -32,6 +32,10 @@ def main(argv: list[str] | None = None) -> None:
     version_cmd.add_argument("--deadline", type=date.fromisoformat, help="YYYY-MM-DD")
     version_cmd.add_argument("--copy-setup-from", metavar="CODE", help="an earlier round")
 
+    commands.add_parser(
+        "seed-dev-users", help="create the development users of the test data (not in production)"
+    )
+
     serve_cmd = commands.add_parser("serve", help="run the web server")
     # All interfaces: the server runs inside a container.
     serve_cmd.add_argument("--host", default="0.0.0.0")
@@ -50,7 +54,7 @@ def main(argv: list[str] | None = None) -> None:
                     engine,
                     source,
                     sync.default_mapping(settings.source_schema),
-                    actor="cli",
+                    actor=access.system_user(engine),
                     entity=args.entity,
                 )
             except sync.SyncError as e:
@@ -65,7 +69,7 @@ def main(argv: list[str] | None = None) -> None:
             try:
                 rounds.create_round(
                     engine,
-                    "cli",
+                    access.system_user(engine),
                     args.code,
                     args.name,
                     args.kind,
@@ -81,6 +85,16 @@ def main(argv: list[str] | None = None) -> None:
                 f"created {args.kind} round {args.code} for fiscal year {args.fiscal_year} "
                 "(status setup; open it on the status page)"
             )
+        case "seed-dev-users":
+            settings = Settings()  # type: ignore[call-arg]
+            if settings.environment == "production":
+                raise SystemExit("seed-dev-users is refused in production")
+            engine = create_app_engine(settings)
+            try:
+                created = devdata.seed(engine)
+            finally:
+                engine.dispose()
+            print(f"created {len(created)} user(s): {', '.join(created) or '-'}")
         case "serve":
             uvicorn.run(
                 "planlayer.api.app:create_app",

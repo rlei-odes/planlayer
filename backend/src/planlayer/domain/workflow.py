@@ -1,7 +1,7 @@
 """Approval workflow rules (ADR 0008): statuses per round x cost center, and round statuses.
 
-Who may take an action (planner, approver, controller) is checked with the roles of D-21; these
-rules only decide which transitions exist and what they need.
+Who may take an action (planner, approver, controller; ADR 0009) is checked by
+``planlayer.workflow``; these rules decide which transitions exist and what they need.
 """
 
 from datetime import date
@@ -46,10 +46,23 @@ def transition(status: Status, action: Action, comment: str | None) -> Status:
     return target
 
 
-def check_not_own(action: Action, actor: str, owner: str | None) -> None:
-    """A planner can't approve their own cost center."""
-    if action == "approve" and owner is not None and actor == owner:
-        raise WorkflowError("you can't approve your own cost center")
+def refusal(
+    action: Action, *, can_write: bool, approves: bool, controller: bool, plans_it: bool
+) -> str | None:
+    """Why a user may not take ``action`` on a cost center (ADR 0009), or None.
+
+    ``can_write``: owner, deputy or controller; ``approves``: assigned to the cost center's
+    nearest approver node; ``plans_it``: owner or deputy, who can't approve their own.
+    """
+    match action:
+        case "submit":
+            return None if can_write else "you don't plan this cost center"
+        case "approve" | "reject":
+            if plans_it:
+                return f"you can't {action} a cost center you plan"
+            return None if controller or approves else "you aren't its approver"
+        case "reopen":
+            return None if controller else "only a controller may reopen"
 
 
 def round_transition(current: RoundStatus, target: RoundStatus) -> RoundStatus:

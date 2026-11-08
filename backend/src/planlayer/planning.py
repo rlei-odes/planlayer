@@ -24,6 +24,7 @@ from sqlalchemy import Connection, Engine, and_, delete, select, tuple_
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import DBAPIError
 
+from planlayer.access import User, cost_center_rights
 from planlayer.domain.entry_forms import EntryForm, Form, resolve, weights
 from planlayer.domain.spreading import Profile, spread
 from planlayer.domain.workflow import EDITABLE, RoundStatus, Status
@@ -162,14 +163,16 @@ class _Line:
     reference: list[Decimal | None]
 
 
-def _context(conn: Connection, version_code: str, cc_code: str) -> _Context:
+def _context(conn: Connection, user: User, version_code: str, cc_code: str) -> _Context:
     r = get_round(conn, version_code)
     cc = conn.execute(
         select(member).where(
             member.c.dim_id == COST_CENTER, member.c.code == cc_code, member.c.is_group.is_(False)
         )
     ).first()
-    if cc is None:
+    rights = cost_center_rights(conn, user)
+    # A cost center the user may not read is reported as not found, like a missing one.
+    if cc is None or cc.member_id not in rights:
         raise NotFoundError(f"cost center {cc_code} not found")
     entity_id = conn.execute(
         select(member.c.member_id).where(member.c.dim_id == ENTITY, member.c.code == cc.entity_code)
@@ -185,6 +188,8 @@ def _context(conn: Connection, version_code: str, cc_code: str) -> _Context:
         reason = "the cost center is not enabled in this round"
     elif status not in EDITABLE:
         reason = f"the cost center is {status}"
+    elif not rights[cc.member_id]:
+        reason = "you may only read this cost center"
     else:
         reason = None
     return _Context(
@@ -366,9 +371,9 @@ def _lines(conn: Connection, ctx: _Context, account_ids: Iterable[int]) -> list[
     return lines
 
 
-def read_grid(engine: Engine, version_code: str, cc_code: str) -> Grid:
-    with engine.connect() as conn:
-        ctx = _context(conn, version_code, cc_code)
+def read_grid(engine: Engine, user: User, version_code: str, cc_code: str) -> Grid:
+    with unit_of_work(engine, user) as conn:
+        ctx = _context(conn, user, version_code, cc_code)
         columns, compared = _comparisons(conn, ctx)
         plan = _values(conn, ctx.version_id, ctx.cost_center_id, ctx.periods)
         shown = set(plan) | _added(conn, ctx)
@@ -472,12 +477,12 @@ def _leaf_accounts(conn: Connection, codes: set[str]) -> dict[str, int]:
 
 
 def apply_edits(
-    engine: Engine, actor: str, version_code: str, cc_code: str, edits: list[Edit]
+    engine: Engine, actor: User, version_code: str, cc_code: str, edits: list[Edit]
 ) -> None:
     """Apply all edits in one transaction, or none: any conflict or invalid edit rolls back."""
     try:
         with unit_of_work(engine, actor) as conn:
-            _apply(conn, version_code, cc_code, edits)
+            _apply(conn, actor, version_code, cc_code, edits)
     except DBAPIError as e:
         locked = _locked(e)
         if locked is None:
@@ -485,8 +490,10 @@ def apply_edits(
         raise locked from None
 
 
-def _apply(conn: Connection, version_code: str, cc_code: str, edits: list[Edit]) -> None:
-    ctx = _context(conn, version_code, cc_code)
+def _apply(
+    conn: Connection, actor: User, version_code: str, cc_code: str, edits: list[Edit]
+) -> None:
+    ctx = _context(conn, actor, version_code, cc_code)
     if ctx.lock_reason is not None:
         raise LockedError(ctx.lock_reason)
     accounts = _leaf_accounts(conn, {e.account_code for e in edits})
@@ -570,11 +577,11 @@ def _apply(conn: Connection, version_code: str, cc_code: str, edits: list[Edit])
 
 
 def add_account(
-    engine: Engine, actor: str, version_code: str, cc_code: str, account_code: str
+    engine: Engine, actor: User, version_code: str, cc_code: str, account_code: str
 ) -> None:
     """Add an account to a cost center's sheet (ADR 0007); hidden accounts can't be added."""
     with unit_of_work(engine, actor) as conn:
-        ctx = _context(conn, version_code, cc_code)
+        ctx = _context(conn, actor, version_code, cc_code)
         if ctx.lock_reason is not None:
             raise LockedError(ctx.lock_reason)
         account_id = _leaf_accounts(conn, {account_code})[account_code]
@@ -587,7 +594,7 @@ def add_account(
                 module=MODULE_COST_CENTER,
                 cost_center_id=ctx.cost_center_id,
                 account_id=account_id,
-                added_by=actor,
+                added_by=actor.login,
             )
             .on_conflict_do_nothing()
         )
@@ -606,11 +613,13 @@ def addable_accounts(engine: Engine, version_code: str) -> list[dict[str, object
     return [{"code": c, "name": n} for m, c, n in rows if m not in hidden]
 
 
-def planning_units(engine: Engine, version_code: str) -> list[dict[str, object]]:
-    """Cost centers enabled in the round, with their status (T-25 switcher)."""
-    with engine.connect() as conn:
+def planning_units(engine: Engine, user: User, version_code: str) -> list[dict[str, object]]:
+    """Cost centers enabled in the round that the user may read, with their status and whether
+    the user may write them (T-25 switcher)."""
+    with unit_of_work(engine, user) as conn:
         r = get_round(conn, version_code)
-        enabled = [m for m, e in enabled_members(conn, r.version_id).items() if e]
+        rights = cost_center_rights(conn, user)
+        enabled = [m for m, e in enabled_members(conn, r.version_id).items() if e and m in rights]
         rows = conn.execute(
             select(
                 member.c.member_id,
@@ -623,6 +632,10 @@ def planning_units(engine: Engine, version_code: str) -> list[dict[str, object]]
             .order_by(member.c.code)
         ).all()
         return [
-            {**row._mapping, "status": cast(str, status_of(conn, r.version_id, row.member_id))}
+            {
+                **row._mapping,
+                "status": cast(str, status_of(conn, r.version_id, row.member_id)),
+                "can_write": rights[row.member_id],
+            }
             for row in rows
         ]

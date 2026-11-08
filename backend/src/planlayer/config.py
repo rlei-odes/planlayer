@@ -33,6 +33,8 @@ class Settings(BaseSettings):
 
     # Fake login for early iterations (T-22). Refused in production.
     dev_login: bool = False
+    # Lifetime of a login session.
+    session_hours: int = 12
 
     # Built frontend served by the API; unset in development, where Vite serves it.
     frontend_dist: Path | None = None

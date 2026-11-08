@@ -267,8 +267,74 @@ approver_assignment = Table(
     "approver_assignment",
     metadata,
     Column("member_id", Integer, ForeignKey("member.member_id"), nullable=False),
-    Column("user_name", Text, nullable=False),
-    PrimaryKeyConstraint("member_id", "user_name"),
+    Column("user_id", Integer, ForeignKey("app_user.user_id"), nullable=False),
+    PrimaryKeyConstraint("member_id", "user_id"),
+)
+
+# --- Users and access (ADR 0009) ------------------------------------------------------------------
+
+app_user = Table(
+    "app_user",
+    metadata,
+    Column("user_id", Integer, primary_key=True),
+    Column("login", Text, nullable=False, unique=True),  # lowercase
+    Column("email", Text),
+    Column("display_name", Text, nullable=False),
+    Column("is_admin", Boolean, nullable=False, server_default="false"),
+    Column("is_controller", Boolean, nullable=False, server_default="false"),
+    Column("is_viewer", Boolean, nullable=False, server_default="false"),
+    Column("is_system", Boolean, nullable=False, server_default="false"),
+    Column("disabled", Boolean, nullable=False, server_default="false"),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)
+
+# Login sessions; only a hash of the token is stored.
+user_session = Table(
+    "user_session",
+    metadata,
+    Column("token_hash", Text, primary_key=True),
+    Column("user_id", Integer, ForeignKey("app_user.user_id"), nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("expires_at", DateTime(timezone=True), nullable=False),
+)
+
+# The controller's choice of planner for a cost center, replacing the matched owner. A NULL
+# user means the cost center has no owner.
+owner_override = Table(
+    "owner_override",
+    metadata,
+    Column("cost_center_id", Integer, ForeignKey("member.member_id"), primary_key=True),
+    Column("user_id", Integer, ForeignKey("app_user.user_id")),
+    Column("set_by", Text),
+    Column("set_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)
+
+# Deputies: planning rights on a cost center, or on every cost center below a node.
+planner_grant = Table(
+    "planner_grant",
+    metadata,
+    Column("member_id", Integer, ForeignKey("member.member_id"), nullable=False),
+    Column("user_id", Integer, ForeignKey("app_user.user_id"), nullable=False),
+    Column("granted_by", Text),
+    Column("granted_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    PrimaryKeyConstraint("member_id", "user_id"),
+)
+
+# Views (migration 0004), declared for queries only.
+cost_center_owner = Table(
+    "cost_center_owner",
+    metadata,
+    Column("cost_center_id", Integer),
+    Column("user_id", Integer),  # effective planner-owner
+    Column("matched_user_id", Integer),  # matched from the synced owner
+    Column("overridden", Boolean),
+)
+cost_center_access = Table(
+    "cost_center_access",
+    metadata,
+    Column("user_id", Integer),
+    Column("cost_center_id", Integer),
+    Column("can_write", Boolean),
 )
 
 # Fact table of the cost center planning area (ADR 0001): one column per dimension.

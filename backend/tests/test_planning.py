@@ -14,7 +14,7 @@ from planlayer.config import Settings
 from planlayer.store.db import create_app_engine
 from planlayer.store.schema import change_log, closure, member
 
-from .conftest import BLANK, TEST_DATABASE_URL, URL, plan, rows, run_sync, versions_of
+from .conftest import BLANK, CONTROLLER, TEST_DATABASE_URL, URL, plan, rows, run_sync, versions_of
 
 # --- Sync -----------------------------------------------------------------------------------------
 
@@ -164,6 +164,6 @@ def test_changes_are_audited(client: TestClient, migrated: Settings) -> None:
     engine.dispose()
     # Synced actuals are not in the change log; plan edits are.
     assert [tuple(r) for r in log] == [
-        ("dev", "INSERT", None, Decimal("5.00")),
-        ("dev", "UPDATE", Decimal("5.00"), Decimal("7.00")),
+        (CONTROLLER, "INSERT", None, Decimal("5.00")),
+        (CONTROLLER, "UPDATE", Decimal("5.00"), Decimal("7.00")),
     ]
