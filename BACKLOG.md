@@ -242,6 +242,49 @@ German terms in parentheses, as controllers know them.
 - [ ] **K-4 Usage factors (Auslastungsfaktoren)** (much later). When demand drops in a later round (e.g. machining_2 at 70% capacity), the activity output scales down, and each cost type gets a variability percentage: electricity scales 1:1 with machine hours, salaries and depreciation don't.
 - [ ] **K-5 Capex planning** as a module (T-24): planners add planned investments; later their depreciation feeds the cost center plans.
 
+### MCP access (after v1)
+
+An MCP (Model Context Protocol) server, so a user can connect the LLM client of their choice (e.g. Claude, ChatGPT, a local model) and ask it to work with Planlayer for them. The REST API stays the app's API; MCP tools are thin wrappers over the same domain functions, run in `unit_of_work` as the token's user, so RLS, locks, the lock trigger, audit and change batches apply exactly as in the UI. MCP is another client of the same rules, never a way around them.
+
+- [ ] **M-1 Decision (ADR): transport, hosting and login.**
+  - **Transport:** Streamable HTTP at `/mcp` in the same container, built on the official Python MCP SDK (pinned). No separate service; stdio isn't needed for a server people reach over the network.
+  - **Login, two stages:** (a) personal access tokens, which a user creates on a page of their own: read-only or read-write, with an expiry, revocable, stored hashed like sessions (ADR 0009); (b) OAuth 2.1 as the MCP authorization spec describes, with Planlayer as the resource server and the company identity provider from E-09 as the authorization server.
+  - **Switch:** an admin can turn MCP access off for the installation.
+- [ ] **M-2 Read tools.**
+  - **My to-dos:** cost centers I still have to plan or submit, approvals waiting for me, deadlines, and what is overdue. The same facts as the status page's filters.
+  - **A sheet:** a cost center's accounts × months with plan, comparisons and group subtotals.
+  - **An account across my cost centers.**
+  - **Rounds:** status and deadline.
+- [ ] **M-3 Options per line:** each line's entry form and what may be entered: months, or a year total that spreads, and by what basis. Taken from the grid's row facts; the server decides, as for the UI.
+- [ ] **M-4 Write tools:** plan values by month or as a year total.
+  - **Conflicts:** the conflict rule of ADR 0010 holds. A write names the cell versions it read, or is refused when the cells changed since.
+  - **Batches:** one tool call is one change batch, so it can be undone, and an undo tool takes back the last batch made through MCP.
+  - **Marking:** write tools are marked as changing data, so clients ask the user before calling them.
+- [ ] **M-5 Plan PDF tool:** request the PDF of my cost center(s) (P-3); the result carries the file or a link to it.
+- [ ] **M-6 Safety.**
+  - Values and names returned to the model are data, never instructions (the same rule as for source data).
+  - Read-only tokens; rate limits.
+  - The change log records that a batch came through MCP.
+  - The admin sees which tokens exist and can revoke them.
+  - To decide: whether workflow actions (submit, approve, reject) are offered as tools at all.
+- [ ] **M-7 Docs:** connecting common MCP clients, the tools and what each may do, and the data-protection note that the plan data a user reads goes to the LLM provider they connected.
+- [ ] **M-8 Tests:** tools against the test database as the unprivileged role, plus a check with the MCP Inspector.
+
+### Plan reports (after v1)
+
+- [ ] **P-1 Decision (ADR): rendering and storage.**
+  - **Rendering:** an HTML/CSS template rendered to PDF in the container (e.g. WeasyPrint: reuses the design tokens, needs Pango in the image), against a drawing library (ReportLab) or Typst. Fonts are bundled (self-hosted, no CDN).
+  - **Storage:** generated PDFs in the app store or on a volume, with retention.
+- [ ] **P-2 The cost center report.**
+  - **Header:** round, cost center, owner, status, approver and approval time.
+  - **Body:** accounts × months and year with the round's comparison columns and group subtotals; each line's entry form.
+  - **Later:** comments (E-08).
+  - **Summary report:** per hierarchy node and for the round, with the status overview.
+- [ ] **P-3 On demand:** a PDF for one cost center or a selection, from the planning and status pages and through MCP (M-5); planners get their own, controllers and viewers any they may read.
+- [ ] **P-4 On round close:** closing a round generates a set (one PDF per enabled cost center plus the round summary) and keeps it with the round. Reopening and closing again makes a new set; earlier sets stay. Runs as a background job (D-24).
+- [ ] **P-5 Number display** follows the installation's setting (E-13).
+- [ ] **P-6 Tests:** the report's text content checked against a fixed round (golden), and the close trigger generating exactly one set.
+
 **Later (not v1):** layers beyond `base`, rolling forecast, price × volume drivers, headcount planning as a module (T-24), simple formulas, non-Postgres adapters, balance sheet, an "attention" list (everything that needs a person: missing submissions, unexplained variances, unrolled forecast, unapproved version), variance commentary thresholds, and a default spread profile per account group.
 
 ---

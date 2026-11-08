@@ -55,6 +55,8 @@ These are excluded because each one grows the product into a different one, and 
 - **Cost center accounting:** productive cost centers with activity output and coverage difference, capacity planning, cost forwarding by shares or factors, usage factors, capex planning (BACKLOG K-1 to K-5).
 - **Sources:** non-Postgres adapters (Snowflake, BigQuery, Databricks, Parquet/Delta/Iceberg).
 - **Review support:** an "attention" list of open items, and variance commentary thresholds.
+- **AI access (MCP):** an MCP server in the container, so users can connect the LLM of their choice to read their plans and to-dos and enter plan values, as themselves and under the same rights, locks and audit (BACKLOG M-1 to M-8).
+- **Plan reports:** a cost center's plan as a PDF on demand, and a set generated when a round is closed (BACKLOG P-1 to P-6).
 
 ## Licence
 
