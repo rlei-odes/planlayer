@@ -11,18 +11,27 @@ import {
   type Preview,
   type SyncPlan,
 } from './api'
+import Select, { type Option } from './Select'
 
 // Master data (ADR 0012): the admin's query per dataset with named columns (Sources), the sync
 // preview with confirmation of matches (Sync), and the member tree with manual members and
 // local overrides (Members), which also builds master data from scratch.
 
 type Section = 'sources' | 'sync' | 'members'
+type Note = { kind: 'ok' | 'error' | 'warn'; text: string }
+
+const SECTION_LABEL: Record<Section, string> = { sources: 'Sources', sync: 'Sync', members: 'Members' }
 const DATASET_LABEL: Record<Dataset, string> = {
   entities: 'Entities',
   cost_centers: 'Cost centers',
   accounts: 'Accounts',
   actuals: 'Actuals',
 }
+const DIMENSIONS: Option<MemberDataset>[] = [
+  { value: 'cost_centers', label: 'Cost centers' },
+  { value: 'accounts', label: 'Accounts' },
+  { value: 'entities', label: 'Entities' },
+]
 
 function errorText(e: unknown) {
   return e instanceof Error ? e.message : String(e)
@@ -32,18 +41,31 @@ export default function MasterDataPage({ me }: { me: Me }) {
   const sections: Section[] = [...(me.is_admin ? (['sources'] as const) : []), 'sync', 'members']
   const [section, setSection] = useState<Section>(sections[0])
   return (
-    <section className="masterdata">
-      <div className="toolbar">
-        {sections.map((s) => (
-          <button key={s} type="button" className={section === s ? 'tab active' : 'tab'} onClick={() => setSection(s)}>
-            {s === 'sources' ? 'Sources' : s === 'sync' ? 'Sync' : 'Members'}
-          </button>
-        ))}
+    <div className="su md">
+      <div className="pg-head">
+        <div>
+          <div className="su-eyebrow">Master data</div>
+          <h2 className="su-title">{SECTION_LABEL[section]}</h2>
+          <div className="pg-sub">
+            {section === 'sources'
+              ? 'Where each dataset comes from: one query per dataset, run read-only on the source.'
+              : section === 'sync'
+                ? 'Bring members and actuals in from the source, after a preview of what changes.'
+                : 'The members planners see, synced or entered here, and their hierarchy.'}
+          </div>
+        </div>
+        <div className="seg" role="group" aria-label="Section">
+          {sections.map((s) => (
+            <button key={s} type="button" aria-pressed={section === s} onClick={() => setSection(s)}>
+              {SECTION_LABEL[s]}
+            </button>
+          ))}
+        </div>
       </div>
       {section === 'sources' && <Sources />}
       {section === 'sync' && <Sync />}
       {section === 'members' && <Members />}
-    </section>
+    </div>
   )
 }
 
@@ -57,168 +79,216 @@ function Sources() {
   }, [])
   useEffect(load, [load])
   return (
-    <>
-      {error && <div className="error">{error}</div>}
-      <p className="muted">
-        One query per dataset, run read-only on the source connection. Name which result column is which field. Every
-        dataset is optional: without a source, enter members by hand under Members.
-      </p>
+    <div className="su-col">
+      {error && <div className="su-note error">{error}</div>}
+      <div className="su-note">
+        Name which result column is which field. Every dataset is optional: without a source, enter members by hand
+        under Members.
+      </div>
       {datasets.map((d) => (
         <DatasetEditor key={d.dataset} info={d} onSaved={load} />
       ))}
-    </>
+    </div>
   )
 }
 
 const EMPTY: Mapping = { query: '', fields: {}, hierarchy: null }
 
 function DatasetEditor({ info, onSaved }: { info: DatasetInfo; onSaved: () => void }) {
+  const [open, setOpen] = useState(!info.mapping)
   const [m, setM] = useState<Mapping>(info.mapping ?? EMPTY)
   const [columns, setColumns] = useState<string[]>(() => columnsOf(info.mapping))
   const [preview, setPreview] = useState<Preview | null>(null)
-  const [message, setMessage] = useState<{ kind: 'error' | 'info'; text: string } | null>(null)
+  const [note, setNote] = useState<Note | null>(null)
 
   async function run(mapped: boolean) {
     try {
       const p = await api.preview(info.dataset, m, mapped)
       setPreview(p)
       if (!mapped && !p.error) setColumns(p.columns)
-      setMessage(p.error ? { kind: 'error', text: p.error } : null)
+      setNote(p.error ? { kind: 'error', text: p.error } : null)
     } catch (e) {
-      setMessage({ kind: 'error', text: errorText(e) })
+      setNote({ kind: 'error', text: errorText(e) })
     }
   }
 
   async function save() {
     try {
       await api.saveMapping(info.dataset, m)
-      setMessage({ kind: 'info', text: 'Saved.' })
+      setNote({ kind: 'ok', text: 'Mapping saved. The next sync reads it.' })
       onSaved()
     } catch (e) {
-      setMessage({ kind: 'error', text: errorText(e) })
+      setNote({ kind: 'error', text: errorText(e) })
     }
   }
 
+  const columnOptions = (value: string): Option[] => [
+    { value: '', label: '–  not mapped' },
+    ...[...new Set([...columns, value].filter(Boolean))].map((c) => ({ value: c, label: c })),
+  ]
   const choose = (value: string, onChange: (v: string) => void, label: string) => (
-    <select value={value} onChange={(e) => onChange(e.target.value)} aria-label={label}>
-      <option value="">–</option>
-      {[...new Set([...columns, value].filter(Boolean))].map((c) => (
-        <option key={c} value={c}>
-          {c}
-        </option>
-      ))}
-    </select>
+    <Select value={value} options={columnOptions(value)} onChange={onChange} label={label} placeholder="–  not mapped" />
   )
   const h = m.hierarchy
   const setH = (next: Hierarchy | null) => setM({ ...m, hierarchy: next })
+  const mappedCount = info.fields.filter((f) => m.fields[f.name]).length
 
   return (
-    <details className="dataset" open={!info.mapping}>
-      <summary>
-        <strong>{DATASET_LABEL[info.dataset]}</strong>{' '}
-        <span className="muted">{info.mapping ? 'mapped' : 'not mapped'}</span>
-      </summary>
-      <textarea
-        aria-label={`Query for ${info.dataset}`}
-        rows={4}
-        value={m.query}
-        placeholder="SELECT … FROM …"
-        onChange={(e) => setM({ ...m, query: e.target.value })}
-      />
-      <div className="toolbar">
-        <button type="button" disabled={!m.query.trim()} onClick={() => void run(false)}>
-          Show columns
-        </button>
-      </div>
-      <table className="fields">
-        <tbody>
-          {info.fields.map((f) => (
-            <tr key={f.name}>
-              <td>
-                {f.name}
-                {f.required && ' *'} <span className="muted">{f.type}</span>
-              </td>
-              <td>
-                {choose(m.fields[f.name] ?? '', (v) => setM({ ...m, fields: { ...m.fields, [f.name]: v } }), `${info.dataset} ${f.name}`)}
-              </td>
-            </tr>
-          ))}
-          {info.has_hierarchy && (
-            <tr>
-              <td>hierarchy</td>
-              <td>
-                <label>
-                  <input type="radio" checked={!!h && 'parent' in h} onChange={() => setH({ parent: '' })} /> parent column
-                </label>{' '}
-                <label>
-                  <input
-                    type="radio"
-                    checked={!!h && 'levels' in h}
-                    onChange={() => setH({ levels: [{ code: '', name: '' }] })}
-                  />{' '}
-                  level columns
-                </label>
-                {h && 'parent' in h && <div>{choose(h.parent, (v) => setH({ parent: v }), `${info.dataset} parent`)}</div>}
-                {h && 'levels' in h && (
-                  <div>
-                    {h.levels.map((lv, i) => (
-                      <div key={i}>
-                        Level {i + 1}: code{' '}
-                        {choose(lv.code, (v) => setH({ levels: h.levels.map((x, j) => (j === i ? { ...x, code: v } : x)) }), `level ${i + 1} code`)}{' '}
-                        name{' '}
-                        {choose(lv.name, (v) => setH({ levels: h.levels.map((x, j) => (j === i ? { ...x, name: v } : x)) }), `level ${i + 1} name`)}{' '}
-                        <button type="button" className="link" onClick={() => setH({ levels: h.levels.filter((_, j) => j !== i) })}>
-                          ×
-                        </button>
-                      </div>
-                    ))}
-                    <button type="button" onClick={() => setH({ levels: [...h.levels, { code: '', name: '' }] })}>
-                      Add level
+    <section className="su-card md-dataset">
+      <button type="button" className="md-dataset-head" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+        <strong>{DATASET_LABEL[info.dataset]}</strong>
+        <span className={`su-pill ${info.mapping ? 'approved' : 'neutral'}`}>{info.mapping ? 'Mapped' : 'Not mapped'}</span>
+        <span className="ink-3">
+          {mappedCount} of {info.fields.length} fields
+        </span>
+        <svg className="md-chev" width="12" height="8" viewBox="0 0 10 6" aria-hidden="true">
+          <path d="m1 1 4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
+      </button>
+      {open && (
+        <div className="md-dataset-body">
+          <label className="su-field">
+            Query
+            <textarea
+              className="su-input md-query"
+              aria-label={`Query for ${info.dataset}`}
+              rows={4}
+              value={m.query}
+              placeholder="SELECT … FROM …"
+              spellCheck={false}
+              onChange={(e) => setM({ ...m, query: e.target.value })}
+            />
+          </label>
+          <div className="su-row">
+            <button type="button" className="su-btn" disabled={!m.query.trim()} onClick={() => void run(false)}>
+              Show columns
+            </button>
+            <span className="ink-3">
+              {columns.length ? `${columns.length} columns found` : 'Run the query once to choose its columns below.'}
+            </span>
+          </div>
+
+          <div className="md-fields">
+            {info.fields.map((f) => (
+              <div className="md-field" key={f.name}>
+                <span className="md-field-name">
+                  {f.name}
+                  {f.required && <span className="md-req" title="required">*</span>}
+                  <span className="md-type">{f.type}</span>
+                </span>
+                {choose(
+                  m.fields[f.name] ?? '',
+                  (v) => setM({ ...m, fields: { ...m.fields, [f.name]: v } }),
+                  `${info.dataset} ${f.name}`,
+                )}
+              </div>
+            ))}
+            {info.has_hierarchy && (
+              <div className="md-field md-hier">
+                <span className="md-field-name">hierarchy</span>
+                <div>
+                  <div className="seg" role="group" aria-label={`${info.dataset} hierarchy form`}>
+                    <button type="button" aria-pressed={!h} onClick={() => setH(null)}>
+                      None
+                    </button>
+                    <button type="button" aria-pressed={!!h && 'parent' in h} onClick={() => setH({ parent: '' })}>
+                      Parent column
+                    </button>
+                    <button
+                      type="button"
+                      aria-pressed={!!h && 'levels' in h}
+                      onClick={() => setH({ levels: [{ code: '', name: '' }] })}
+                    >
+                      Level columns
                     </button>
                   </div>
-                )}
-              </td>
-            </tr>
+                  {h && 'parent' in h && (
+                    <div className="md-levels">{choose(h.parent, (v) => setH({ parent: v }), `${info.dataset} parent`)}</div>
+                  )}
+                  {h && 'levels' in h && (
+                    <div className="md-levels">
+                      {h.levels.map((lv, i) => (
+                        <div className="md-level" key={i}>
+                          <span className="ink-3">Level {i + 1}</span>
+                          {choose(
+                            lv.code,
+                            (v) => setH({ levels: h.levels.map((x, j) => (j === i ? { ...x, code: v } : x)) }),
+                            `level ${i + 1} code`,
+                          )}
+                          {choose(
+                            lv.name,
+                            (v) => setH({ levels: h.levels.map((x, j) => (j === i ? { ...x, name: v } : x)) }),
+                            `level ${i + 1} name`,
+                          )}
+                          <button
+                            type="button"
+                            className="su-icon"
+                            aria-label={`Remove level ${i + 1}`}
+                            onClick={() => setH({ levels: h.levels.filter((_, j) => j !== i) })}
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ))}
+                      <button
+                        type="button"
+                        className="su-btn sm"
+                        onClick={() => setH({ levels: [...h.levels, { code: '', name: '' }] })}
+                      >
+                        Add level
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="su-row md-actions">
+            <button type="button" className="su-btn" disabled={!m.query.trim()} onClick={() => void run(true)}>
+              Preview as synced
+            </button>
+            <button type="button" className="su-btn primary" onClick={() => void save()}>
+              Save mapping
+            </button>
+            {info.mapping && (
+              <button
+                type="button"
+                className="su-btn ghost danger"
+                onClick={() => void api.deleteMapping(info.dataset).then(onSaved, (e: unknown) => setNote({ kind: 'error', text: errorText(e) }))}
+              >
+                Remove mapping
+              </button>
+            )}
+          </div>
+          {note && <div className={`su-note ${note.kind}`}>{note.text}</div>}
+          {preview && !preview.error && (
+            <div className="tbl-card">
+              <div className="tbl-scroll md-preview">
+                <table className="tbl">
+                  <thead>
+                    <tr>
+                      {preview.columns.map((c) => (
+                        <th key={c}>{c}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {preview.rows.map((r, i) => (
+                      <tr key={i}>
+                        {r.map((v, j) => (
+                          <td key={j}>{v ?? <span className="ink-3">null</span>}</td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           )}
-        </tbody>
-      </table>
-      <div className="toolbar">
-        <button type="button" disabled={!m.query.trim()} onClick={() => void run(true)}>
-          Preview as synced
-        </button>
-        <button type="button" onClick={() => void save()}>
-          Save mapping
-        </button>
-        {info.mapping && (
-          <button type="button" onClick={() => void api.deleteMapping(info.dataset).then(onSaved)}>
-            Remove mapping
-          </button>
-        )}
-      </div>
-      {message && <div className={message.kind}>{message.text}</div>}
-      {preview && !preview.error && (
-        <div className="scroll">
-          <table className="overview preview">
-            <thead>
-              <tr>
-                {preview.columns.map((c) => (
-                  <th key={c}>{c}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {preview.rows.map((r, i) => (
-                <tr key={i}>
-                  {r.map((v, j) => (
-                    <td key={j}>{v ?? <span className="muted">null</span>}</td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
         </div>
       )}
-    </details>
+    </section>
   )
 }
 
@@ -235,7 +305,7 @@ function Sync() {
   const [entity, setEntity] = useState('')
   const [plan, setPlan] = useState<SyncPlan | null>(null)
   const [confirmed, setConfirmed] = useState<Set<string>>(new Set())
-  const [message, setMessage] = useState<{ kind: 'error' | 'info'; text: string } | null>(null)
+  const [note, setNote] = useState<Note | null>(null)
   const [busy, setBusy] = useState(false)
 
   async function preview() {
@@ -244,9 +314,9 @@ function Sync() {
       const p = await api.syncPlan(entity || null)
       setPlan(p)
       setConfirmed(new Set())
-      setMessage(null)
+      setNote(null)
     } catch (e) {
-      setMessage({ kind: 'error', text: errorText(e) })
+      setNote({ kind: 'error', text: errorText(e) })
     } finally {
       setBusy(false)
     }
@@ -256,10 +326,10 @@ function Sync() {
     setBusy(true)
     try {
       const r = await api.syncRun(entity || null, [...confirmed])
-      setMessage({ kind: 'info', text: `Synced ${r.members} members and ${r.actual_rows} actual cells.` })
+      setNote({ kind: 'ok', text: `Synced ${r.members} members and ${r.actual_rows} actual cells.` })
       setPlan(null)
     } catch (e) {
-      setMessage({ kind: 'error', text: errorText(e) })
+      setNote({ kind: 'error', text: errorText(e) })
     } finally {
       setBusy(false)
     }
@@ -267,84 +337,125 @@ function Sync() {
 
   const unconfirmed = plan ? plan.matches.filter((m) => !confirmed.has(m.key)).length : 0
   return (
-    <>
-      <div className="toolbar">
-        <label>
-          Actuals of entity <input value={entity} onChange={(e) => setEntity(e.target.value)} placeholder="all" size={6} />
-        </label>
-        <button type="button" disabled={busy} onClick={() => void preview()}>
-          Preview sync
-        </button>
-        {plan && (
-          <button type="button" disabled={busy || plan.problems.length > 0 || unconfirmed > 0} onClick={() => void runSync()}>
-            Run sync
+    <div className="su-col">
+      <section className="su-card">
+        <h3>
+          <span className="su-step">1</span> Preview
+        </h3>
+        <p className="su-hint">Reads every mapped dataset and shows what would change. Nothing is written.</p>
+        <div className="su-body su-row">
+          <label className="su-field">
+            Actuals of entity
+            <input
+              className="su-input md-entity"
+              value={entity}
+              onChange={(e) => setEntity(e.target.value)}
+              placeholder="all entities"
+            />
+          </label>
+          <button type="button" className="su-btn md-push" disabled={busy} onClick={() => void preview()}>
+            {busy && !plan ? 'Reading the source…' : plan ? 'Preview again' : 'Preview sync'}
           </button>
-        )}
-        {busy && <span className="muted">Working…</span>}
-      </div>
-      {message && <div className={message.kind}>{message.text}</div>}
-      {plan && (
-        <div className="plan">
-          <p>
-            Datasets: {plan.datasets.join(', ') || 'none mapped'}
-            {plan.actual_cells !== null && ` · ${plan.actual_cells} actual cells`}
-          </p>
-          {plan.problems.length > 0 && (
-            <div className="error">
-              <strong>{plan.problems.length} problem(s), nothing can be synced:</strong>
-              <ul>
-                {plan.problems.slice(0, 50).map((p) => (
-                  <li key={p}>{p}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {plan.matches.length > 0 && (
-            <div className="info">
-              <strong>
-                Found {plan.matches.length} match{plan.matches.length === 1 ? '' : 'es'} from the source.
-              </strong>{' '}
-              Confirm each: the source takes the member over, its manual data is kept as a shadow record.
-              <ul>
-                {plan.matches.map((m) => (
-                  <li key={m.key}>
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={confirmed.has(m.key)}
-                        onChange={(e) => {
-                          const next = new Set(confirmed)
-                          if (e.target.checked) next.add(m.key)
-                          else next.delete(m.key)
-                          setConfirmed(next)
-                        }}
-                      />{' '}
-                      {m.dimension} {m.code} “{m.name}”
-                    </label>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-          <Changes label="New" items={plan.new} />
-          <Changes label="Changed" items={plan.changed} />
-          <Changes label="No longer delivered (kept)" items={plan.gone} />
         </div>
+      </section>
+
+      {note && <div className={`su-note ${note.kind}`}>{note.text}</div>}
+
+      {plan && (
+        <section className="su-card">
+          <h3>
+            <span className="su-step">2</span> What the sync would do
+          </h3>
+          <p className="su-hint">Datasets: {plan.datasets.join(', ') || 'none mapped'}</p>
+          <div className="su-body">
+            <div className="pb-tiles md-tiles">
+              <Tile label="new" value={plan.new.length} tone="add" />
+              <Tile label="changed" value={plan.changed.length} tone="chg" />
+              <Tile label="no longer delivered" value={plan.gone.length} tone="rem" />
+              <Tile label="actual cells" value={plan.actual_cells ?? 0} tone="same" />
+            </div>
+            {plan.problems.length > 0 && (
+              <div className="su-note error md-gap">
+                <strong>
+                  {plan.problems.length} problem{plan.problems.length === 1 ? '' : 's'}: nothing can be synced until they are
+                  fixed in the source or the mapping.
+                </strong>
+                <ul className="md-list">
+                  {plan.problems.slice(0, 50).map((p) => (
+                    <li key={p}>{p}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {plan.matches.length > 0 && (
+              <div className="su-note warn md-gap">
+                <strong>
+                  Found {plan.matches.length} match{plan.matches.length === 1 ? '' : 'es'} from the source.
+                </strong>{' '}
+                Confirm each: the source takes the member over, and its manual data is kept as a shadow record.
+                <ul className="md-list md-checks">
+                  {plan.matches.map((m) => (
+                    <li key={m.key}>
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={confirmed.has(m.key)}
+                          onChange={(e) => {
+                            const next = new Set(confirmed)
+                            if (e.target.checked) next.add(m.key)
+                            else next.delete(m.key)
+                            setConfirmed(next)
+                          }}
+                        />
+                        {m.dimension} <span className="code">{m.code}</span>“{m.name}”
+                      </label>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <Changes label="New" items={plan.new} />
+            <Changes label="Changed" items={plan.changed} />
+            <Changes label="No longer delivered (kept with their values)" items={plan.gone} />
+            <div className="su-row md-actions">
+              <button
+                type="button"
+                className="su-btn primary"
+                disabled={busy || plan.problems.length > 0 || unconfirmed > 0}
+                onClick={() => void runSync()}
+              >
+                {busy ? 'Syncing…' : 'Run sync'}
+              </button>
+              {unconfirmed > 0 && <span className="ink-3">Confirm the matches above first.</span>}
+            </div>
+          </div>
+        </section>
       )}
-    </>
+    </div>
+  )
+}
+
+function Tile({ label, value, tone }: { label: string; value: number; tone: string }) {
+  return (
+    <div className={`pb-tile ${tone}`}>
+      <div className="pb-value">{value.toLocaleString('en-US')}</div>
+      <div className="pb-label">{label}</div>
+    </div>
   )
 }
 
 function Changes({ label, items }: { label: string; items: string[] }) {
+  if (items.length === 0) return null
   return (
-    <details>
+    <details className="md-changes">
       <summary>
-        {label}: {items.length}
+        {label} <span className="ink-3">{items.length}</span>
       </summary>
-      <ul>
+      <ul className="md-list">
         {items.slice(0, 200).map((i) => (
           <li key={i}>{i}</li>
         ))}
+        {items.length > 200 && <li className="ink-3">… and {items.length - 200} more</li>}
       </ul>
     </details>
   )
@@ -352,172 +463,277 @@ function Changes({ label, items }: { label: string; items: string[] }) {
 
 // --- Members ------------------------------------------------------------------------------------
 
+const BLANK = { code: '', name: '', parent: '', is_group: false, entity_code: '', owner: '', account_type: '' }
+
 function Members() {
   const [dataset, setDataset] = useState<MemberDataset>('cost_centers')
   const [rows, setRows] = useState<MemberRow[]>([])
-  const [error, setError] = useState<string | null>(null)
+  const [note, setNote] = useState<Note | null>(null)
+  const [query, setQuery] = useState('')
+  const [adding, setAdding] = useState(false)
   const [editing, setEditing] = useState<{ code: string; name: string } | null>(null)
-  const [draft, setDraft] = useState({ code: '', name: '', parent: '', is_group: false, entity_code: '', owner: '', account_type: '' })
+  const [draft, setDraft] = useState(BLANK)
 
   const load = useCallback(() => {
-    api.members(dataset).then(setRows, (e: unknown) => setError(errorText(e)))
+    api.members(dataset).then(setRows, (e: unknown) => setNote({ kind: 'error', text: errorText(e) }))
   }, [dataset])
   useEffect(load, [load])
 
-  async function run(task: () => Promise<unknown>) {
+  async function run(task: () => Promise<unknown>, done?: string) {
     try {
       await task()
-      setError(null)
+      setNote(done ? { kind: 'ok', text: done } : null)
       load()
+      return true
     } catch (e) {
-      setError(errorText(e))
+      setNote({ kind: 'error', text: errorText(e) })
+      return false
     }
   }
 
-  const groups = rows.filter((r) => r.is_group).map((r) => r.code)
   const tree = dataset !== 'entities'
+  const groups = rows.filter((r) => r.is_group)
+  const parentOptions = (except?: string): Option[] => [
+    { value: '', label: '(top level)' },
+    ...groups.filter((g) => g.code !== except).map((g) => ({ value: g.code, label: g.name, hint: g.code, depth: g.depth })),
+  ]
+  const q = query.trim().toLowerCase()
+  const shown = q ? rows.filter((r) => `${r.code} ${r.name} ${r.owner ?? ''}`.toLowerCase().includes(q)) : rows
+  const manual = rows.filter((r) => r.origin === 'manual').length
+  const changed = rows.filter((r) => r.renamed || r.moved).length
+
   return (
-    <>
-      <div className="toolbar">
-        <select value={dataset} onChange={(e) => setDataset(e.target.value as MemberDataset)} aria-label="Dimension">
-          <option value="cost_centers">Cost centers</option>
-          <option value="accounts">Accounts</option>
-          <option value="entities">Entities</option>
-        </select>
-        <span className="muted">
-          Synced members can be renamed and moved; the change survives syncs. Manual members are fully editable.
-        </span>
-      </div>
-      {error && <div className="error">{error}</div>}
-      <form
-        className="toolbar"
-        onSubmit={(e) => {
-          e.preventDefault()
-          void run(async () => {
-            await api.addMember(dataset, {
-              code: draft.code,
-              name: draft.name,
-              parent: draft.parent || null,
-              is_group: draft.is_group,
-              entity_code: draft.entity_code || null,
-              owner: draft.owner || null,
-              account_type: draft.account_type || null,
-            })
-            setDraft({ ...draft, code: '', name: '' })
-          })
-        }}
-      >
-        <input placeholder="Code" value={draft.code} onChange={(e) => setDraft({ ...draft, code: e.target.value })} required size={8} />
-        <input placeholder="Name" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} required />
-        {tree && (
-          <select value={draft.parent} onChange={(e) => setDraft({ ...draft, parent: e.target.value })} aria-label="Parent">
-            <option value="">(top level)</option>
-            {groups.map((g) => (
-              <option key={g} value={g}>
-                under {g}
-              </option>
-            ))}
-          </select>
-        )}
-        {tree && (
-          <label>
-            <input type="checkbox" checked={draft.is_group} onChange={(e) => setDraft({ ...draft, is_group: e.target.checked })} /> group
-          </label>
-        )}
-        {dataset === 'cost_centers' && (
-          <>
-            <input placeholder="Entity" value={draft.entity_code} onChange={(e) => setDraft({ ...draft, entity_code: e.target.value })} size={6} />
-            <input placeholder="Owner (e-mail)" value={draft.owner} onChange={(e) => setDraft({ ...draft, owner: e.target.value })} />
-          </>
-        )}
-        {dataset === 'accounts' && (
-          <input
-            placeholder="Type (cost/revenue)"
-            value={draft.account_type}
-            onChange={(e) => setDraft({ ...draft, account_type: e.target.value })}
-            size={10}
-          />
-        )}
-        <button type="submit">Add member</button>
-      </form>
-      <table className="overview">
-        <thead>
-          <tr>
-            <th>Member</th>
-            <th>Origin</th>
-            {tree && <th>Parent</th>}
-            <th>{dataset === 'accounts' ? 'Type' : dataset === 'cost_centers' ? 'Entity · owner' : ''}</th>
-            <th />
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r) => (
-            <tr key={r.code} className={r.is_group ? 'node' : undefined}>
-              <td style={{ paddingLeft: `${8 + r.depth * 16}px` }}>
-                {r.code}{' '}
-                {editing?.code === r.code ? (
-                  <form
-                    className="inline"
-                    onSubmit={(e) => {
-                      e.preventDefault()
-                      void run(() => api.changeMember(dataset, r.code, { name: editing.name })).then(() => setEditing(null))
-                    }}
-                  >
-                    <input value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} autoFocus />
-                    <button type="submit">OK</button>
-                  </form>
-                ) : (
-                  <>
-                    {r.name}
-                    {r.renamed && <span className="muted"> (source: {r.source_name})</span>}
-                  </>
-                )}
-              </td>
-              <td>
-                <span className={`badge ${r.origin === 'manual' ? 'in_progress' : ''}`}>{r.origin}</span>
-                {(r.renamed || r.moved) && <span className="badge overridden">changed here</span>}
-              </td>
-              {tree && (
-                <td>
-                  <select
-                    value={r.parent ?? ''}
-                    aria-label={`Parent of ${r.code}`}
-                    onChange={(e) => void run(() => api.changeMember(dataset, r.code, { parent: e.target.value || null }))}
-                  >
-                    <option value="">(top level)</option>
-                    {groups
-                      .filter((g) => g !== r.code)
-                      .map((g) => (
-                        <option key={g} value={g}>
-                          {g}
-                        </option>
-                      ))}
-                  </select>
-                  {r.moved && <span className="muted"> (source: {r.source_parent ?? 'top'})</span>}
-                </td>
-              )}
-              <td className="muted">
-                {dataset === 'accounts' ? r.account_type : [r.entity_code, r.owner].filter(Boolean).join(' · ')}
-              </td>
-              <td className="actions">
-                <button type="button" onClick={() => setEditing({ code: r.code, name: r.name })}>
-                  Rename
-                </button>
-                {(r.renamed || r.moved) && (
-                  <button type="button" onClick={() => void run(() => api.resetMember(dataset, r.code))}>
-                    Back to source
-                  </button>
-                )}
-                {r.origin === 'manual' && (
-                  <button type="button" onClick={() => void run(() => api.deleteMember(dataset, r.code))}>
-                    Delete
-                  </button>
-                )}
-              </td>
-            </tr>
+    <div className="su-col">
+      <div className="md-bar">
+        <div className="seg" role="group" aria-label="Dimension">
+          {DIMENSIONS.map((d) => (
+            <button
+              key={d.value}
+              type="button"
+              aria-pressed={dataset === d.value}
+              onClick={() => {
+                setDataset(d.value)
+                setQuery('')
+                setEditing(null)
+              }}
+            >
+              {d.label}
+            </button>
           ))}
-        </tbody>
-      </table>
-    </>
+        </div>
+        <div className="md-search">
+          <svg width="14" height="14" viewBox="0 0 20 20" aria-hidden="true">
+            <circle cx="9" cy="9" r="5.5" fill="none" stroke="currentColor" strokeWidth="1.7" />
+            <path d="m13.5 13.5 3 3" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+          </svg>
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filter by code, name or owner" aria-label="Filter members" />
+        </div>
+        <span className="ink-3 md-counts">
+          {rows.length} members · {manual} entered here · {changed} changed here
+        </span>
+        <button type="button" className="su-btn primary" onClick={() => setAdding((a) => !a)}>
+          Add member
+        </button>
+      </div>
+
+      {adding && (
+        <form
+          className="su-card md-add"
+          onSubmit={(e) => {
+            e.preventDefault()
+            void run(
+              () =>
+                api.addMember(dataset, {
+                  code: draft.code,
+                  name: draft.name,
+                  parent: draft.parent || null,
+                  is_group: draft.is_group,
+                  entity_code: draft.entity_code || null,
+                  owner: draft.owner || null,
+                  account_type: draft.account_type || null,
+                }),
+              `${draft.code} added.`,
+            ).then((ok) => ok && setDraft({ ...draft, code: '', name: '' }))
+          }}
+        >
+          <h3>New member</h3>
+          <div className="su-row md-add-row">
+            <label className="su-field">
+              Code
+              <input className="su-input md-w-code" value={draft.code} onChange={(e) => setDraft({ ...draft, code: e.target.value })} required />
+            </label>
+            <label className="su-field md-grow">
+              Name
+              <input className="su-input" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} required />
+            </label>
+            {tree && (
+              <div className="su-field md-w-parent">
+                Parent
+                <Select value={draft.parent} options={parentOptions()} onChange={(v) => setDraft({ ...draft, parent: v })} label="Parent" />
+              </div>
+            )}
+            {dataset === 'cost_centers' && (
+              <>
+                <label className="su-field">
+                  Entity
+                  <input className="su-input md-w-code" value={draft.entity_code} onChange={(e) => setDraft({ ...draft, entity_code: e.target.value })} />
+                </label>
+                <label className="su-field md-grow">
+                  Owner (e-mail)
+                  <input className="su-input" value={draft.owner} onChange={(e) => setDraft({ ...draft, owner: e.target.value })} />
+                </label>
+              </>
+            )}
+            {dataset === 'accounts' && (
+              <div className="su-field md-w-parent">
+                Type
+                <Select
+                  value={draft.account_type}
+                  options={[
+                    { value: '', label: 'none' },
+                    { value: 'cost', label: 'cost' },
+                    { value: 'revenue', label: 'revenue' },
+                  ]}
+                  onChange={(v) => setDraft({ ...draft, account_type: v })}
+                  label="Account type"
+                />
+              </div>
+            )}
+          </div>
+          <div className="su-row md-add-foot">
+            {tree && (
+              <label className="md-check">
+                <input type="checkbox" checked={draft.is_group} onChange={(e) => setDraft({ ...draft, is_group: e.target.checked })} />
+                A group: holds other members
+              </label>
+            )}
+            <span className="md-grow" />
+            <button type="button" className="su-btn ghost" onClick={() => setAdding(false)}>
+              Cancel
+            </button>
+            <button type="submit" className="su-btn primary">
+              Add member
+            </button>
+          </div>
+        </form>
+      )}
+
+      {note && <div className={`su-note ${note.kind}`}>{note.text}</div>}
+
+      <div className="tbl-card">
+        <div className="tbl-scroll">
+          <table className="tbl">
+            <thead>
+              <tr>
+                <th>Member</th>
+                <th>Origin</th>
+                {tree && <th>Parent</th>}
+                <th>{dataset === 'accounts' ? 'Type' : dataset === 'cost_centers' ? 'Entity · owner' : ''}</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {shown.map((r) => (
+                <tr key={r.code} className={r.is_group ? 'node' : undefined}>
+                  <td style={{ paddingLeft: 14 + (q ? 0 : r.depth * 18) }}>
+                    {editing?.code === r.code ? (
+                      <form
+                        className="md-rename"
+                        onSubmit={(e) => {
+                          e.preventDefault()
+                          void run(() => api.changeMember(dataset, r.code, { name: editing.name }), `${r.code} renamed.`).then(
+                            (ok) => ok && setEditing(null),
+                          )
+                        }}
+                      >
+                        <span className="code">{r.code}</span>
+                        <input
+                          className="su-input"
+                          value={editing.name}
+                          onChange={(e) => setEditing({ ...editing, name: e.target.value })}
+                          onKeyDown={(e) => e.key === 'Escape' && setEditing(null)}
+                          aria-label={`New name of ${r.code}`}
+                          autoFocus
+                        />
+                        <button type="submit" className="su-btn primary sm">
+                          Save
+                        </button>
+                        <button type="button" className="su-btn ghost sm" onClick={() => setEditing(null)}>
+                          Cancel
+                        </button>
+                      </form>
+                    ) : (
+                      <span>
+                        <span className="code">{r.code}</span>
+                        {r.name}
+                        {r.renamed && <span className="md-was"> was “{r.source_name}”</span>}
+                      </span>
+                    )}
+                  </td>
+                  <td>
+                    <span className="btn-row md-left">
+                      <span className={`su-pill ${r.origin === 'manual' ? 'submitted' : 'neutral'}`}>
+                        {r.origin === 'manual' ? 'Entered here' : 'Source'}
+                      </span>
+                      {(r.renamed || r.moved) && <span className="su-pill in_progress">Changed here</span>}
+                    </span>
+                  </td>
+                  {tree && (
+                    <td className="md-parent">
+                      <Select
+                        variant="compact"
+                        value={r.parent ?? ''}
+                        label={`Parent of ${r.code}`}
+                        options={parentOptions(r.code)}
+                        searchable
+                        onChange={(v) => void run(() => api.changeMember(dataset, r.code, { parent: v || null }), `${r.code} moved.`)}
+                      />
+                      {r.moved && <span className="md-was">source: {r.source_parent ?? 'top level'}</span>}
+                    </td>
+                  )}
+                  <td className="muted">
+                    {dataset === 'accounts' ? r.account_type : [r.entity_code, r.owner].filter(Boolean).join(' · ')}
+                  </td>
+                  <td className="right">
+                    <span className="btn-row">
+                      <button type="button" className="su-btn ghost sm" onClick={() => setEditing({ code: r.code, name: r.name })}>
+                        Rename
+                      </button>
+                      {(r.renamed || r.moved) && (
+                        <button
+                          type="button"
+                          className="su-btn ghost sm"
+                          onClick={() => void run(() => api.resetMember(dataset, r.code), `${r.code} follows the source again.`)}
+                        >
+                          Back to source
+                        </button>
+                      )}
+                      {r.origin === 'manual' && (
+                        <button
+                          type="button"
+                          className="su-btn ghost sm danger"
+                          onClick={() => void run(() => api.deleteMember(dataset, r.code), `${r.code} deleted.`)}
+                        >
+                          Delete
+                        </button>
+                      )}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+              {shown.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="st-empty">
+                    {rows.length === 0
+                      ? 'No members yet: sync them from the source, or add them here.'
+                      : `Nothing matches “${query}”.`}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
   )
 }

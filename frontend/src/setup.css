@@ -34,6 +34,7 @@
 }
 
 .su-dot {
+  flex: none;
   width: 7px;
   height: 7px;
   border-radius: 50%;
@@ -50,6 +51,63 @@
 
 .su-dot.closed {
   background: #b5bcc7;
+}
+
+/* Workflow status of a cost center (ADR 0008). */
+.su-dot.not_started {
+  background: #c3c9d2;
+}
+
+.su-dot.in_progress {
+  background: #d79a1e;
+}
+
+.su-dot.submitted {
+  background: var(--accent-2);
+}
+
+.su-dot.approved {
+  background: #2e9b5b;
+}
+
+.su-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  background: var(--line-2);
+  color: var(--ink-2);
+}
+
+.su-pill.neutral {
+  font-weight: 500;
+}
+
+.su-pill.in_progress,
+.su-pill.overdue-soft {
+  background: var(--warn-tint);
+  color: var(--warn);
+}
+
+.su-pill.submitted {
+  background: var(--accent-tint);
+  color: var(--accent-ink);
+}
+
+.su-pill.approved,
+.su-pill.open {
+  background: var(--ok-tint);
+  color: var(--ok);
+}
+
+.su-pill.overdue {
+  background: var(--danger-tint);
+  color: var(--danger);
 }
 
 /* --- Layout ------------------------------------------------------------------------------- */
@@ -301,7 +359,7 @@
 
 .su-rule {
   display: grid;
-  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr) 26px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 26px;
   grid-template-areas: 'account account remove' 'form basis basis';
   gap: 6px;
   align-items: center;
@@ -1034,4 +1092,12 @@ a.su-btn {
 
 .empty-state .su-hint {
   margin-left: 0;
+}
+
+.su-w-select {
+  width: 190px;
+}
+
+.su-rule .sel {
+  min-width: 0;
 }

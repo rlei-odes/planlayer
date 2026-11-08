@@ -14,6 +14,7 @@ import {
 } from './icons'
 import LoginPage from './LoginPage'
 import { initials } from './names'
+import Select from './Select'
 import MasterDataPage from './MasterDataPage'
 import PlanningPage from './PlanningPage'
 import PublishPage from './PublishPage'
@@ -160,7 +161,8 @@ export default function App() {
   const round = versions.find((v) => v.code === version)
   const roles = [me.is_admin && 'Admin', me.is_controller && 'Controller', me.is_viewer && 'Viewer'].filter(Boolean)
   const roleText = roles.join(', ')
-  const subtitle = roleText && roleText !== me.display_name ? roleText : (me.email ?? me.login)
+  const contact = me.email ?? me.login
+  const subtitle = roleText && roleText !== me.display_name ? roleText : contact !== me.display_name ? contact : ''
   const needsRound = ROUND_PAGES.includes(current) && current !== 'setup'
 
   return (
@@ -216,19 +218,21 @@ export default function App() {
       <div className="sh-main">
         <header className="tb">
           {ROUND_PAGES.includes(current) && versions.length > 0 && (
-            <label className="tb-round">
-              Round
-              <span className="tb-select-wrap">
-                <i className={`su-dot ${round?.status ?? ''}`} />
-                <select className="tb-select" value={version} onChange={(e) => setVersion(e.target.value)}>
-                  {versions.map((v) => (
-                    <option key={v.code} value={v.code}>
-                      {v.name} · {v.status}
-                    </option>
-                  ))}
-                </select>
-              </span>
-            </label>
+            <div className="tb-round">
+              <span>Round</span>
+              <Select
+                variant="pill"
+                label="Round"
+                value={version}
+                onChange={setVersion}
+                options={versions.map((v) => ({
+                  value: v.code,
+                  label: v.name,
+                  hint: `${v.status} · FY ${v.fiscal_year}`,
+                  dot: v.status,
+                }))}
+              />
+            </div>
           )}
           <div className="tb-user">
             <span className="tb-avatar" aria-hidden="true">
@@ -236,7 +240,7 @@ export default function App() {
             </span>
             <span className="tb-who">
               <strong>{me.display_name}</strong>
-              <span>{subtitle}</span>
+              {subtitle && <span>{subtitle}</span>}
             </span>
             <button type="button" className="su-icon" onClick={() => void logout()} aria-label="Log out" title="Log out">
               <LogoutIcon />

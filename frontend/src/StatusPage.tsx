@@ -2,13 +2,18 @@ import { useCallback, useEffect, useState } from 'react'
 import { api, STATUS_LABEL, type Action, type ActionRequest, type Me, type Overview, type Status, type StatusRow } from './api'
 
 // The status page (T-20, ADR 0008): every enabled cost center of the round with its status and
-// approver, rolled up per hierarchy node; approve, reject and reopen; the round's status.
+// approver, rolled up per hierarchy node; approve, reject and reopen; the round's status. The
+// actions shown are the ones the server says this user may take.
 
-type Filter = 'all' | 'overdue' | 'submitted' | 'mine'
+type Filter = 'all' | 'mine' | 'submitted' | 'overdue'
 type Pending = { request: ActionRequest; label: string }
+type Note = { kind: 'ok' | 'error'; text: string }
 
 const STATUSES: Status[] = ['not_started', 'in_progress', 'submitted', 'approved']
 const NEEDS_COMMENT: Action[] = ['reject', 'reopen']
+const ACTION_LABEL: Record<Action, string> = { submit: 'Submit', approve: 'Approve', reject: 'Reject', reopen: 'Reopen' }
+const PAST: Record<Action, string> = { submit: 'Submitted', approve: 'Approved', reject: 'Rejected', reopen: 'Reopened' }
+const WHEN = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
 
 function matches(row: StatusRow, filter: Filter): boolean {
   if (filter === 'overdue') return row.overdue
@@ -28,6 +33,10 @@ function visible(rows: StatusRow[], filter: Filter): StatusRow[] {
   })
 }
 
+function errorText(e: unknown) {
+  return e instanceof Error ? e.message : String(e)
+}
+
 export default function StatusPage({
   version,
   me,
@@ -41,12 +50,10 @@ export default function StatusPage({
   const [filter, setFilter] = useState<Filter>('all')
   const [pending, setPending] = useState<Pending | null>(null)
   const [comment, setComment] = useState('')
-  const [message, setMessage] = useState<{ kind: 'error' | 'info'; text: string } | null>(null)
+  const [note, setNote] = useState<Note | null>(null)
 
   const load = useCallback(() => {
-    api.overview(version).then(setOverview, (e: unknown) =>
-      setMessage({ kind: 'error', text: e instanceof Error ? e.message : String(e) }),
-    )
+    api.overview(version).then(setOverview, (e: unknown) => setNote({ kind: 'error', text: errorText(e) }))
   }, [version])
 
   useEffect(load, [load])
@@ -54,12 +61,12 @@ export default function StatusPage({
   async function run(request: ActionRequest) {
     try {
       const changed = await api.act(version, request)
-      setMessage({ kind: 'info', text: `${request.action}: ${changed.join(', ')}` })
+      setNote({ kind: 'ok', text: `${PAST[request.action]}: ${changed.join(', ') || 'nothing to change'}.` })
       setPending(null)
       setComment('')
       load()
     } catch (e) {
-      setMessage({ kind: 'error', text: e instanceof Error ? e.message : String(e) })
+      setNote({ kind: 'error', text: errorText(e) })
     }
   }
 
@@ -70,154 +77,274 @@ export default function StatusPage({
     } else void run(request)
   }
 
-  async function guard(task: () => Promise<unknown>) {
+  async function guard(task: () => Promise<unknown>, done?: string) {
     try {
       await task()
+      if (done) setNote({ kind: 'ok', text: done })
       load()
     } catch (e) {
-      setMessage({ kind: 'error', text: e instanceof Error ? e.message : String(e) })
+      setNote({ kind: 'error', text: errorText(e) })
     }
   }
 
-  if (!overview) return message ? <div className={message.kind}>{message.text}</div> : null
+  if (!overview) return note ? <div className="su-note error">{note.text}</div> : null
   const round = overview.round
   const setRound = (status: 'open' | 'closed') =>
     guard(async () => {
       await api.setRoundStatus(version, status)
       onRoundChanged()
-    })
+    }, status === 'open' ? 'Round opened: planners can enter values.' : 'Round closed: no edits anywhere.')
+
+  const centers = overview.rows.filter((r) => r.kind === 'cost_center')
+  const count = (s: Status) => centers.filter((r) => r.status === s).length
+  const counts = { all: centers.length, ...Object.fromEntries(STATUSES.map((s) => [s, count(s)])) } as Record<
+    Status | 'all',
+    number
+  >
+  const filterCount: Record<Filter, number> = {
+    all: centers.length,
+    mine: centers.filter((r) => matches(r, 'mine')).length,
+    submitted: counts.submitted,
+    overdue: centers.filter((r) => r.overdue).length,
+  }
   const rows = visible(overview.rows, filter)
+  const done = centers.length ? Math.round((counts.approved / centers.length) * 100) : 0
 
   return (
-    <section className="status">
-      <div className="toolbar">
-        <span>
-          Round <span className={`badge round-${round.status}`}>{round.status}</span>
-        </span>
-        {round.deadline && <span className="muted">Deadline {round.deadline}</span>}
-        {me.is_controller && round.status !== 'open' && (
-          <button type="button" onClick={() => void setRound('open')}>
-            Open round
-          </button>
-        )}
-        {me.is_controller && round.status === 'open' && (
-          <button type="button" onClick={() => void setRound('closed')}>
-            Close round
-          </button>
-        )}
-        <label>
-          Show{' '}
-          <select value={filter} onChange={(e) => setFilter(e.target.value as Filter)}>
-            <option value="all">All</option>
-            <option value="overdue">Overdue</option>
-            <option value="submitted">Waiting for approval</option>
-            <option value="mine">Waiting for me</option>
-          </select>
-        </label>
+    <div className="su st">
+      <div className="pg-head">
+        <div>
+          <div className="su-eyebrow">Status</div>
+          <h2 className="su-title">{round.name}</h2>
+          <div className="pg-sub">
+            {round.deadline ? `Deadline ${round.deadline}` : 'No deadline'} · {centers.length} cost centers to plan
+          </div>
+        </div>
+        <div className="pg-actions">
+          <span className={`su-pill ${round.status === 'open' ? 'open' : round.status === 'closed' ? 'overdue' : 'in_progress'}`}>
+            <i className={`su-dot ${round.status}`} />
+            Round {round.status}
+          </span>
+          {me.is_controller && round.status !== 'open' && (
+            <button type="button" className="su-btn primary" onClick={() => void setRound('open')}>
+              {round.status === 'closed' ? 'Reopen round' : 'Open round'}
+            </button>
+          )}
+          {me.is_controller && round.status === 'open' && (
+            <button type="button" className="su-btn" onClick={() => void setRound('closed')}>
+              Close round
+            </button>
+          )}
+        </div>
       </div>
-      {message && <div className={message.kind}>{message.text}</div>}
+
+      <div className="st-summary">
+        {STATUSES.map((s) => (
+          <div key={s} className={`st-tile ${s}`}>
+            <div className="st-value">{counts[s]}</div>
+            <div className="st-label">
+              <i className={`su-dot ${s}`} /> {STATUS_LABEL[s]}
+            </div>
+          </div>
+        ))}
+        <div className="st-tile st-progress">
+          <div className="st-value">{done}%</div>
+          <div className="st-label">approved</div>
+          <StatusBar counts={counts} />
+        </div>
+      </div>
+
+      {note && <div className={`su-note ${note.kind} st-gap`}>{note.text}</div>}
       {pending && (
         <form
-          className="comment"
+          className="su-card st-comment"
           onSubmit={(e) => {
             e.preventDefault()
             void run({ ...pending.request, comment })
           }}
         >
-          <label>
-            {pending.label}: comment{' '}
-            <input value={comment} onChange={(e) => setComment(e.target.value)} autoFocus required size={50} />
-          </label>{' '}
-          <button type="submit" disabled={!comment.trim()}>
-            Confirm
-          </button>{' '}
-          <button type="button" onClick={() => setPending(null)}>
+          <strong>{pending.label}</strong>
+          <input
+            className="su-input"
+            value={comment}
+            onChange={(e) => setComment(e.target.value)}
+            placeholder="Why? The planner sees this comment."
+            aria-label="Comment"
+            autoFocus
+            required
+          />
+          <button type="button" className="su-btn ghost" onClick={() => setPending(null)}>
             Cancel
+          </button>
+          <button type="submit" className="su-btn primary" disabled={!comment.trim()}>
+            {ACTION_LABEL[pending.request.action]}
           </button>
         </form>
       )}
-      <table className="overview">
-        <thead>
-          <tr>
-            <th>Cost center</th>
-            <th>Status</th>
-            <th>Approver</th>
-            <th>Last change</th>
-            <th />
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => (
-            <tr key={row.code} className={row.kind}>
-              <td style={{ paddingLeft: `${8 + row.depth * 16}px` }}>
-                {row.kind === 'cost_center' ? `${row.code} ${row.name}` : row.name}
-                {row.owner && <span className="muted"> · {row.owner}</span>}
-              </td>
-              <td>
-                {row.kind === 'node' ? (
-                  <span className="counts">
-                    {STATUSES.filter((s) => row.counts[s]).map((s) => (
-                      <span key={s} className={`badge ${s}`}>
-                        {row.counts[s]} {STATUS_LABEL[s].toLowerCase()}
-                      </span>
-                    ))}
-                  </span>
-                ) : (
-                  row.status && (
-                    <>
-                      <span className={`badge ${row.status}`}>{STATUS_LABEL[row.status]}</span>
-                      {row.overdue && <span className="badge overdue">overdue</span>}
-                    </>
-                  )
-                )}
-              </td>
-              <td>{row.kind === 'cost_center' && (row.approvers.length ? row.approvers.join(', ') : 'Controller')}</td>
-              <td className="muted">
-                {row.changed_at && `${new Date(row.changed_at).toLocaleString()} · ${row.changed_by ?? ''}`}
-              </td>
-              <td className="actions">
-                <Actions row={row} rows={overview.rows} start={start} />
-                {me.is_controller && row.kind === 'cost_center' && (
-                  <button type="button" onClick={() => void guard(() => api.setEnabled(version, row.code, false))}>
-                    Disable
-                  </button>
-                )}
-              </td>
-            </tr>
+
+      <div className="st-bar">
+        <div className="seg" role="group" aria-label="Show">
+          {(
+            [
+              ['all', 'All'],
+              ['mine', 'Waiting for me'],
+              ['submitted', 'Waiting for approval'],
+              ['overdue', 'Overdue'],
+            ] as [Filter, string][]
+          ).map(([f, label]) => (
+            <button key={f} type="button" aria-pressed={filter === f} onClick={() => setFilter(f)}>
+              {label}
+              <span className="count">{filterCount[f]}</span>
+            </button>
           ))}
-        </tbody>
-      </table>
-      {me.is_controller && overview.not_planned.length > 0 && (
-        <>
-          <h2>Not planned in this round</h2>
-          <table className="overview">
+        </div>
+      </div>
+
+      <div className="tbl-card">
+        <div className="tbl-scroll">
+          <table className="tbl">
+            <thead>
+              <tr>
+                <th>Cost center</th>
+                <th>Status</th>
+                <th>Approver</th>
+                <th>Last change</th>
+                <th />
+              </tr>
+            </thead>
             <tbody>
-              {overview.not_planned.map((n) => (
-                <tr key={n.code}>
-                  <td>
-                    {n.code} {n.name}
+              {rows.map((row) => (
+                <tr key={row.code} className={row.kind === 'node' ? 'node' : undefined}>
+                  <td style={{ paddingLeft: 14 + row.depth * 18 }}>
+                    {row.kind === 'cost_center' ? (
+                      <div className="st-cc">
+                        <span>
+                          <span className="code">{row.code}</span>
+                          {row.name}
+                        </span>
+                        <span className="st-owner">{row.owner ?? 'no owner'}</span>
+                      </div>
+                    ) : (
+                      row.name
+                    )}
                   </td>
-                  <td className="muted">{n.reason === 'new' ? 'new, not enabled' : 'disabled'}</td>
-                  <td className="actions">
-                    <button type="button" onClick={() => void guard(() => api.setEnabled(version, n.code, true))}>
-                      Enable
-                    </button>
+                  <td>
+                    {row.kind === 'node' ? (
+                      <span className="st-node">
+                        <StatusBar counts={row.counts} />
+                        <span className="st-node-text">
+                          {row.counts.approved ?? 0}/{STATUSES.reduce((n, s) => n + (row.counts[s] ?? 0), 0)} approved
+                        </span>
+                      </span>
+                    ) : (
+                      row.status && (
+                        <span className="btn-row">
+                          <span className={`su-pill ${row.status}`}>{STATUS_LABEL[row.status]}</span>
+                          {row.overdue && <span className="su-pill overdue">Overdue</span>}
+                        </span>
+                      )
+                    )}
+                  </td>
+                  <td className="muted">
+                    {row.kind === 'cost_center' && (row.approvers.length ? row.approvers.join(', ') : 'Controller')}
+                  </td>
+                  <td className="muted">
+                    {row.changed_at && (
+                      <span title={new Date(row.changed_at).toLocaleString()}>
+                        {WHEN.format(new Date(row.changed_at))}
+                        {row.changed_by && ` · ${row.changed_by}`}
+                      </span>
+                    )}
+                  </td>
+                  <td className="right">
+                    <span className="btn-row">
+                      <Actions row={row} rows={overview.rows} start={start} />
+                      {me.is_controller && row.kind === 'cost_center' && (
+                        <button
+                          type="button"
+                          className="su-btn ghost sm"
+                          title="Take this cost center out of the round"
+                          onClick={() => void guard(() => api.setEnabled(version, row.code, false), `${row.code} is no longer planned in this round.`)}
+                        >
+                          Disable
+                        </button>
+                      )}
+                    </span>
                   </td>
                 </tr>
               ))}
+              {rows.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="st-empty">
+                    {filter === 'mine'
+                      ? 'Nothing is waiting for your approval.'
+                      : filter === 'overdue'
+                        ? 'Nothing is overdue.'
+                        : filter === 'submitted'
+                          ? 'Nothing is waiting for approval.'
+                          : 'No cost center is planned in this round.'}
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
+        </div>
+      </div>
+
+      {me.is_controller && overview.not_planned.length > 0 && (
+        <>
+          <h3 className="st-h3">Not planned in this round</h3>
+          <p className="su-hint st-hint">
+            New cost centers from a sync wait for you; disabled ones stay out until you enable them.
+          </p>
+          <div className="tbl-card">
+            <table className="tbl">
+              <tbody>
+                {overview.not_planned.map((n) => (
+                  <tr key={n.code}>
+                    <td>
+                      <span className="code">{n.code}</span>
+                      {n.name}
+                    </td>
+                    <td>
+                      <span className={`su-pill ${n.reason === 'new' ? 'submitted' : 'neutral'}`}>
+                        {n.reason === 'new' ? 'New, not enabled' : 'Disabled'}
+                      </span>
+                    </td>
+                    <td className="right">
+                      <button
+                        type="button"
+                        className="su-btn sm"
+                        onClick={() => void guard(() => api.setEnabled(version, n.code, true), `${n.code} is planned in this round.`)}
+                      >
+                        Enable
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </>
       )}
-    </section>
+    </div>
   )
 }
 
-const ACTION_LABEL: Record<Action, string> = {
-  submit: 'Submit',
-  approve: 'Approve',
-  reject: 'Reject',
-  reopen: 'Reopen',
+/** A stacked bar of statuses: not started, in progress, submitted, approved. */
+function StatusBar({ counts }: { counts: Partial<Record<Status, number>> }) {
+  const total = STATUSES.reduce((n, s) => n + (counts[s] ?? 0), 0)
+  return (
+    <span
+      className="st-statusbar"
+      role="img"
+      aria-label={STATUSES.map((s) => `${counts[s] ?? 0} ${STATUS_LABEL[s].toLowerCase()}`).join(', ')}
+      title={STATUSES.filter((s) => counts[s]).map((s) => `${counts[s]} ${STATUS_LABEL[s].toLowerCase()}`).join(' · ')}
+    >
+      {total > 0 &&
+        STATUSES.map((s) => (counts[s] ? <i key={s} className={s} style={{ flexGrow: counts[s] }} /> : null))}
+    </span>
+  )
 }
 
 /** The actions the server says this user may take; on a node, approving what they may below it. */
@@ -237,7 +364,11 @@ function Actions({
       if (rows[j].actions.includes('approve')) n++
     }
     return n > 0 ? (
-      <button type="button" onClick={() => start({ action: 'approve', node: row.code }, `Approve below ${row.name}`)}>
+      <button
+        type="button"
+        className="su-btn primary sm"
+        onClick={() => start({ action: 'approve', node: row.code }, `Approve below ${row.name}`)}
+      >
         Approve {n} submitted
       </button>
     ) : null
@@ -248,6 +379,7 @@ function Actions({
         <button
           type="button"
           key={action}
+          className={`su-btn sm${action === 'approve' ? ' primary' : action === 'reject' ? ' danger' : ''}`}
           onClick={() => start({ action, cost_centers: [row.code] }, `${ACTION_LABEL[action]} ${row.code}`)}
         >
           {ACTION_LABEL[action]}

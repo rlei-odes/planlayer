@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api, type EntryForm, type MemberRow, type Version } from './api'
 import PlannerPreview, { Bars } from './PlannerPreview'
+import Select, { type Option } from './Select'
 import type { ComparisonColumn, NewRound, Profile, Rule, SetupDraft, SetupView } from './setupTypes'
 
 // The yearly planning setup (E-03, ADR 0007): what a round plans and in what form, with a live
@@ -290,16 +291,19 @@ function LevelCard(props: {
 
 type DraftProps = { draft: SetupDraft; setDraft: (d: SetupDraft) => void }
 
-function accountOptions(accounts: MemberRow[], groupsToo: boolean) {
+function accountOptions(accounts: MemberRow[], groupsToo: boolean): Option[] {
   return accounts
     .filter((a) => groupsToo || !a.is_group)
-    .map((a) => (
-      <option key={a.code} value={a.code}>
-        {' '.repeat(groupsToo ? a.depth : 0)}
-        {a.is_group ? `▸ ${a.name}` : `${a.code} ${a.name}`}
-      </option>
-    ))
+    .map((a) => ({
+      value: a.code,
+      label: a.is_group ? a.name : `${a.code} ${a.name}`,
+      hint: a.is_group ? 'group' : undefined,
+      depth: groupsToo ? a.depth : 0,
+      strong: a.is_group,
+    }))
 }
+
+const FORM_OPTIONS: Option<EntryForm>[] = FORMS.map((f) => ({ value: f.form, label: f.label }))
 
 function EntryForms({
   draft,
@@ -337,20 +341,18 @@ function EntryForms({
         <div className="su-rules">
           {draft.entry_forms.map((r, i) => (
             <div className="su-rule" key={i}>
-              <select
-                className="su-select"
-                aria-label="Account or group"
+              <Select
+                label="Account or group"
                 value={r.account_code}
-                onChange={(e) => update(i, { ...r, account_code: e.target.value })}
-              >
-                {accountOptions(accounts, true)}
-              </select>
-              <select
-                className="su-select"
-                aria-label="Entry form"
+                options={accountOptions(accounts, true)}
+                searchable
+                onChange={(code) => update(i, { ...r, account_code: code })}
+              />
+              <Select
+                label="Entry form"
                 value={r.form}
-                onChange={(e) => {
-                  const form = e.target.value as EntryForm
+                options={FORM_OPTIONS}
+                onChange={(form) => {
                   update(i, {
                     ...r,
                     form,
@@ -360,44 +362,28 @@ function EntryForms({
                     reference_version_code: REFERENCE_FORMS.includes(form) ? r.reference_version_code : null,
                   })
                 }}
-              >
-                {FORMS.map((f) => (
-                  <option key={f.form} value={f.form}>
-                    {f.label}
-                  </option>
-                ))}
-              </select>
+              />
               {PROFILE_FORMS.includes(r.form) && (r.form === 'annual_profile' || !r.reference_version_code) ? (
-                <select
-                  className="su-select"
-                  aria-label="Seasonality profile"
+                <Select
+                  label="Seasonality profile"
                   value={r.profile_code ?? ''}
-                  onChange={(e) => update(i, { ...r, profile_code: e.target.value || null })}
-                >
-                  {r.form === 'monthly' && <option value="">by last year’s actuals</option>}
-                  {r.form === 'annual_profile' && !r.profile_code && <option value="">choose a profile</option>}
-                  {profiles.map((p) => (
-                    <option key={p.code} value={p.code}>
-                      season: {p.name}
-                    </option>
-                  ))}
-                </select>
+                  placeholder="choose a profile"
+                  options={[
+                    ...(r.form === 'monthly' ? [{ value: '', label: 'by last year’s actuals' }] : []),
+                    ...profiles.map((p) => ({ value: p.code, label: `season: ${p.name}` })),
+                  ]}
+                  onChange={(code) => update(i, { ...r, profile_code: code || null })}
+                />
               ) : REFERENCE_FORMS.includes(r.form) ? (
-                <select
-                  className="su-select"
-                  aria-label="Spread reference"
+                <Select
+                  label="Spread reference"
                   value={r.reference_version_code ?? ''}
-                  onChange={(e) => update(i, { ...r, reference_version_code: e.target.value || null })}
-                >
-                  <option value="">like last year’s actuals</option>
-                  {rounds
-                    .filter((v) => v.code !== current)
-                    .map((v) => (
-                      <option key={v.code} value={v.code}>
-                        like {v.name}
-                      </option>
-                    ))}
-                </select>
+                  options={[
+                    { value: '', label: 'like last year’s actuals' },
+                    ...rounds.filter((v) => v.code !== current).map((v) => ({ value: v.code, label: `like ${v.name}` })),
+                  ]}
+                  onChange={(code) => update(i, { ...r, reference_version_code: code || null })}
+                />
               ) : (
                 <span />
               )}
@@ -490,23 +476,19 @@ function Comparisons({
           ))}
           {draft.comparisons.length === 0 && <li className="su-empty">No comparison columns.</li>}
         </ul>
-        <select
-          className="su-select"
-          aria-label="Add comparison"
+        <Select
+          variant="action"
+          label="Add a comparison column"
+          display="Add a column"
+          icon={<span className="pl-plus">+</span>}
           value=""
           disabled={choices.length === 0}
-          onChange={(e) => {
-            const c = choices[Number(e.target.value)]
+          options={choices.map((c, i) => ({ value: String(i), label: label(c) ?? '' }))}
+          onChange={(i) => {
+            const c = choices[Number(i)]
             if (c) setDraft({ ...draft, comparisons: [...draft.comparisons, c] })
           }}
-        >
-          <option value="">Add a column…</option>
-          {choices.map((c, i) => (
-            <option key={i} value={i}>
-              {label(c)}
-            </option>
-          ))}
-        </select>
+        />
       </div>
     </section>
   )
@@ -536,20 +518,19 @@ function HiddenAccounts({ draft, setDraft, accounts }: DraftProps & { accounts: 
           ))}
           {draft.hidden_accounts.length === 0 && <span className="su-empty">None hidden.</span>}
         </div>
-        <select
-          className="su-select"
-          aria-label="Hide an account"
+        <Select
+          variant="action"
+          label="Hide an account"
+          display="Hide an account"
+          icon={<span className="pl-plus">+</span>}
           value=""
-          onChange={(e) =>
-            e.target.value && setDraft({ ...draft, hidden_accounts: [...draft.hidden_accounts, e.target.value].sort() })
-          }
-        >
-          <option value="">Hide an account…</option>
-          {accountOptions(
+          searchable
+          options={accountOptions(
             accounts.filter((a) => !draft.hidden_accounts.includes(a.code)),
             false,
           )}
-        </select>
+          onChange={(code) => setDraft({ ...draft, hidden_accounts: [...draft.hidden_accounts, code].sort() })}
+        />
       </div>
     </section>
   )
@@ -617,13 +598,18 @@ function Profiles({ profiles, onCreated }: { profiles: Profile[]; onCreated: () 
                 Name
                 <input className="su-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Retail with Q4 peak" />
               </label>
-              <label className="su-field">
+              <div className="su-field su-w-select">
                 Entered as
-                <select className="su-select" value={enteredAs} onChange={(e) => setEnteredAs(e.target.value as 'percent' | 'relative')}>
-                  <option value="relative">relative numbers</option>
-                  <option value="percent">percentages</option>
-                </select>
-              </label>
+                <Select
+                  label="Entered as"
+                  value={enteredAs}
+                  options={[
+                    { value: 'relative', label: 'relative numbers' },
+                    { value: 'percent', label: 'percentages' },
+                  ]}
+                  onChange={setEnteredAs}
+                />
+              </div>
             </div>
             <div className="su-months">
               {MONTHS.map((m, i) => (
@@ -696,13 +682,18 @@ function NewRoundCard({
     <section className="su-card" style={{ marginBottom: 14 }}>
       <h3>New planning round</h3>
       <div className="su-row" style={{ marginTop: 10 }}>
-        <label className="su-field">
+        <div className="su-field su-w-select">
           Kind
-          <select className="su-select" value={r.kind} onChange={(e) => setR({ ...r, kind: e.target.value as NewRound['kind'] })}>
-            <option value="budget">Budget</option>
-            <option value="forecast">Forecast</option>
-          </select>
-        </label>
+          <Select
+            label="Kind"
+            value={r.kind}
+            options={[
+              { value: 'budget', label: 'Budget' },
+              { value: 'forecast', label: 'Forecast' },
+            ]}
+            onChange={(kind) => setR({ ...r, kind })}
+          />
+        </div>
         <label className="su-field">
           Fiscal year
           <input
@@ -721,17 +712,15 @@ function NewRoundCard({
           Name
           <input className="su-input" value={r.name} onChange={(e) => setR({ ...r, name: e.target.value })} />
         </label>
-        <label className="su-field">
+        <div className="su-field su-w-select">
           Set up like
-          <select className="su-select" value={r.copy_from ?? ''} onChange={(e) => setR({ ...r, copy_from: e.target.value || null })}>
-            <option value="">the defaults</option>
-            {rounds.map((v) => (
-              <option key={v.code} value={v.code}>
-                {v.name}
-              </option>
-            ))}
-          </select>
-        </label>
+          <Select
+            label="Set up like"
+            value={r.copy_from ?? ''}
+            options={[{ value: '', label: 'the defaults' }, ...rounds.map((v) => ({ value: v.code, label: v.name, dot: v.status }))]}
+            onChange={(code) => setR({ ...r, copy_from: code || null })}
+          />
+        </div>
       </div>
       <div className="su-row" style={{ marginTop: 12, justifyContent: 'flex-end' }}>
         <button type="button" className="su-btn ghost" onClick={onCancel}>

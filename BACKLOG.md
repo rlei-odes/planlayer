@@ -211,16 +211,17 @@ Mid-size manufacturer of industrial pumps and valves, ~400 employees.
 - [ ] **E-10** Publishing ([ADR 0011](docs/adr/0011-publishing.md)). Built: downloads, preview, run, run history, republish, [docs/output.md](docs/output.md). Still open:
     - [ ] Export sign rules (E-12): until then values are published natural-positive.
     - [ ] Sales planning's output table, with its module.
-    - [ ] A link from the setup page to publishing per round.
+    - [x] Setup and publishing per round: both follow the app's current round (E-13), one click apart in the sidebar.
 - [ ] **E-13** UI/UX design phase: with the main flows on screen (setup, plan, approve, publish), iterate on the frontend while the backend stays mostly as it is. Covers: navigation, visual language, the planning grid's look and keyboard flow, empty and error states, the status and setup pages. Done with real users' walkthroughs where possible (R-4). The look is the setup page's, carried app-wide, light only (tokens in `frontend/src/theme.css`, so a dark palette stays a change in one place).
     - [x] App shell: sidebar grouped by role (Plan; Round; Admin), collapsible and collapsed by default below 1360 px; top bar with the current round and the user; login page; "server not reachable" and "no round yet" states.
     - [x] One current round for Planning, Status, Setup and Publish, chosen in the top bar and remembered per browser.
     - [x] Planner preview fits beside the settings, all twelve months included: example values in thousands, short form badges when narrow.
-    - [ ] Planning grid in the preview's look, roomy rows: typed-in cells as inputs, calculated cells tinted, year-only months hatched, comparisons muted, entry-form badge per row with ⚠ for the fallback; an empty state for a sheet without accounts.
-    - [ ] The grid's keyboard flow (Enter, Tab, arrows, typing over a cell) checked against Excel habits.
-    - [ ] Status page.
-    - [ ] Master data page.
-    - [ ] Responsibilities and Users pages.
+    - [x] One dropdown for the whole app (`Select.tsx`): a styled list instead of the browser's popup, with search for long lists, status dots, hints and indented trees; keyboard as in a native select. No native select remains.
+    - [x] Planning grid in the preview's look, roomy rows: typed-in cells as inputs, calculated cells tinted, year-only months hatched, comparisons muted, entry-form badge per row with ⚠ for the fallback; the cost center switcher as the page title; empty states for a sheet without accounts and for a user without cost centers.
+    - [x] The grid's keyboard flow checked against Excel habits: typing over a cell edits it, Enter saves and moves down, Tab saves and moves right, Escape cancels, Delete blanks (not 0); calculated cells open no editor.
+    - [x] Status page: counts per status, progress, filters with counts, a status bar per hierarchy node, actions per row, comments for reject and reopen.
+    - [x] Master data page: sources as cards with column pickers, the sync preview as tiles, the member tree with a filter and inline parent pickers.
+    - [x] Responsibilities and Users pages: planner overrides, deputies and approvers as chips; roles as switches.
     - [ ] Real users' walkthroughs (R-4).
 - [ ] **E-11** Self-host packaging: container image on GHCR, the DBA install script and checklist (D-25), upgrade/migration procedure, the scheduled backup and restore (D-30), install docs.
 
