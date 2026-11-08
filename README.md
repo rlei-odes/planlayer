@@ -41,6 +41,12 @@ cd backend && cp .env.example .env && uv sync && uv run planlayer migrate && uv 
 cd frontend && npm ci && npm run dev        # http://localhost:5173, /api goes to the backend
 ```
 
+Test data (the fictional manufacturer Nordwerk, see [tools/gen_testdata](tools/gen_testdata/README.md)) into the `dwh` database:
+
+```
+cd tools/gen_testdata && uv run gen-testdata --db postgresql://postgres:postgres@localhost:5432/dwh
+```
+
 Checks, as run in CI:
 
 ```

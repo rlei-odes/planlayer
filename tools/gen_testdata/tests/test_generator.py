@@ -1,0 +1,119 @@
+"""Generator tests that need no database."""
+
+import hashlib
+from datetime import date
+
+import pytest
+
+from gen_testdata import master as m
+from gen_testdata.actuals import Rows
+from gen_testdata.calendar import FIXED_ANCHOR, Calendar, relative_anchor
+
+
+def build(variant: str = "standard", start_month: int = 1, seed: int = 42) -> m.Master:
+    v = m.VARIANTS[variant]
+    return m.build(v, Calendar(FIXED_ANCHOR, start_month, v.full_years), seed)
+
+
+def digest(master: m.Master, seed: int = 42) -> str:
+    rows = Rows(master, seed)
+    h = hashlib.sha256()
+    for part in (rows.fx_rates(), rows.billing_lines(), rows.gl_lines()):
+        for row in part:
+            h.update(repr(row).encode())
+    return h.hexdigest()
+
+
+def test_same_seed_same_data() -> None:
+    assert digest(build("small")) == digest(build("small"))
+
+
+def test_other_seed_other_data() -> None:
+    assert digest(build("small", seed=1), 1) != digest(build("small"))
+
+
+def test_fixed_calendar() -> None:
+    periods = Calendar(FIXED_ANCHOR, 1, 3).periods
+    assert (periods[0], periods[-1], len(periods)) == (date(2023, 1, 1), date(2026, 6, 1), 42)
+
+
+def test_april_fiscal_year() -> None:
+    cal = Calendar(FIXED_ANCHOR, 4, 1)
+    assert cal.current_fy_start == date(2026, 4, 1)
+    assert cal.periods[0] == date(2025, 4, 1)
+
+
+def test_relative_anchor_is_end_of_last_month() -> None:
+    assert relative_anchor(date(2026, 11, 8)) == date(2026, 10, 31)
+    assert relative_anchor(date(2027, 1, 1)) == date(2026, 12, 31)
+
+
+def test_standard_sizes() -> None:
+    master = build()
+    assert len(master.entities) == 4
+    assert 55 <= len(master.cost_centers) <= 65
+    assert len(master.accounts) == 150
+    assert len(master.account_groups) == 12
+    assert len(master.products) == 400
+    assert len(master.product_groups) == 40
+    assert len(master.countries) == 12
+    assert len({c.region for c in master.countries}) == 4
+
+
+def test_products_are_sparse_over_countries() -> None:
+    master = build()
+    pairs = sum(len(p.countries) for p in master.products)
+    assert pairs < len(master.products) * len(master.countries) * 0.75
+
+
+def test_tree_is_ragged() -> None:
+    master = build()
+    parents = {a.parent for a in master.cc_assignments}
+    assert "DIV_CORP" in parents  # leaves directly under a division
+    assert any(p.startswith("DEP_") for p in parents)
+
+
+@pytest.mark.parametrize("variant", ["small", "standard"])
+def test_special_cost_centers(variant: str) -> None:
+    master = build(variant)
+    cal = master.calendar
+    moved = master.cc_by_name(m.MOVED_CC)
+    tranches = [a for a in master.cc_assignments if a.code == moved.code]
+    assert [t.parent for t in tranches] == ["DEP_PUMP_PROD", m.MOVED_TO]
+    assert tranches[1].valid_from == cal.prior_fy_start
+    assert master.cc_by_name(m.NEW_CC).valid_from == date(2025, 7, 1)
+    assert master.cc_by_name(m.NEW_CC).owner is None
+    if variant == "standard":
+        assert master.cc_by_name(m.CLOSED_CC).valid_to == date(2025, 12, 31)
+        assert master.cc_by_name(m.UNMATCHED_OWNER_CC).owner == m.UNMATCHED_OWNER
+        renamed = [n.name for n in master.cc_nodes if n.code == m.RENAMED_DEPARTMENT]
+        assert renamed == ["Pump Plant Poland", m.RENAMED_TO]
+
+
+def test_owners_are_users_except_the_unmatched_one() -> None:
+    owners = {c.owner for c in build().cost_centers} - {None}
+    assert owners - set(m.USERS) == {m.UNMATCHED_OWNER}
+
+
+def test_small_variant() -> None:
+    master = build("small")
+    assert [e.code for e in master.entities] == ["DE"]
+    assert len(master.cost_centers) <= 16
+    assert len(master.accounts) <= 30
+    assert master.calendar.periods[0] == date(2025, 1, 1)
+
+
+def test_ledger_signs() -> None:
+    master = build("small")
+    rows = Rows(master, 42)
+    list(rows.billing_lines())
+    types = {a.code: a.account_type for a in master.accounts}
+    totals: dict[str, float] = {"revenue": 0.0, "cost": 0.0}
+    for row in rows.gl_lines():
+        totals[types[str(row[5])]] += float(str(row[6]))
+    assert totals["revenue"] < 0 < totals["cost"]
+
+
+def test_gl_needs_billing_first() -> None:
+    with pytest.raises(RuntimeError):
+        next(Rows(build("small"), 42).gl_lines())
