@@ -47,6 +47,8 @@ class Me(BaseModel):
     is_admin: bool
     is_controller: bool
     is_viewer: bool
+    # Reads at least one cost center, so the planning and status pages have something to show.
+    reads_cost_centers: bool
 
 
 class LoginOptions(BaseModel):
@@ -62,8 +64,9 @@ class DevLoginIn(BaseModel):
     login: str
 
 
-def me_of(user: access.User) -> Me:
+def me_of(engine: Engine, user: access.User) -> Me:
     return Me(
+        reads_cost_centers=access.reads_cost_centers(engine, user),
         login=user.login,
         display_name=user.display_name,
         email=user.email,
@@ -74,8 +77,8 @@ def me_of(user: access.User) -> Me:
 
 
 @router.get("/me", responses={401: {}})
-def me(user: CurrentUser) -> Me:
-    return me_of(user)
+def me(request: Request, user: CurrentUser) -> Me:
+    return me_of(engine_of(request), user)
 
 
 @router.get("/auth/options")
@@ -116,7 +119,7 @@ def dev_login(request: Request, response: Response, body: DevLoginIn) -> Me:
     )
     user = access.session_user(engine, token)
     assert user is not None
-    return me_of(user)
+    return me_of(engine, user)
 
 
 @router.post("/auth/logout")

@@ -79,7 +79,17 @@ function errorText(e: unknown): string {
   return e instanceof Error ? e.message : String(e)
 }
 
-export default function PlanningPage({ version }: { version: string }) {
+// Room for a vertical scrollbar inside the grid: classic scrollbars take ~15 px, overlay ones none.
+const SCROLLBAR = 18
+
+export default function PlanningPage({
+  version,
+  onWidth,
+}: {
+  version: string
+  /** Reports the sheet's width, so the app widens its content area for wide sheets. */
+  onWidth: (px: number | null) => void
+}) {
   const [units, setUnits] = useState<PlanningUnit[] | null>(null)
   const [unit, setUnit] = useState<string>('')
   const [grid, setGrid] = useState<Grid | null>(null)
@@ -144,6 +154,14 @@ export default function PlanningPage({ version }: { version: string }) {
       ...periods.map((p, m) => column(monthProp(m), MONTH_LABEL.format(new Date(p)), 92)),
     ]
   }, [grid, locked])
+
+  // The page is as wide as its columns (plus the sheet's border), so nothing stretches past them.
+  const sheetWidth = columns.reduce((n, c) => n + c.size, 0) + 2 + SCROLLBAR
+  const hasGrid = grid !== null
+  useEffect(() => {
+    onWidth(hasGrid ? sheetWidth : null)
+    return () => onWidth(null)
+  }, [hasGrid, sheetWidth, onWidth])
 
   const source = useMemo<GridRow[]>(
     () =>
@@ -246,7 +264,7 @@ export default function PlanningPage({ version }: { version: string }) {
   )
 
   return (
-    <div className="su pl">
+    <div className="su pl" style={grid ? { maxWidth: sheetWidth } : undefined}>
       <div className="pl-head">
         <div className="pl-title">
           <div className="su-eyebrow">Planning{grid ? ` · ${grid.version_name}` : ''}</div>

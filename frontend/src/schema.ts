@@ -144,6 +144,7 @@ export type Me = {
   is_admin: boolean
   is_controller: boolean
   is_viewer: boolean
+  reads_cost_centers: boolean
 }
 
 export type MemberChange = {

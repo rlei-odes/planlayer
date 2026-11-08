@@ -222,6 +222,11 @@ Mid-size manufacturer of industrial pumps and valves, ~400 employees.
     - [x] Status page: counts per status, progress, filters with counts, a status bar per hierarchy node, actions per row, comments for reject and reopen.
     - [x] Master data page: sources as cards with column pickers, the sync preview as tiles, the member tree with a filter and inline parent pickers.
     - [x] Responsibilities and Users pages: planner overrides, deputies and approvers as chips; roles as switches.
+    - [ ] Number display for amounts: a choice of how plan and comparison amounts are shown, in the grid, the status and publish pages and the setup preview.
+        - Scales: full, in thousands, in millions; and decimals shown or hidden. Display only: values are still entered, stored and published exactly (T-12), and a typed value means the unit shown, or the full amount (to decide).
+        - Applies to amounts only; not to percentages (D-05), factors, quantities, or headcount in later modules, which keep their own format.
+        - Regional settings for display and entry: thousands and decimal separator (e.g. 1,234.56 / 1.234,56 / 1'234.56), so paste and typing follow the same convention.
+        - To decide: an installation default (setup page, E-12) with a per-user override, and where the choice sits on the planning page.
     - [ ] Real users' walkthroughs (R-4).
 - [ ] **E-11** Self-host packaging: container image on GHCR, the DBA install script and checklist (D-25), upgrade/migration procedure, the scheduled backup and restore (D-30), install docs.
 

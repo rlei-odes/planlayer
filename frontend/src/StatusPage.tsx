@@ -15,6 +15,22 @@ const ACTION_LABEL: Record<Action, string> = { submit: 'Submit', approve: 'Appro
 const PAST: Record<Action, string> = { submit: 'Submitted', approve: 'Approved', reject: 'Rejected', reopen: 'Reopened' }
 const WHEN = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
 
+/** Whole days from today to the deadline (YYYY-MM-DD); negative once it has passed. */
+function daysUntil(deadline: string, today: Date): number {
+  const [y, m, d] = deadline.split('-').map(Number)
+  const start = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate())
+  return Math.round((Date.UTC(y, m - 1, d) - start) / 86_400_000)
+}
+
+/** The deadline pill: calm while there's time, amber in the last two weeks, red once overdue. */
+function deadlinePill(days: number): { tone: string; text: string } {
+  const n = Math.abs(days)
+  const unit = n === 1 ? 'day' : 'days'
+  if (days < 0) return { tone: 'overdue', text: `Overdue by ${n} ${unit}` }
+  if (days === 0) return { tone: 'in_progress', text: 'Due today' }
+  return { tone: days <= 14 ? 'in_progress' : 'neutral', text: `${n} ${unit} left` }
+}
+
 function matches(row: StatusRow, filter: Filter): boolean {
   if (filter === 'overdue') return row.overdue
   if (filter === 'submitted') return row.status === 'submitted'
@@ -51,6 +67,7 @@ export default function StatusPage({
   const [pending, setPending] = useState<Pending | null>(null)
   const [comment, setComment] = useState('')
   const [note, setNote] = useState<Note | null>(null)
+  const [today] = useState(() => new Date())
 
   const load = useCallback(() => {
     api.overview(version).then(setOverview, (e: unknown) => setNote({ kind: 'error', text: errorText(e) }))
@@ -109,6 +126,7 @@ export default function StatusPage({
   }
   const rows = visible(overview.rows, filter)
   const done = centers.length ? Math.round((counts.approved / centers.length) * 100) : 0
+  const due = round.deadline && round.status !== 'closed' ? deadlinePill(daysUntil(round.deadline, today)) : null
 
   return (
     <div className="su st">
@@ -125,6 +143,11 @@ export default function StatusPage({
             <i className={`su-dot ${round.status}`} />
             Round {round.status}
           </span>
+          {due && (
+            <span className={`su-pill ${due.tone}`} title={`Deadline ${round.deadline}`}>
+              {due.text}
+            </span>
+          )}
           {me.is_controller && round.status !== 'open' && (
             <button type="button" className="su-btn primary" onClick={() => void setRound('open')}>
               {round.status === 'closed' ? 'Reopen round' : 'Open round'}

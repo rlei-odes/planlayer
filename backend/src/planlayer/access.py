@@ -19,7 +19,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import Connection, Engine, Table, delete, func, insert, select, update
+from sqlalchemy import Connection, Engine, Table, delete, exists, func, insert, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from planlayer.store.schema import (
@@ -245,6 +245,16 @@ def cost_center_rights(conn: Connection, user: User) -> dict[int, bool]:
     ):
         rights[cc] = rights.get(cc, False) or can_write
     return rights
+
+
+def reads_cost_centers(engine: Engine, user: User) -> bool:
+    """Whether the user may read any cost center: through a role, ownership, a deputy grant or
+    an approver assignment. The admin role alone gives none (ADR 0009)."""
+    with unit_of_work(engine, user) as conn:
+        found = conn.execute(
+            select(exists().where(cost_center_access.c.user_id == user.user_id))
+        ).scalar()
+    return bool(found)
 
 
 def plans(conn: Connection, user: User, cc_ids: list[int]) -> set[int]:

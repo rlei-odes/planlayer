@@ -60,7 +60,7 @@ A login creates a random session token, sent as an HttpOnly, SameSite=Lax cookie
 ## Consequences
 
 - New tables: `app_user`, `user_session`, `owner_override`, `planner_grant`; `approver_assignment` refers to users. Views: `cost_center_owner`, `cost_center_access`.
-- The responsibilities page (controller) and the users page (admin) edit these. `planlayer seed-dev-users` creates the users of the test data (TD-09).
+- The responsibilities page (controller) and the users page (admin) edit these. The planning and status pages are offered only to users who read at least one cost center; a user with only the admin role sees the admin pages. `planlayer seed-dev-users` creates the users of the test data (TD-09).
 - Database tests connect as an unprivileged role, because a superuser bypasses row-level security.
 - Sales planning (later) scopes by region with the same mechanism: a view of readable and writable members per user.
 - OIDC and LDAPS (E-09) map an identity to a user by login or e-mail, and may set roles from directory groups.

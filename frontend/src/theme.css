@@ -30,6 +30,10 @@
 
   --sb-w: 216px;
   --topbar-h: 52px;
+  /* Content stops growing here on large screens: wide enough for the planning grid's twelve
+     months at full width (account, comparison, plan, months: ~1680 px), narrow enough to read. */
+  --content-base: 1728px;
+  --content-max: var(--content-base);
 
   font-family: var(--sans);
   font-size: 13px;
@@ -241,13 +245,19 @@ button {
   top: 0;
   z-index: 30;
   height: var(--topbar-h);
+  background: rgb(245 246 248 / 88%);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--line);
+}
+
+.tb-in {
+  height: 100%;
+  max-width: var(--content-max);
+  margin: 0 auto;
   display: flex;
   align-items: center;
   gap: 12px;
   padding: 0 24px;
-  background: rgb(245 246 248 / 88%);
-  backdrop-filter: blur(8px);
-  border-bottom: 1px solid var(--line);
 }
 
 .tb-round {
@@ -295,6 +305,9 @@ button {
 
 .page {
   flex: 1;
+  width: 100%;
+  max-width: var(--content-max);
+  margin: 0 auto;
   padding: 24px;
   min-width: 0;
 }

@@ -65,6 +65,21 @@ def test_requests_need_a_login(client: TestClient) -> None:
     assert client.post("/api/auth/dev-login", json={"login": "system"}).status_code == 422
 
 
+def test_me_says_whether_any_cost_center_is_readable(client: TestClient, engine: Engine) -> None:
+    # The admin role alone reads no cost center (ADR 0009); roles combine.
+    admin = replace(access.system_user(engine), is_admin=True)
+    access.create_user(engine, admin, "it@x.example", "IT", is_admin=True)
+    for who, reads in [
+        (OWNER, True),
+        (APPROVER, True),
+        (VIEWER, True),
+        (NOBODY, False),
+        ("it@x.example", False),
+    ]:
+        login(client, who)
+        assert client.get("/api/me").json()["reads_cost_centers"] is reads, who
+
+
 def test_dev_login_can_be_off(migrated: Settings, client: TestClient) -> None:
     with TestClient(create_app(migrated.model_copy(update={"dev_login": False}))) as c:
         assert c.get("/api/auth/options").json() == {"dev_login": False}

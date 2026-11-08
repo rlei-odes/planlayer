@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import { api, type Me, type Version } from './api'
 import {
   CollapseIcon,
@@ -45,8 +45,11 @@ function groupsFor(me: Me): { label: string; pages: Page[] }[] {
   const admin: Page[] = []
   if (me.is_controller || me.is_admin) admin.push('masterdata')
   if (me.is_admin) admin.push('users')
+  // Planning and status need cost centers to read: a role, ownership, a deputy grant or an
+  // approver assignment. The admin role alone gives none (ADR 0009).
+  const plan: Page[] = me.is_controller || me.is_viewer || me.reads_cost_centers ? ['planning', 'status'] : []
   const groups: { label: string; pages: Page[] }[] = [
-    { label: 'Plan', pages: ['planning', 'status'] },
+    { label: 'Plan', pages: plan },
     { label: 'Round', pages: round },
     { label: 'Admin', pages: admin },
   ]
@@ -75,6 +78,9 @@ export default function App() {
   const [versions, setVersions] = useState<Version[]>([])
   const [version, setVersion] = useState('')
   const [page, setPage] = useState<Page>(() => (window.location.hash.slice(1) as Page) || 'planning')
+  // A planning sheet wider than the usual content width (more comparison columns) widens the
+  // content area, top bar included, so the grid never needs a horizontal scrollbar to fit.
+  const [sheetWidth, setSheetWidth] = useState<number | null>(null)
   // Collapsed by default on narrow screens, so the grid and the setup preview keep their width.
   const [collapsed, setCollapsed] = useState(() => {
     const stored = remembered('planlayer.sidebar')
@@ -157,13 +163,13 @@ export default function App() {
 
   const groups = groupsFor(me)
   const pages = groups.flatMap((g) => g.pages)
-  const current = pages.includes(page) ? page : 'planning'
+  const current: Page | undefined = pages.includes(page) ? page : pages[0]
   const round = versions.find((v) => v.code === version)
   const roles = [me.is_admin && 'Admin', me.is_controller && 'Controller', me.is_viewer && 'Viewer'].filter(Boolean)
   const roleText = roles.join(', ')
   const contact = me.email ?? me.login
   const subtitle = roleText && roleText !== me.display_name ? roleText : contact !== me.display_name ? contact : ''
-  const needsRound = ROUND_PAGES.includes(current) && current !== 'setup'
+  const needsRound = !!current && ROUND_PAGES.includes(current) && current !== 'setup'
 
   return (
     <div className={`sh${collapsed ? ' collapsed' : ''}`}>
@@ -215,41 +221,56 @@ export default function App() {
         </div>
       </aside>
 
-      <div className="sh-main">
+      <div
+        className="sh-main"
+        style={sheetWidth ? ({ '--content-max': `max(var(--content-base), ${sheetWidth + 48}px)` } as CSSProperties) : undefined}
+      >
         <header className="tb">
-          {ROUND_PAGES.includes(current) && versions.length > 0 && (
-            <div className="tb-round">
-              <span>Round</span>
-              <Select
-                variant="pill"
-                label="Round"
-                value={version}
-                onChange={setVersion}
-                options={versions.map((v) => ({
-                  value: v.code,
-                  label: v.name,
-                  hint: `${v.status} · FY ${v.fiscal_year}`,
-                  dot: v.status,
-                }))}
-              />
+          <div className="tb-in">
+            {!!current && ROUND_PAGES.includes(current) && versions.length > 0 && (
+              <div className="tb-round">
+                <span>Round</span>
+                <Select
+                  variant="pill"
+                  label="Round"
+                  value={version}
+                  onChange={setVersion}
+                  options={versions.map((v) => ({
+                    value: v.code,
+                    label: v.name,
+                    hint: `${v.status} · FY ${v.fiscal_year}`,
+                    dot: v.status,
+                  }))}
+                />
+              </div>
+            )}
+            <div className="tb-user">
+              <span className="tb-avatar" aria-hidden="true">
+                {initials(me.display_name)}
+              </span>
+              <span className="tb-who">
+                <strong>{me.display_name}</strong>
+                {subtitle && <span>{subtitle}</span>}
+              </span>
+              <button type="button" className="su-icon" onClick={() => void logout()} aria-label="Log out" title="Log out">
+                <LogoutIcon />
+              </button>
             </div>
-          )}
-          <div className="tb-user">
-            <span className="tb-avatar" aria-hidden="true">
-              {initials(me.display_name)}
-            </span>
-            <span className="tb-who">
-              <strong>{me.display_name}</strong>
-              {subtitle && <span>{subtitle}</span>}
-            </span>
-            <button type="button" className="su-icon" onClick={() => void logout()} aria-label="Log out" title="Log out">
-              <LogoutIcon />
-            </button>
           </div>
         </header>
 
         <main className="page">
           {error && <div className="su-note error">{error}</div>}
+          {!current && (
+            <div className="su-card empty-state">
+              <h3>Nothing to show yet</h3>
+              <p className="su-hint">
+                You don’t plan or approve any cost center, and you have no role. Planners get their cost centers from
+                ownership or as deputies, set by the controller; the Viewer role reads every cost center. Ask your
+                controller or admin.
+              </p>
+            </div>
+          )}
           {needsRound && versions.length === 0 && (
             <div className="su-card empty-state">
               <h3>No planning round yet</h3>
@@ -265,7 +286,7 @@ export default function App() {
               )}
             </div>
           )}
-          {version && current === 'planning' && <PlanningPage key={`${me.login}/${version}`} version={version} />}
+          {version && current === 'planning' && <PlanningPage key={`${me.login}/${version}`} version={version} onWidth={setSheetWidth} />}
           {version && current === 'status' && (
             <StatusPage key={`${me.login}/${version}`} version={version} me={me} onRoundChanged={loadVersions} />
           )}
