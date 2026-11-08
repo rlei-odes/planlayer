@@ -91,6 +91,7 @@ pgdata/
 
 # Benchmarks and spike results
 /spikes/**/results/
+/spikes/**/dist/
 *.prof
 *.speedscope.json
 
