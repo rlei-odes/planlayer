@@ -2,6 +2,7 @@ from fastapi.testclient import TestClient
 
 from planlayer.api.app import create_app
 from planlayer.config import Settings
+from planlayer.store import migrate
 
 
 def test_health_reports_schema_revision(migrated: Settings) -> None:
@@ -9,7 +10,7 @@ def test_health_reports_schema_revision(migrated: Settings) -> None:
         response = client.get("/api/health")
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
-    assert response.json()["schema_revision"] == "0001"
+    assert response.json()["schema_revision"] == migrate.head_revision()
 
 
 def test_health_before_first_migration(db_settings: Settings) -> None:

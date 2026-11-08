@@ -3,6 +3,7 @@
 from alembic import command
 from alembic.config import Config
 from alembic.runtime.migration import MigrationContext
+from alembic.script import ScriptDirectory
 from sqlalchemy import Connection, Engine, inspect
 
 from planlayer.config import Settings
@@ -45,6 +46,26 @@ def downgrade(settings: Settings, revision: str) -> None:
         command.downgrade(_config(settings, engine), revision)
     finally:
         engine.dispose()
+
+
+def head_revision() -> str:
+    """The newest migration revision shipped with this version of Planlayer."""
+    config = Config()
+    config.set_main_option("script_location", "planlayer.store:migrations")
+    head = ScriptDirectory.from_config(config).get_current_head()
+    assert head is not None
+    return head
+
+
+def migration_schema() -> str:
+    """The configured app schema, quoted, for raw SQL inside a migration (functions, triggers).
+
+    Only callable while a migration runs; table DDL uses the symbolic schema instead.
+    """
+    from alembic import context
+
+    settings: Settings = context.config.attributes["settings"]
+    return f'"{settings.app_schema}"'
 
 
 def current_revision(conn: Connection, schema: str) -> str | None:

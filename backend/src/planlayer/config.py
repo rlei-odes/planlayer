@@ -28,6 +28,8 @@ class Settings(BaseSettings):
 
     app_schema: str = "planlayer_app"
     output_schema: str = "planlayer_out"
+    # Schema of the source views, until each dataset is mapped on the mapping page (E-01).
+    source_schema: str = "gold"
 
     # Fake login for early iterations (T-22). Refused in production.
     dev_login: bool = False
@@ -35,7 +37,7 @@ class Settings(BaseSettings):
     # Built frontend served by the API; unset in development, where Vite serves it.
     frontend_dist: Path | None = None
 
-    @field_validator("app_schema", "output_schema")
+    @field_validator("app_schema", "output_schema", "source_schema")
     @classmethod
     def _plain_identifier(cls, value: str) -> str:
         # Schema names end up in DDL and search paths; only unquoted lowercase identifiers.

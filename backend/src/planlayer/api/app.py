@@ -11,6 +11,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from planlayer import __version__
+from planlayer.api.planning import router as planning_router
 from planlayer.config import Settings
 from planlayer.store.db import create_app_engine
 from planlayer.store.migrate import current_revision
@@ -33,6 +34,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         engine.dispose()
 
     app = FastAPI(title="Planlayer", version=__version__, lifespan=lifespan)
+    app.state.engine = engine
+    app.include_router(planning_router)
 
     @app.get("/api/health")
     def health(response: Response) -> Health:

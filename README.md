@@ -2,7 +2,7 @@
 
 An open-source, self-hosted web app for corporate budgeting and forecasting. Planners enter plan values in an Excel-like grid next to their actuals. The data lives in plain Postgres tables that any BI tool can read.
 
-Status: early development. The skeleton runs; planning features are not built yet.
+Status: early development. A first end-to-end slice runs: sync from Postgres views, a budget version, and a planning grid for one cost center.
 
 - [docs/scope.md](docs/scope.md): what v1 does and does not do
 - [BACKLOG.md](BACKLOG.md): decisions, spikes, test data and epics
@@ -45,6 +45,13 @@ Test data (the fictional manufacturer Nordwerk, see [tools/gen_testdata](tools/g
 
 ```
 cd tools/gen_testdata && uv run gen-testdata --db postgresql://postgres:postgres@localhost:5432/dwh
+```
+
+Sync the test company into the app and create a budget to plan (the planning page is on http://localhost:8000, or :5173 with Vite):
+
+```
+docker compose exec app planlayer sync --entity DE
+docker compose exec app planlayer create-version B2026 --name "Budget 2026" --fiscal-year 2026
 ```
 
 Checks, as run in CI:

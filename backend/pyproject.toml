@@ -10,6 +10,8 @@ dependencies = [
     "fastapi==0.162.2",
     # Postgres driver for SQLAlchemy; the pool keeps connections per process.
     "psycopg[binary,pool]==3.3.8",
+    # Interchange format of the adapters (ADR 0004).
+    "pyarrow==26.0.1",
     # Settings from environment variables (planlayer.config).
     "pydantic-settings==2.16.2",
     "sqlalchemy==2.1.8",
@@ -43,6 +45,10 @@ select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
 strict = true
 packages = ["planlayer"]
 mypy_path = "src"
+
+[[tool.mypy.overrides]]
+module = ["pyarrow", "pyarrow.*"]
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

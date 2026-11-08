@@ -1,29 +1,70 @@
 :root {
   font-family: system-ui, sans-serif;
-  color-scheme: light dark;
+  font-size: 13px;
 }
 
-main {
-  max-width: 40rem;
-  margin: 2rem auto;
-  padding: 0 1rem;
-}
-
-dl {
-  display: grid;
-  grid-template-columns: max-content 1fr;
-  gap: 0.25rem 1rem;
-}
-
-dd {
+body {
   margin: 0;
 }
 
-.ok {
-  color: green;
+.app {
+  padding: 8px 16px;
 }
 
-.unavailable,
+header {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+}
+
+h1 {
+  font-size: 18px;
+  margin: 4px 0;
+}
+
+.health.ok,
+.muted {
+  color: #666;
+}
+
+.health.unavailable,
 .error {
-  color: crimson;
+  color: #8a1c1c;
+}
+
+.error,
+.info {
+  padding: 4px 8px;
+  border-radius: 4px;
+  margin-bottom: 6px;
+  background: #fdecea;
+}
+
+.info {
+  background: #eef3fb;
+  color: #1d3d75;
+}
+
+.toolbar {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+
+.grid {
+  height: calc(100vh - 140px);
+}
+
+revo-grid .number {
+  text-align: right;
+}
+
+revo-grid .group {
+  background: #eef3fb;
+  font-weight: 600;
+}
+
+revo-grid .reference {
+  color: #555;
+  background: #fafafa;
 }

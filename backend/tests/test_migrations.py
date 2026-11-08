@@ -13,7 +13,7 @@ def test_upgrade_creates_installation_row_in_configured_schema(migrated: Setting
         assert "installation" in inspect(conn).get_table_names(schema=migrated.app_schema)
         row = conn.execute(select(installation)).one()
         assert row.fiscal_year_start_month == 1
-        assert migrate.current_revision(conn, migrated.app_schema) == "0001"
+        assert migrate.current_revision(conn, migrated.app_schema) == migrate.head_revision()
     engine.dispose()
 
 
@@ -22,7 +22,7 @@ def test_downgrade_and_upgrade_round_trip(migrated: Settings) -> None:
     migrate.upgrade(migrated)
     engine = create_app_engine(migrated)
     with engine.connect() as conn:
-        assert migrate.current_revision(conn, migrated.app_schema) == "0001"
+        assert migrate.current_revision(conn, migrated.app_schema) == migrate.head_revision()
     engine.dispose()
 
 
