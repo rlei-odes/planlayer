@@ -102,15 +102,12 @@ Each item lists the options and how to decide. Items marked ⚙ are decided by a
   Accounts must carry an account type (at least revenue/cost) so the T-7 sign rules can be applied. The amount may arrive in either sign convention, as configured in E-12. Hierarchies arrive parent–child; the app computes all sums, and source sums are used only for reconciliation.
 
   Also define the **mapping**: how the admin binds a dataset to a view, table or query; how columns are mapped to fields (by name, renamed, constant, or a simple expression); what validation and preview run before the first sync; and how a mapping is stored and versioned. Publish the result as `docs/data-contract.md`.
-- [ ] **D-12 Write-back / export shape.** The target is `planlayer_out` (T-14), so Planlayer owns the target DDL. Publishing is an explicit action by the controller (T-21). Open:
-  - the table shape: wide (one column per dimension) or long;
-  - what a publish covers: a whole version, or only its approved cost centers;
-  - whether the output carries each value's approval status and a publish timestamp;
-  - full replace per version (recommended, and needed for idempotent publishing) or upsert.
+- [x] **D-12 Write-back / export shape.** Decided: [ADR 0011](docs/adr/0011-publishing.md). Scope chosen per run (approved only by default, or the whole round); one row per cost center × account × month with codes, status and publish time; a run replaces the round's rows in `planlayer_out` after a preview of rows added, changed and removed, and is refused if the result changed since the preview; the same rows as CSV or Parquet downloads.
 - [ ] **D-13 Master data changes between syncs.** Roll-up restates under the current tree (T-19). Still to define, for a member that is renamed, moved, new, or no longer delivered by the source:
   - what happens to plan values keyed on a member that disappeared (kept and flagged as orphaned, not deleted);
   - how the sync report shows each kind of change to the controller;
   - whether a new member is enabled for planning automatically or waits for the controller (T-17): decided in [ADR 0007](docs/adr/0007-planning-rounds.md) for running rounds; a new cost center waits for the controller.
+- [ ] **D-31 Planning without a source.** The Simple and Medium setup levels (E-03) plan without actuals. Decide where cost centers, accounts, owners and hierarchies come from then: entered on a setup page, uploaded as CSV, or both; and how such members later meet a source when the installation moves to the Full level.
 - [ ] **D-27 Sync discipline.** Adopt Budget & Forecast's import rules for every sync: resolve everything before writing anything, list every unmapped member, idempotent re-runs, no silent overwrite of changed actuals without an explicit flag, dry-run, and a sync-run record with source hash/row counts and actor.
 
 ### Application
@@ -118,8 +115,8 @@ Each item lists the options and how to decide. Items marked ⚙ are decided by a
 - [x] **D-15 Python stack.** Decided: T-10.
 - [x] **D-16 Frontend stack.** Decided: T-9.
 - [x] **D-17 Grid component.** Decided: [ADR 0006](docs/adr/0006-grid-component.md). RevoGrid with `applyOnClose` and `range`; edits go through the planning model; undo and copy shaping are built in the app.
-- [ ] **D-18 Grid API shape.** Cell-block request (row dims, column dims, filters, version(s), period range) → response (headers, cell values, cell metadata: editable, input type, locked, has comment). Edit request = list of `(coordinates, value, input_type)` plus a block version for conflict detection. Paging/virtualisation strategy for large blocks. Keep **zero and blank distinct** end to end: a stored 0 is a plan value, and no row means "not planned". Konsolidat conflates the two.
-- [ ] **D-19 Concurrency.** Optimistic locking per cell vs. per block, conflict UX, and whether other planners' saves are pushed live (websocket/SSE) or picked up on refresh. Recommendation for v1: optimistic per cell, refresh-on-save, no live push. Konsolidat's whole-sheet `modified` check causes conflicts between unrelated cells; versioning per fact row avoids that.
+- [x] **D-18 Grid API shape.** Decided: [ADR 0010](docs/adr/0010-grid-api-and-concurrency.md). The whole cost center sheet in one response, with editability per row decided by the server; edits as a list applied all or nothing.
+- [x] **D-19 Concurrency.** Decided: [ADR 0010](docs/adr/0010-grid-api-and-concurrency.md). Optimistic per cell with `row_version`; on a conflict nothing is saved and the grid reloads; no live push.
 - [x] **D-20 Auth.** Decided: T-22 (OIDC and LDAPS from `lancy-next`; fake development login first).
 - [x] **D-21 Permissions model.** Decided: [ADR 0009](docs/adr/0009-roles-and-scopes.md). Roles admin, controller and viewer as flags; planners from the matched owner (e-mail or login), the controller's override and deputies on cost centers or nodes; approvers read below their node; forced RLS over a per-user access view; hashed session tokens in a cookie.
 - [x] **D-22 Workflow.** Decided: [ADR 0008](docs/adr/0008-workflow.md). One-step approval per round × cost center (not started → in progress → submitted → approved, reject and reopen with comment); approvers assigned to hierarchy nodes, nearest one above wins, controller as fallback; round status setup / open / closed; the lock trigger reads the status.
@@ -181,7 +178,7 @@ Mid-size manufacturer of industrial pumps and valves, ~400 employees.
 - [x] **F-02** `docker compose` for development: the app and one Postgres server with two databases, mirroring the typical setup from T-14. `planlayer` holds `planlayer_app`; `dwh` holds the simulated warehouse (seeded from TD-10) and `planlayer_out`. The database roles from T-14 are applied, so development runs under the same permissions as an installation. CI also runs the single-database variant (all three connections on one database).
 - [x] **F-03** CI (`.github/workflows/ci.yml`): backend lint, format, mypy and pytest against a Postgres 18 service; the install script plus migrate and serve as the unprivileged app role across two databases; frontend lint, typecheck and build; image build. Ticked after the first green run on GitHub. Tests against the `small` dataset are added with the generator.
 - [ ] **F-04** OpenAPI → TypeScript client generation wired into the build.
-- [ ] **F-05** Alembic baseline for the app store: done (revision `0001`, the installation row with the fiscal year start month; constraint naming convention; configurable schema via schema translation; `planlayer migrate` refuses to run without the DBA-created schema). Open: the naming conventions for BI-readable tables and views in `planlayer_out`, settled with D-12.
+- [x] **F-05** Alembic baseline for the app store (revision `0001`, the installation row with the fiscal year start month; constraint naming convention; configurable schema via schema translation; `planlayer migrate` refuses to run without the DBA-created schema). Naming in `planlayer_out`: [ADR 0011](docs/adr/0011-publishing.md).
 - [x] **F-06** ADR template and `docs/adr/` README.
 - [ ] **F-07** Invariant suite: SQL assertions that return violating rows, run in CI and available to admins as a health check. Covers: unique fact grain, signs (revenue above plan is favourable, and a sync → export round trip returns the source signs unchanged), roll-ups tie to leaves **per slice** (not only per node total), no hierarchy cycles, every member assigned in each hierarchy, spreads tie exactly, no writes in locked versions, no plan values outside open periods. Each assertion gets a **must-flag fixture** (from TD-12) that has to make it fail, which proves the check catches the defect (Konsolidat's `.must_flag` pattern).
 - [x] **F-08** `.gitignore` in place: it ignores `research/` (cloned reference repos), `docs_local/` (personal notes) and the usual Python/Node/data/editor artefacts.
@@ -198,14 +195,22 @@ Mid-size manufacturer of industrial pumps and valves, ~400 employees.
   - **Layer and role mapping** (D-08, D-21).
   - **Validation:** the page warns about accounts with no type, since those can't be signed.
 - [ ] **E-02** Dimensions & hierarchies: browse synced members, plus manual members/hierarchies for app-only dimensions.
-- [ ] **E-03** Yearly planning setup (T-24): a modular page where the controller composes a fiscal year's planning round from modules and sets each area's scope, grain, entry form per account group, open periods and visible comparison versions.
+- [ ] **E-03** Yearly planning setup (T-24): a modular page where the controller (or admin) composes a fiscal year's planning round from modules and sets each area's scope, grain, entry form per account group, open periods and visible comparison versions.
+  - **Live preview:** next to the settings, a mock-up of the sheet the planner will get with the chosen options (columns, editable and read-only cells, hidden months, comparison columns), updating as options change.
+  - **Three levels, each usable end to end:**
+    - **Simple:** plan only, no actuals, full year only.
+    - **Medium:** plan only, with seasonality profiles and the full cost center hierarchies.
+    - **Full:** adds source queries that pull in actuals (E-01) as comparisons and spread references.
+  - Hiding an account offers to clear its remaining plan values first (ADR 0007).
+  - Depends on D-31 for the Simple and Medium levels.
 - [ ] **E-04** Versions: create, copy with shift + uplift, compare.
 - [ ] **E-05** Planning grid (RevoGrid, ADR 0006) for one planning unit at a time (T-25), with a unit switcher: edit, paste, fill-drag, subtotals, keyboard flow, percentage mode, and cells editable as the entry form allows. Undo of the last change batch; copy with row and column headers.
 - [ ] **E-06** Top-down spreading from totals (proportional / equal / profile) and spread profiles.
 - [ ] **E-07** Workflow: submit → approve → lock per version × cost center, with database-enforced locks, and the status page rolled up by department and hierarchy node (T-20). The controller's publish action (T-21).
 - [ ] **E-08** Change log and cell comments.
 - [ ] **E-09** Users, OIDC and LDAPS login (T-22), roles, owner-based and granted member scopes (T-17), and the per-round enabling of cost centers for planning.
-- [ ] **E-10** Publishing plan values to `planlayer_out` (D-12), with documented BI-readable tables and views.
+- [ ] **E-10** Publishing ([ADR 0011](docs/adr/0011-publishing.md)): simple options first, CSV and Parquet downloads of a round's plan values; then writing to `planlayer_out`, where every run shows a preview of what it would do (rows added, changed and removed, especially existing rows that would be overwritten) before it writes. Run history, republish all, and `docs/output.md` documenting the tables and views.
+- [ ] **E-13** UI/UX design phase: with the main flows on screen (setup, plan, approve, publish), iterate on the frontend while the backend stays mostly as it is: navigation, visual language, the planning grid's look and keyboard flow, empty and error states, the status and setup pages. Done with real users' walkthroughs where possible (R-4).
 - [ ] **E-11** Self-host packaging: container image on GHCR, the DBA install script and checklist (D-25), upgrade/migration procedure, the scheduled backup and restore (D-30), install docs.
 
 **Later (not v1):** layers beyond `base`, rolling forecast, price × volume drivers, headcount planning as a module (T-24), simple formulas, non-Postgres adapters, balance sheet, an "attention" list (everything that needs a person: missing submissions, unexplained variances, unrolled forecast, unapproved version), variance commentary thresholds, and a default spread profile per account group.
@@ -222,4 +227,8 @@ Mid-size manufacturer of industrial pumps and valves, ~400 employees.
 6. ✓ D-04 (ADR 0007), D-22 (ADR 0008).
 7. ✓ Rounds and workflow in the store (ADR 0007, ADR 0008): planning rounds with modules, enabled cost centers, entry forms per account group and account, comparison columns, seasonality profiles, sheet and hidden accounts, copy-from-round; workflow status and events, approvers per node; the lock trigger reading round, enabled cost center, status and hidden accounts. The grid returns per row its entry form, spread basis, fallback and editable cells; the planning page renders them, adds accounts and submits; the status page rolls up per node, approves (also in bulk), rejects, reopens, opens and closes the round, and enables cost centers. Not yet in it: the setup page (E-03) and clearing values before hiding an account, who may take which action (D-21), restricting a module to account groups, notifications.
 8. ✓ D-21 (ADR 0009) and the development login: users with admin, controller and viewer roles; owners matched by e-mail or login, overrides and deputies on the responsibilities page, approvers per node; forced RLS on the fact table; every request as the logged-in user; status page actions per user ("waiting for me"); users page; TD-09 seed. Not yet in it: OIDC and LDAPS (E-09), roles from directory groups.
-9. Remaining ADRs (D-12, D-13, D-18, D-19, D-24, D-25, D-27, D-28, D-29, D-30) and F-items, then epics in order E-01 → E-05 → E-06 → E-09 → E-07 → the rest.
+9. ✓ D-18, D-19 (ADR 0010), D-12 (ADR 0011).
+10. D-31, then E-03: the setup page with the live planner preview, at the Simple, Medium and Full levels.
+11. E-10 first cut: downloads, then preview and run into `planlayer_out`.
+12. E-13 UI/UX design phase over the main flows, backend mostly frozen.
+13. Remaining ADRs (D-13, D-24, D-25, D-27, D-28, D-29, D-30) and F-items, then epics E-01 → E-05 → E-06 → E-09 → E-11 → the rest.
