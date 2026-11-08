@@ -11,7 +11,7 @@ import { useCallback, useMemo, useState } from 'react'
 import { COL_LABEL, COLUMN_TITLES, type PlanModel } from './model'
 
 export default function GlideView({ model, onErrors }: { model: PlanModel; onErrors: (e: string[]) => void }) {
-  const [, setVersion] = useState(0)
+  const [version, setVersion] = useState(0)
   const refresh = () => setVersion(model.version)
 
   const columns: GridColumn[] = useMemo(
@@ -27,7 +27,8 @@ export default function GlideView({ model, onErrors }: { model: PlanModel; onErr
       const bold = row.kind === 'group'
       return {
         kind: GridCellKind.Text,
-        data: col === COL_LABEL ? text : text.replace(/^[\d.]+% · /, ''),
+        // A percentage line edits its rate, not the computed amount.
+        data: row.kind === 'percent' && col !== COL_LABEL ? String(model.rates.get(row.key) ?? '') : text,
         displayData: text,
         allowOverlay: editable,
         readonly: !editable,
@@ -41,7 +42,9 @@ export default function GlideView({ model, onErrors }: { model: PlanModel; onErr
               : undefined,
       }
     },
-    [model],
+    // version: a new callback identity makes Glide redraw after every change (edit, paste, fill).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [model, version],
   )
 
   const onCellsEdited = useCallback(

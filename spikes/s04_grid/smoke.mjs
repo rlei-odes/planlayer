@@ -47,7 +47,7 @@ async function typeInto(text) {
   await typeInto('12000')
   const months = await Promise.all([...Array(12).keys()].map((m) => state('Glide', firstAccount, m)))
   const sum = months.reduce((a, v) => a + (v === 'blank' ? 0 : Number(v)), 0)
-  check('Glide: first edit after page load keeps every key (editor code loads lazily)', sum === 1200000, `months=${months.join(',')}`)
+  check('Glide: typing straight into a selected cell keeps every key', sum === 1200000, `months=${months.join(',')}`)
   c = cell(3, 2)
   await page.mouse.click(c.x, c.y)
   await page.waitForTimeout(200)

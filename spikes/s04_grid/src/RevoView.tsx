@@ -48,6 +48,8 @@ export default function RevoView({ model, onErrors }: { model: PlanModel; onErro
       source={source}
       range
       resize
+      // Save the typed value when the editor closes (click away, Tab), not only on Enter.
+      applyOnClose
       theme="compact"
       onBeforeedit={(e) => {
         e.preventDefault()

@@ -177,7 +177,8 @@ export class PlanModel {
   set(row: Row, col: number, raw: string): string | null {
     if (!this.editable(row, col)) return `${row.label} is locked`
     if (row.kind === 'percent') {
-      const rate = Number(raw.replace('%', '').replace(',', '.'))
+      // Accepts "22", "22%", "22,5 %" and the displayed "21% · 1,234.00" (rate before the %).
+      const rate = Number(raw.split('%')[0].trim().replace(',', '.'))
       if (!Number.isFinite(rate)) return `not a percentage: ${raw}`
       this.rates.set(row.key, rate)
       this.version++
