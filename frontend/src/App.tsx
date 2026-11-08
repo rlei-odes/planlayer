@@ -4,15 +4,17 @@ import LoginPage from './LoginPage'
 import MasterDataPage from './MasterDataPage'
 import PlanningPage from './PlanningPage'
 import ResponsibilitiesPage from './ResponsibilitiesPage'
+import SetupPage from './SetupPage'
 import StatusPage from './StatusPage'
 import UsersPage from './UsersPage'
 
 type Health = { status: 'ok' | 'unavailable'; version: string; schema_revision: string | null }
-type Page = 'planning' | 'status' | 'masterdata' | 'responsibilities' | 'users'
+type Page = 'planning' | 'status' | 'setup' | 'masterdata' | 'responsibilities' | 'users'
 
 const LABEL: Record<Page, string> = {
   planning: 'Planning',
   status: 'Status',
+  setup: 'Setup',
   masterdata: 'Master data',
   responsibilities: 'Responsibilities',
   users: 'Users',
@@ -20,6 +22,7 @@ const LABEL: Record<Page, string> = {
 
 function pagesFor(me: Me): Page[] {
   const pages: Page[] = ['planning', 'status']
+  if (me.is_controller) pages.push('setup')
   if (me.is_controller || me.is_admin) pages.push('masterdata')
   if (me.is_controller) pages.push('responsibilities')
   if (me.is_admin) pages.push('users')
@@ -118,12 +121,13 @@ export default function App() {
       {error && <div className="error">{error}</div>}
       {me === null && <LoginPage onLogin={setMe} />}
       {me && versions.length === 0 && (current === 'planning' || current === 'status') && (
-        <p>No planning round yet. Create one with `planlayer create-version`.</p>
+        <p>No planning round yet. {me.is_controller ? 'Create one under Setup.' : 'The controller creates one.'}</p>
       )}
       {me && version && current === 'planning' && <PlanningPage key={`${me.login}/${version}`} version={version} />}
       {me && version && current === 'status' && (
         <StatusPage key={`${me.login}/${version}`} version={version} me={me} onRoundChanged={loadVersions} />
       )}
+      {me && current === 'setup' && <SetupPage onRoundsChanged={loadVersions} />}
       {me && current === 'masterdata' && <MasterDataPage me={me} />}
       {me && current === 'responsibilities' && <ResponsibilitiesPage />}
       {me && current === 'users' && <UsersPage />}

@@ -204,7 +204,7 @@ Mid-size manufacturer of industrial pumps and valves, ~400 employees.
 - [ ] **E-08** Change log and cell comments.
 - [ ] **E-09** Users, OIDC and LDAPS login (T-22), roles, owner-based and granted member scopes (T-17), and the per-round enabling of cost centers for planning.
 - [ ] **E-10** Publishing ([ADR 0011](docs/adr/0011-publishing.md)): simple options first, CSV and Parquet downloads of a round's plan values; then writing to `planlayer_out`, where every run shows a preview of what it would do (rows added, changed and removed, especially existing rows that would be overwritten) before it writes. Run history, republish all, and `docs/output.md` documenting the tables and views.
-- [ ] **E-13** UI/UX design phase: with the main flows on screen (setup, plan, approve, publish), iterate on the frontend while the backend stays mostly as it is: navigation, visual language, the planning grid's look and keyboard flow, empty and error states, the status and setup pages. Done with real users' walkthroughs where possible (R-4).
+- [ ] **E-13** UI/UX design phase: with the main flows on screen (setup, plan, approve, publish), iterate on the frontend while the backend stays mostly as it is. It starts from the setup page's design tokens (`frontend/src/setup.css`): navigation, visual language, the planning grid's look and keyboard flow, empty and error states, the status and setup pages. Done with real users' walkthroughs where possible (R-4).
 - [ ] **E-11** Self-host packaging: container image on GHCR, the DBA install script and checklist (D-25), upgrade/migration procedure, the scheduled backup and restore (D-30), install docs.
 
 ### Cost center accounting (after v1)
@@ -233,7 +233,7 @@ German terms in parentheses, as controllers know them.
 8. ✓ D-21 (ADR 0009) and the development login: users with admin, controller and viewer roles; owners matched by e-mail or login, overrides and deputies on the responsibilities page, approvers per node; forced RLS on the fact table; every request as the logged-in user; status page actions per user ("waiting for me"); users page; TD-09 seed. Not yet in it: OIDC and LDAPS (E-09), roles from directory groups.
 9. ✓ D-18, D-19 (ADR 0010), D-12 (ADR 0011).
 10. ✓ D-11, D-31 (ADR 0012) and the master-data page: source queries with named columns and preview (admin), sync preview with confirmation of matches and run, the member tree with manual members and local overrides (controller). Parts of E-01 and E-02.
-11. E-03: the setup page with the live planner preview, at the Simple, Medium and Full levels.
+11. ✓ E-03 setup page: new rounds (set up like an earlier one), deadline, starting points Simple / Medium / Full, default entry form and exceptions per account group or account, comparison columns in order, hidden accounts, seasonality profiles; a draft saved all or nothing; beside it a live preview of the planner's sheet with example values, in the design language E-13 starts from. Not yet in it: offering to clear an account's values before hiding it, open periods, restricting a module to account groups.
 12. E-10 first cut: downloads, then preview and run into `planlayer_out`.
 13. E-13 UI/UX design phase over the main flows, backend mostly frozen.
 14. Remaining ADRs (D-13, D-24, D-25, D-27, D-28, D-29, D-30) and F-items, then epics E-01 → E-05 → E-06 → E-09 → E-11 → the rest.
