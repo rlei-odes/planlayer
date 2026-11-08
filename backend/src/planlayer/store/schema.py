@@ -13,6 +13,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     Integer,
     MetaData,
     Numeric,
@@ -23,6 +24,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
+from sqlalchemy.dialects.postgresql import ARRAY
 
 APP_SCHEMA = "planlayer_app"
 
@@ -121,10 +123,152 @@ version = Table(
     Column("code", Text, nullable=False, unique=True),
     Column("name", Text, nullable=False),
     Column("kind", Text, nullable=False),
-    # Plan versions cover one fiscal year; the actuals version covers all synced periods.
-    Column("fiscal_year", Integer),
     CheckConstraint("kind IN ('actuals', 'budget', 'forecast')", name="kind"),
-    CheckConstraint("(kind = 'actuals') = (fiscal_year IS NULL)", name="fiscal_year"),
+)
+
+# --- Planning rounds (ADR 0007) -------------------------------------------------------------------
+
+MODULE_COST_CENTER = "cost_center"
+
+# A plan version for one fiscal year, one-to-one; the version's code and name are the round's.
+planning_round = Table(
+    "planning_round",
+    metadata,
+    Column("version_id", SmallInteger, ForeignKey("version.version_id"), primary_key=True),
+    Column("fiscal_year", Integer, nullable=False),
+    Column("deadline", Date),
+    Column("status", Text, nullable=False, server_default="setup"),  # ADR 0008
+    Column("copied_from", SmallInteger, ForeignKey("planning_round.version_id")),
+)
+
+round_module = Table(
+    "round_module",
+    metadata,
+    Column("version_id", SmallInteger, ForeignKey("planning_round.version_id"), nullable=False),
+    Column("module", Text, nullable=False),
+    # Entry form of accounts without a setting of their own or of a group above them.
+    Column("default_form", Text, nullable=False, server_default="monthly"),
+    PrimaryKeyConstraint("version_id", "module"),
+)
+
+
+def _module_fk() -> ForeignKeyConstraint:
+    return ForeignKeyConstraint(
+        ["version_id", "module"], ["round_module.version_id", "round_module.module"]
+    )
+
+
+# The planning units a round has seen: enabled or disabled by the controller. A cost center that
+# arrived after the round was created has no row, and isn't planned until it's enabled.
+round_member = Table(
+    "round_member",
+    metadata,
+    Column("version_id", SmallInteger, nullable=False),
+    Column("module", Text, nullable=False),
+    Column("member_id", Integer, ForeignKey("member.member_id"), nullable=False),
+    Column("enabled", Boolean, nullable=False),
+    PrimaryKeyConstraint("version_id", "module", "member_id"),
+    _module_fk(),
+)
+
+# Installation-wide seasonality profiles (D-28), one value per fiscal month, as entered.
+seasonality_profile = Table(
+    "seasonality_profile",
+    metadata,
+    Column("profile_id", SmallInteger, primary_key=True),
+    Column("code", Text, nullable=False, unique=True),
+    Column("name", Text, nullable=False),
+    Column("entered_as", Text, nullable=False),
+    Column("values", ARRAY(Numeric), nullable=False),
+)
+
+# Entry form of an account group or a single account; the nearest setting above an account wins.
+entry_form = Table(
+    "entry_form",
+    metadata,
+    Column("version_id", SmallInteger, nullable=False),
+    Column("module", Text, nullable=False),
+    Column("account_id", Integer, ForeignKey("member.member_id"), nullable=False),
+    Column("form", Text, nullable=False),
+    Column("profile_id", SmallInteger, ForeignKey("seasonality_profile.profile_id")),
+    # Spread reference other than prior-year actuals.
+    Column("reference_version_id", SmallInteger, ForeignKey("version.version_id")),
+    PrimaryKeyConstraint("version_id", "module", "account_id"),
+    _module_fk(),
+)
+
+# Comparison columns shown next to the plan, in order.
+comparison = Table(
+    "comparison",
+    metadata,
+    Column("version_id", SmallInteger, nullable=False),
+    Column("module", Text, nullable=False),
+    Column("position", SmallInteger, nullable=False),
+    Column("kind", Text, nullable=False),  # prior_year_actuals / actuals / version
+    Column("compare_version_id", SmallInteger, ForeignKey("version.version_id")),
+    PrimaryKeyConstraint("version_id", "module", "position"),
+    _module_fk(),
+)
+
+# Accounts a planner added to a cost center's sheet.
+sheet_account = Table(
+    "sheet_account",
+    metadata,
+    Column("version_id", SmallInteger, nullable=False),
+    Column("module", Text, nullable=False),
+    Column("cost_center_id", Integer, ForeignKey("member.member_id"), nullable=False),
+    Column("account_id", Integer, ForeignKey("member.member_id"), nullable=False),
+    Column("added_by", Text),
+    Column("added_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    PrimaryKeyConstraint("version_id", "module", "cost_center_id", "account_id"),
+    _module_fk(),
+)
+
+# Accounts excluded from a module in a round; the lock trigger refuses plan values on them.
+hidden_account = Table(
+    "hidden_account",
+    metadata,
+    Column("version_id", SmallInteger, nullable=False),
+    Column("module", Text, nullable=False),
+    Column("account_id", Integer, ForeignKey("member.member_id"), nullable=False),
+    PrimaryKeyConstraint("version_id", "module", "account_id"),
+    _module_fk(),
+)
+
+# --- Workflow (ADR 0008) --------------------------------------------------------------------------
+
+# Status per round x cost center. No row means not_started. Read by the lock trigger.
+workflow_status = Table(
+    "workflow_status",
+    metadata,
+    Column("version_id", SmallInteger, ForeignKey("planning_round.version_id"), nullable=False),
+    Column("cost_center_id", Integer, ForeignKey("member.member_id"), nullable=False),
+    Column("status", Text, nullable=False),
+    Column("changed_at", DateTime(timezone=True)),
+    Column("changed_by", Text),
+    PrimaryKeyConstraint("version_id", "cost_center_id"),
+)
+
+workflow_event = Table(
+    "workflow_event",
+    metadata,
+    Column("id", BigInteger, primary_key=True),
+    Column("version_id", SmallInteger, ForeignKey("planning_round.version_id"), nullable=False),
+    Column("cost_center_id", Integer, ForeignKey("member.member_id"), nullable=False),
+    Column("at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("actor", Text),
+    Column("from_status", Text, nullable=False),
+    Column("to_status", Text, nullable=False),
+    Column("comment", Text),
+)
+
+# Approvers of the cost centers below a node of the cost center hierarchy.
+approver_assignment = Table(
+    "approver_assignment",
+    metadata,
+    Column("member_id", Integer, ForeignKey("member.member_id"), nullable=False),
+    Column("user_name", Text, nullable=False),
+    PrimaryKeyConstraint("member_id", "user_name"),
 )
 
 # Fact table of the cost center planning area (ADR 0001): one column per dimension.

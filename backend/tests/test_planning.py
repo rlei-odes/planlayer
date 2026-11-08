@@ -1,14 +1,8 @@
 """The end-to-end slice: sync from a source, then read and edit the planning grid via the API.
 
-The source is a small hand-made schema shaped like the contract (D-11):
-- cost centers: NW > DEP > CC1, CC2 (entity DE)
-- accounts: PL > A (6000, 6010), B (7000)
-- 2025 actuals for CC1: 6000 = 100.00 every month; 6010 = 50.00 in January only;
-  7000 = -10.00 in February (a correction) and 30.00 in March. CC2: 6000 = 999.00 in January.
+The source is ``conftest.SOURCE``.
 """
 
-import secrets
-from collections.abc import Iterator
 from decimal import Decimal
 
 import pytest
@@ -16,95 +10,11 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, func, select, text
 
 from planlayer import sync
-from planlayer.adapters.source import PostgresSource
-from planlayer.api.app import create_app
 from planlayer.config import Settings
 from planlayer.store.db import create_app_engine
 from planlayer.store.schema import change_log, closure, member
 
-from .conftest import TEST_DATABASE_URL
-
-SOURCE = """
-CREATE TABLE {s}.v_entities AS SELECT 'DE'::text AS entity_code, 'Nordwerk DE'::text AS entity_name;
-CREATE TABLE {s}.v_cost_centers (cost_center_code text, cost_center_name text, entity_code text,
-    owner text, valid_from date, valid_to date);
-INSERT INTO {s}.v_cost_centers VALUES
-    ('CC1', 'Machining', 'DE', 'anna@x.example', '2010-01-01', '9999-12-31'),
-    ('CC2', 'Assembly', 'DE', NULL, '2010-01-01', '9999-12-31');
-CREATE TABLE {s}.v_cost_center_hierarchy (member_code text, member_name text, parent_code text,
-    is_group bool, sort_order int);
-INSERT INTO {s}.v_cost_center_hierarchy VALUES
-    ('NW', 'Group', NULL, true, 0), ('DEP', 'Production', 'NW', true, 1),
-    ('CC1', 'Machining', 'DEP', false, 1), ('CC2', 'Assembly', 'DEP', false, 2);
-CREATE TABLE {s}.v_accounts (account_code text, account_name text, account_type text);
-INSERT INTO {s}.v_accounts VALUES
-    ('6000', 'Wages', 'cost'), ('6010', 'Bonus', 'cost'), ('7000', 'Rent', 'cost');
-CREATE TABLE {s}.v_account_hierarchy (member_code text, member_name text, parent_code text,
-    is_group bool, sort_order int);
-INSERT INTO {s}.v_account_hierarchy VALUES
-    ('PL', 'P&L', NULL, true, 0), ('A', 'Personnel', 'PL', true, 1),
-    ('B', 'Facilities', 'PL', true, 2), ('6000', 'Wages', 'A', false, 1),
-    ('6010', 'Bonus', 'A', false, 2), ('7000', 'Rent', 'B', false, 1);
-CREATE TABLE {s}.v_gl_actuals_natural (period date, entity_code text, cost_center_code text,
-    account_code text, amount numeric);
-INSERT INTO {s}.v_gl_actuals_natural
-    SELECT make_date(2025, m, 1), 'DE', 'CC1', '6000', 100.00 FROM generate_series(1, 12) m;
-INSERT INTO {s}.v_gl_actuals_natural VALUES
-    ('2025-01-01', 'DE', 'CC1', '6010', 50.00),
-    ('2025-02-01', 'DE', 'CC1', '7000', -10.00), ('2025-03-01', 'DE', 'CC1', '7000', 30.00),
-    ('2025-01-01', 'DE', 'CC2', '6000', 999.00);
-"""
-
-BLANK = [None] * 12
-URL = "/api/versions/B2026/cost-centers/CC1"
-
-
-@pytest.fixture
-def source_schema(migrated: Settings) -> Iterator[str]:
-    assert TEST_DATABASE_URL
-    schema = f"test_src_{secrets.token_hex(4)}"
-    admin = create_engine(TEST_DATABASE_URL)
-    with admin.begin() as conn:
-        conn.execute(text(f"CREATE SCHEMA {schema}"))
-        conn.execute(text(SOURCE.format(s=schema)))
-    try:
-        yield schema
-    finally:
-        with admin.begin() as conn:
-            conn.execute(text(f"DROP SCHEMA {schema} CASCADE"))
-        admin.dispose()
-
-
-def run_sync(settings: Settings, schema: str) -> sync.SyncResult:
-    engine, source = create_app_engine(settings), PostgresSource(settings.app_url)
-    try:
-        return sync.run(engine, source, sync.default_mapping(schema), actor="test")
-    finally:
-        engine.dispose()
-        source.dispose()
-
-
-@pytest.fixture
-def client(migrated: Settings, source_schema: str) -> Iterator[TestClient]:
-    run_sync(migrated, source_schema)
-    engine = create_app_engine(migrated)
-    sync.create_version(engine, "B2026", "Budget 2026", "budget", 2026, "test")
-    engine.dispose()
-    with TestClient(create_app(migrated)) as c:
-        yield c
-
-
-def rows(grid: dict) -> dict[str, dict]:  # type: ignore[type-arg]
-    return {r["code"]: r for r in grid["rows"]}
-
-
-def plan(grid: dict, code: str) -> list[str | None]:  # type: ignore[type-arg]
-    return [c["value"] for c in rows(grid)[code]["plan"]]
-
-
-def versions_of(grid: dict, code: str) -> list[int | None]:  # type: ignore[type-arg]
-    return [c["row_version"] for c in rows(grid)[code]["plan"]]
-
+from .conftest import BLANK, TEST_DATABASE_URL, URL, plan, rows, run_sync, versions_of
 
 # --- Sync -----------------------------------------------------------------------------------------
 
@@ -152,17 +62,22 @@ def test_sync_refuses_unknown_codes_and_writes_nothing(
 def test_grid_rows_prior_year_and_blank_plan(client: TestClient) -> None:
     grid = client.get(f"{URL}/grid").json()
     assert [r["code"] for r in grid["rows"]] == ["A", "6000", "6010", "B", "7000"]
-    assert grid["periods"][0] == "2026-01-01" and grid["prior_periods"][0] == "2025-01-01"
+    assert grid["periods"][0] == "2026-01-01"
+    assert grid["comparisons"] == [{"kind": "prior_year_actuals", "label": "Actual 2025"}]
     r = rows(grid)
-    assert r["6000"]["prior_year"] == ["100.00"] * 12
-    assert r["6010"]["prior_year"] == ["50.00"] + [None] * 11
-    assert r["A"]["prior_year"][0] == "150.00" and r["A"]["prior_year"][1] == "100.00"
+    assert r["6000"]["comparisons"] == [["100.00"] * 12]
+    assert r["6010"]["comparisons"] == [["50.00"] + [None] * 11]
+    assert r["A"]["comparisons"][0][:2] == ["150.00", "100.00"]
+    assert r["6000"]["entry_form"] == "monthly" and r["6000"]["months_editable"]
     assert plan(grid, "6000") == BLANK
 
 
 def test_cost_center_switcher(client: TestClient) -> None:
     units = client.get("/api/versions/B2026/cost-centers").json()
-    assert [u["code"] for u in units] == ["CC1", "CC2"]
+    assert [(u["code"], u["status"]) for u in units] == [
+        ("CC1", "not_started"),
+        ("CC2", "not_started"),
+    ]
 
 
 def test_month_edit_zero_and_blank(client: TestClient) -> None:

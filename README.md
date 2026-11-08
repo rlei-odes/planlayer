@@ -54,6 +54,8 @@ docker compose exec app planlayer sync --entity DE
 docker compose exec app planlayer create-version B2026 --name "Budget 2026" --fiscal-year 2026
 ```
 
+A new planning round starts in status `setup`; open it on the status page before planning.
+
 Checks, as run in CI:
 
 ```

@@ -1,10 +1,12 @@
-"""Planning endpoints: versions, the cost center switcher, the grid and its edits.
+"""Planning endpoints: rounds, the cost center switcher, the grid and its edits, sheet accounts,
+the workflow and the status page.
 
 Amounts travel as strings (T-12); ``null`` is a blank cell, distinct from ``"0.00"``.
-Until login exists (E-09), every change is recorded with the actor ``dev``.
+Until login exists (E-09), every change is recorded with the actor ``dev``, who may take every
+action; roles and scopes come with D-21.
 """
 
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Annotated, Literal
 
@@ -13,7 +15,9 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import Engine
 
-from planlayer import planning
+from planlayer import planning, rounds, workflow
+from planlayer.domain.entry_forms import Form
+from planlayer.domain.workflow import Action, RoundStatus, Status, WorkflowError
 
 router = APIRouter(prefix="/api")
 ACTOR = "dev"
@@ -33,6 +37,8 @@ class Version(BaseModel):
     name: str
     kind: str
     fiscal_year: int
+    status: RoundStatus
+    deadline: date | None
 
 
 class PlanningUnit(BaseModel):
@@ -40,6 +46,7 @@ class PlanningUnit(BaseModel):
     name: str
     entity_code: str | None
     owner: str | None
+    status: Status
 
 
 class CellOut(BaseModel):
@@ -47,23 +54,38 @@ class CellOut(BaseModel):
     row_version: int | None
 
 
+class ComparisonOut(BaseModel):
+    kind: str
+    label: str
+
+
 class RowOut(BaseModel):
     kind: Literal["group", "account"]
     code: str
     name: str
     group_code: str
-    prior_year: list[str | None]
+    comparisons: list[list[str | None]]
     plan: list[CellOut]
+    entry_form: Form | None
+    basis: str | None
+    fallback: bool
+    months_visible: bool
+    months_editable: bool
+    total_editable: bool
 
 
 class GridOut(BaseModel):
     version_code: str
     version_name: str
     fiscal_year: int
+    round_status: RoundStatus
+    deadline: date | None
     cost_center_code: str
     cost_center_name: str
+    status: Status
+    lock_reason: str | None
     periods: list[date]
-    prior_periods: list[date]
+    comparisons: list[ComparisonOut]
     rows: list[RowOut]
 
 
@@ -83,54 +105,164 @@ class ConflictOut(BaseModel):
     month: int
 
 
+class AccountOut(BaseModel):
+    code: str
+    name: str
+
+
+class AddAccountIn(BaseModel):
+    account_code: str
+
+
+class ActionIn(BaseModel):
+    action: Action
+    cost_centers: list[str] | None = None
+    node: str | None = None
+    comment: str | None = None
+
+
+class RoundStatusIn(BaseModel):
+    status: RoundStatus
+
+
+class EnableIn(BaseModel):
+    enabled: bool
+
+
+class StatusRowOut(BaseModel):
+    kind: Literal["node", "cost_center"]
+    code: str
+    name: str
+    depth: int
+    counts: dict[Status, int]
+    status: Status | None
+    owner: str | None
+    approvers: list[str]
+    changed_at: datetime | None
+    changed_by: str | None
+    overdue: bool
+
+
+class NotPlannedOut(BaseModel):
+    code: str
+    name: str
+    reason: Literal["new", "disabled"]
+
+
+class OverviewOut(BaseModel):
+    round: Version
+    rows: list[StatusRowOut]
+    not_planned: list[NotPlannedOut]
+
+
+def _version(r: rounds.RoundRef) -> Version:
+    return Version(
+        code=r.code,
+        name=r.name,
+        kind=r.kind,
+        fiscal_year=r.fiscal_year,
+        status=r.status,
+        deadline=r.deadline,
+    )
+
+
 def _grid_out(grid: planning.Grid) -> GridOut:
     return GridOut(
         version_code=grid.version_code,
         version_name=grid.version_name,
         fiscal_year=grid.fiscal_year,
+        round_status=grid.round_status,
+        deadline=grid.deadline,
         cost_center_code=grid.cost_center_code,
         cost_center_name=grid.cost_center_name,
+        status=grid.status,
+        lock_reason=grid.lock_reason,
         periods=grid.periods,
-        prior_periods=grid.prior_periods,
+        comparisons=[ComparisonOut(kind=c.kind, label=c.label) for c in grid.comparisons],
         rows=[
             RowOut(
                 kind=r.kind,
                 code=r.code,
                 name=r.name,
                 group_code=r.group_code,
-                prior_year=[_s(v) for v in r.prior_year],
+                comparisons=[[_s(v) for v in values] for values in r.comparisons],
                 plan=[CellOut(value=_s(c.value), row_version=c.row_version) for c in r.plan],
+                entry_form=r.entry_form,
+                basis=r.basis,
+                fallback=r.fallback,
+                months_visible=r.months_visible,
+                months_editable=r.months_editable,
+                total_editable=r.total_editable,
             )
             for r in grid.rows
         ],
     )
 
 
+def _errors(e: Exception) -> HTTPException:
+    match e:
+        case rounds.NotFoundError():
+            return HTTPException(404, str(e))
+        case planning.LockedError():
+            return HTTPException(423, str(e))
+        case planning.EditError() | WorkflowError() | rounds.RoundError():
+            return HTTPException(422, str(e))
+    raise e
+
+
+HANDLED = (
+    rounds.NotFoundError,
+    planning.LockedError,
+    planning.EditError,
+    WorkflowError,
+    rounds.RoundError,
+)
+
+
 @router.get("/versions")
 def versions(request: Request) -> list[Version]:
-    return [Version.model_validate(v) for v in planning.plan_versions(_engine(request))]
+    return [_version(r) for r in rounds.rounds(_engine(request))]
+
+
+@router.post("/versions/{version_code}/status", responses={404: {}, 422: {}})
+def round_status(request: Request, version_code: str, body: RoundStatusIn) -> Version:
+    engine = _engine(request)
+    try:
+        rounds.set_round_status(engine, ACTOR, version_code, body.status)
+    except HANDLED as e:
+        raise _errors(e) from None
+    with engine.connect() as conn:
+        return _version(rounds.get_round(conn, version_code))
 
 
 @router.get("/versions/{version_code}/cost-centers")
 def cost_centers(request: Request, version_code: str) -> list[PlanningUnit]:
     try:
         units = planning.planning_units(_engine(request), version_code)
-    except planning.NotFoundError as e:
-        raise HTTPException(404, str(e)) from None
+    except HANDLED as e:
+        raise _errors(e) from None
     return [PlanningUnit.model_validate(u) for u in units]
+
+
+@router.post("/versions/{version_code}/cost-centers/{cc_code}/enabled", responses={404: {}})
+def enable(request: Request, version_code: str, cc_code: str, body: EnableIn) -> None:
+    try:
+        rounds.set_member_enabled(_engine(request), ACTOR, version_code, cc_code, body.enabled)
+    except HANDLED as e:
+        raise _errors(e) from None
 
 
 @router.get("/versions/{version_code}/cost-centers/{cc_code}/grid")
 def grid(request: Request, version_code: str, cc_code: str) -> GridOut:
     try:
         return _grid_out(planning.read_grid(_engine(request), version_code, cc_code))
-    except planning.NotFoundError as e:
-        raise HTTPException(404, str(e)) from None
+    except HANDLED as e:
+        raise _errors(e) from None
 
 
 @router.post(
     "/versions/{version_code}/cost-centers/{cc_code}/edits",
-    responses={409: {"model": list[ConflictOut]}, 422: {}},
+    responses={409: {"model": list[ConflictOut]}, 422: {}, 423: {}},
 )
 def edit(request: Request, version_code: str, cc_code: str, body: EditsIn) -> GridOut:
     """Apply edits atomically; returns the updated grid, or 409 with the conflicting cells."""
@@ -138,13 +270,64 @@ def edit(request: Request, version_code: str, cc_code: str, body: EditsIn) -> Gr
     edits = [planning.Edit(e.account_code, e.month, e.value, e.expected) for e in body.edits]
     try:
         planning.apply_edits(engine, ACTOR, version_code, cc_code, edits)
-    except planning.NotFoundError as e:
-        raise HTTPException(404, str(e)) from None
-    except planning.EditError as e:
-        raise HTTPException(422, str(e)) from None
     except planning.ConflictError as e:
         return JSONResponse(  # type: ignore[return-value]
             status_code=409,
             content=[{"account_code": c.account_code, "month": c.month} for c in e.conflicts],
         )
+    except HANDLED as e:
+        raise _errors(e) from None
     return _grid_out(planning.read_grid(engine, version_code, cc_code))
+
+
+@router.get("/versions/{version_code}/accounts")
+def accounts(request: Request, version_code: str) -> list[AccountOut]:
+    """Accounts a planner may add to a sheet."""
+    try:
+        found = planning.addable_accounts(_engine(request), version_code)
+    except HANDLED as e:
+        raise _errors(e) from None
+    return [AccountOut.model_validate(a) for a in found]
+
+
+@router.post(
+    "/versions/{version_code}/cost-centers/{cc_code}/accounts", responses={422: {}, 423: {}}
+)
+def add_account(request: Request, version_code: str, cc_code: str, body: AddAccountIn) -> GridOut:
+    engine = _engine(request)
+    try:
+        planning.add_account(engine, ACTOR, version_code, cc_code, body.account_code)
+        return _grid_out(planning.read_grid(engine, version_code, cc_code))
+    except HANDLED as e:
+        raise _errors(e) from None
+
+
+@router.post("/versions/{version_code}/workflow", responses={404: {}, 422: {}})
+def act(request: Request, version_code: str, body: ActionIn) -> list[str]:
+    """Submit, approve, reject or reopen cost centers; returns the codes changed."""
+    try:
+        return workflow.act(
+            _engine(request),
+            ACTOR,
+            version_code,
+            body.action,
+            cost_centers=body.cost_centers,
+            node=body.node,
+            comment=body.comment,
+        )
+    except HANDLED as e:
+        raise _errors(e) from None
+
+
+@router.get("/versions/{version_code}/overview")
+def overview(request: Request, version_code: str) -> OverviewOut:
+    """The status page: every enabled cost center, rolled up per hierarchy node."""
+    try:
+        o = workflow.overview(_engine(request), version_code, date.today())
+    except HANDLED as e:
+        raise _errors(e) from None
+    return OverviewOut(
+        round=_version(o.round),
+        rows=[StatusRowOut.model_validate(r, from_attributes=True) for r in o.rows],
+        not_planned=[NotPlannedOut.model_validate(n, from_attributes=True) for n in o.not_planned],
+    )

@@ -16,7 +16,7 @@ The controller sets up each fiscal year's planning from modules (T-24): what is 
 |---|---|
 | **Planning round** | One plan version (budget or forecast) for one fiscal year: name, deadline, status (`setup` → `open` → `closed`, ADR 0008), and the round it was copied from. A fiscal year can have several rounds (a budget, then forecasts). |
 | **Round module** | A planning module enabled in the round: `cost_center` and `sales` in v1, later `headcount`. Each module stores into its planning area's fact table (ADR 0001) and has its own settings below. |
-| **Enabled members** | The planning units of a module in the round, e.g. the cost centers to plan. All cost centers valid in the fiscal year start enabled, and the controller disables the rest. |
+| **Enabled members** | The planning units of a module in the round, e.g. the cost centers to plan, each enabled or disabled. All cost centers valid in the fiscal year when the round is created start enabled, and the controller disables the rest. A cost center that first arrives with a later sync isn't planned until the controller enables it; the status page lists it as new. |
 | **Entry form** | How a line is entered, set per module as a default, per **account group**, and optionally per single account. The most specific setting wins. |
 | **Comparison columns** | The reference columns shown next to the plan, per module, in order: prior-year actuals (default), another version (e.g. the last budget), or the current year's actuals to date. |
 | **Seasonality profiles** | Named, installation-wide profiles (D-28, TD-17), entered as percentages or relative numbers, chosen by entry forms. |
@@ -55,6 +55,7 @@ Hidden accounts are the exception:
 - **Account groups** are how controllers think about plannable detail ("travel only as a year total"). An override per account covers exceptions without making every account a setting.
 - **Storing months for every form** keeps one fact grain and one publish shape. Full-year-only lines still give BI monthly values.
 - **Short sheets:** comparison values, plan values and manual additions cover what a cost center actually uses. Showing all ~150 accounts would bury the relevant 20.
+- **New cost centers wait for the controller:** what is planned in a running round stays the controller's decision; the status page keeps a new cost center from being overlooked.
 - **Hiding:** accounts are phased out while their actuals stay in history. Hiding keeps them off the sheets without touching the source.
 - **Copying the previous round's setup** makes a new year's preparation a review, not a rebuild.
 

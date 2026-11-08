@@ -359,16 +359,3 @@ def _write_actuals(
             ],
         )
     return len(cells)
-
-
-def create_version(
-    engine: Engine, code: str, name: str, kind: str, fiscal_year: int, actor: str
-) -> int:
-    with unit_of_work(engine, actor) as conn:
-        return int(
-            conn.execute(
-                insert(version)
-                .values(code=code, name=name, kind=kind, fiscal_year=fiscal_year)
-                .returning(version.c.version_id)
-            ).scalar_one()
-        )

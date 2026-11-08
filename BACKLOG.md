@@ -110,7 +110,7 @@ Each item lists the options and how to decide. Items marked ⚙ are decided by a
 - [ ] **D-13 Master data changes between syncs.** Roll-up restates under the current tree (T-19). Still to define, for a member that is renamed, moved, new, or no longer delivered by the source:
   - what happens to plan values keyed on a member that disappeared (kept and flagged as orphaned, not deleted);
   - how the sync report shows each kind of change to the controller;
-  - whether a new member is enabled for planning automatically or waits for the controller (T-17).
+  - whether a new member is enabled for planning automatically or waits for the controller (T-17): decided in [ADR 0007](docs/adr/0007-planning-rounds.md) for running rounds; a new cost center waits for the controller.
 - [ ] **D-27 Sync discipline.** Adopt Budget & Forecast's import rules for every sync: resolve everything before writing anything, list every unmapped member, idempotent re-runs, no silent overwrite of changed actuals without an explicit flag, dry-run, and a sync-run record with source hash/row counts and actor.
 
 ### Application
@@ -179,7 +179,7 @@ Mid-size manufacturer of industrial pumps and valves, ~400 employees.
 
 - [x] **F-01** Repo layout: `backend/` (uv project, package `planlayer` with `api`, `domain`, `store`, `adapters`), `frontend/` (Vite, npm), `deploy/`, `docs/`. `tools/` and `spikes/` are created with their first content. pre-commit runs ruff and oxlint. Agent instructions in `CLAUDE.md`.
 - [x] **F-02** `docker compose` for development: the app and one Postgres server with two databases, mirroring the typical setup from T-14. `planlayer` holds `planlayer_app`; `dwh` holds the simulated warehouse (seeded from TD-10) and `planlayer_out`. The database roles from T-14 are applied, so development runs under the same permissions as an installation. CI also runs the single-database variant (all three connections on one database).
-- [ ] **F-03** CI (`.github/workflows/ci.yml`): backend lint, format, mypy and pytest against a Postgres 18 service; the install script plus migrate and serve as the unprivileged app role across two databases; frontend lint, typecheck and build; image build. Ticked after the first green run on GitHub. Tests against the `small` dataset are added with the generator.
+- [x] **F-03** CI (`.github/workflows/ci.yml`): backend lint, format, mypy and pytest against a Postgres 18 service; the install script plus migrate and serve as the unprivileged app role across two databases; frontend lint, typecheck and build; image build. Ticked after the first green run on GitHub. Tests against the `small` dataset are added with the generator.
 - [ ] **F-04** OpenAPI → TypeScript client generation wired into the build.
 - [ ] **F-05** Alembic baseline for the app store: done (revision `0001`, the installation row with the fiscal year start month; constraint naming convention; configurable schema via schema translation; `planlayer migrate` refuses to run without the DBA-created schema). Open: the naming conventions for BI-readable tables and views in `planlayer_out`, settled with D-12.
 - [x] **F-06** ADR template and `docs/adr/` README.
@@ -214,10 +214,11 @@ Mid-size manufacturer of industrial pumps and valves, ~400 employees.
 
 ## Suggested order
 
-1. ✓ F-01, F-02, F-06 (repo skeleton, compose, ADR template). F-03 (CI) waits for its first green run.
+1. ✓ F-01, F-02, F-03, F-06 (repo skeleton, compose, CI, ADR template).
 2. ✓ TD-01…TD-05, TD-07, TD-10, TD-11 (the generator's core).
 3. ✓ S-01, S-02, S-03 → D-01, D-02, D-14 closed (ADRs 0001–0003). The spreading engine is the first `domain` module.
 4. ✓ S-04 → D-17 closed (RevoGrid). ✓ S-05 → D-10 closed. ✓ S-06 → D-23 closed, D-21/D-22 enforcement decided. D-25 before F-02 is extended for production.
 5. ✓ Thin end-to-end slice: `planlayer sync` (one entity's actuals, all members and hierarchies, refusing unresolved codes); `planlayer create-version`; the planning page (RevoGrid, one cost center, prior-year actuals beside plan); per-cell version check with all-or-nothing saves; year totals spread by prior-year actuals; plan changes audited. Not yet in it: login and RLS policies (E-09), locks and workflow (E-07), the mapping page and sign rules (E-01, E-12), editing group rows, adding accounts without prior-year values, undo and copy with headers (E-05), the yearly setup (E-03).
 6. ✓ D-04 (ADR 0007), D-22 (ADR 0008).
-7. Remaining ADRs (D-12, D-13, D-18, D-19, D-21, D-24, D-25, D-27, D-28, D-29, D-30) and F-items, then epics in order E-01 → E-05 → E-06 → E-09 → E-07 → the rest.
+7. ✓ Rounds and workflow in the store (ADR 0007, ADR 0008): planning rounds with modules, enabled cost centers, entry forms per account group and account, comparison columns, seasonality profiles, sheet and hidden accounts, copy-from-round; workflow status and events, approvers per node; the lock trigger reading round, enabled cost center, status and hidden accounts. The grid returns per row its entry form, spread basis, fallback and editable cells; the planning page renders them, adds accounts and submits; the status page rolls up per node, approves (also in bulk), rejects, reopens, opens and closes the round, and enables cost centers. Not yet in it: the setup page (E-03) and clearing values before hiding an account, who may take which action (D-21), restricting a module to account groups, notifications.
+8. Remaining ADRs (D-12, D-13, D-18, D-19, D-21, D-24, D-25, D-27, D-28, D-29, D-30) and F-items, then epics in order E-01 → E-05 → E-06 → E-09 → E-07 → the rest.

@@ -68,3 +68,97 @@ revo-grid .reference {
   color: #555;
   background: #fafafa;
 }
+
+h2 {
+  font-size: 14px;
+  margin: 16px 0 4px;
+}
+
+nav {
+  display: flex;
+  gap: 4px;
+}
+
+.tab {
+  border: 1px solid #ccc;
+  background: #f6f6f6;
+  border-radius: 4px;
+  padding: 2px 10px;
+}
+
+.tab.active {
+  background: #1d3d75;
+  border-color: #1d3d75;
+  color: #fff;
+}
+
+.toolbar {
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+
+.badge {
+  display: inline-block;
+  padding: 0 6px;
+  margin-right: 4px;
+  border-radius: 8px;
+  font-size: 12px;
+  background: #eee;
+  color: #444;
+}
+
+.badge.in_progress {
+  background: #fff4d6;
+  color: #6b4e00;
+}
+
+.badge.submitted {
+  background: #e3ecfa;
+  color: #1d3d75;
+}
+
+.badge.approved,
+.badge.round-open {
+  background: #e2f3e5;
+  color: #1e5b2a;
+}
+
+.badge.overdue,
+.badge.round-closed {
+  background: #fdecea;
+  color: #8a1c1c;
+}
+
+.comment {
+  margin-bottom: 6px;
+}
+
+table.overview {
+  border-collapse: collapse;
+  min-width: 720px;
+}
+
+table.overview th,
+table.overview td {
+  text-align: left;
+  padding: 3px 8px;
+  border-bottom: 1px solid #eee;
+}
+
+table.overview tr.node td {
+  background: #f4f7fc;
+  font-weight: 600;
+}
+
+table.overview .actions {
+  white-space: nowrap;
+}
+
+revo-grid .readonly {
+  color: #555;
+  background: #f6f6f6;
+}
+
+revo-grid .fallback {
+  color: #8a5a00;
+}
