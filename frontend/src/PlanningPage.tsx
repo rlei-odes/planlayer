@@ -1,6 +1,6 @@
 import { RevoGrid } from '@revolist/react-datagrid'
 import type { HyperFunc, VNode } from '@revolist/revogrid'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useEffectEvent, useMemo, useState } from 'react'
 import { format, parse, sum } from './amounts'
 import {
   api,
@@ -13,6 +13,7 @@ import {
   type PlanningUnit,
   type Row,
 } from './api'
+import { RedoIcon, UndoIcon } from './icons'
 import Select from './Select'
 
 // The planning sheet of one cost center (T-25, ADR 0007, ADR 0010), in the look of the setup
@@ -96,6 +97,10 @@ export default function PlanningPage({
   const [accounts, setAccounts] = useState<Account[]>([])
   const [message, setMessage] = useState<Message | null>(null)
   const [saving, setSaving] = useState(false)
+  // Undo (E-05): the change batches of this visit to the sheet, newest last. Undoing a batch
+  // writes a new one, which goes on the other stack, so redo is undoing the undo.
+  const [undoStack, setUndoStack] = useState<string[]>([])
+  const [redoStack, setRedoStack] = useState<string[]>([])
 
   const showError = useCallback((e: unknown) => setMessage({ kind: 'error', text: errorText(e) }), [])
 
@@ -199,6 +204,8 @@ export default function PlanningPage({
     try {
       const updated = await api.edit(grid.version_code, grid.cost_center_code, edits)
       setGrid(updated)
+      if (updated.batch_id) setUndoStack((s) => [...s, updated.batch_id!])
+      setRedoStack([])
       if (updated.status !== grid.status) loadUnits()
     } catch (e) {
       if (e instanceof ConflictError) {
@@ -209,6 +216,53 @@ export default function PlanningPage({
       setSaving(false)
     }
   }
+
+  async function step(direction: 'undo' | 'redo') {
+    const stack = direction === 'undo' ? undoStack : redoStack
+    const batch = stack[stack.length - 1]
+    if (!grid || !batch || saving || locked) return
+    const take = direction === 'undo' ? setUndoStack : setRedoStack
+    const give = direction === 'undo' ? setRedoStack : setUndoStack
+    setSaving(true)
+    try {
+      const updated = await api.undo(grid.version_code, grid.cost_center_code, batch)
+      setGrid(updated)
+      take((s) => s.slice(0, -1))
+      if (updated.batch_id) give((s) => [...s, updated.batch_id!])
+      setMessage(null)
+    } catch (e) {
+      if (e instanceof ConflictError) {
+        // Someone else changed those cells: this step can't be taken any more.
+        take((s) => s.slice(0, -1))
+        setMessage({
+          kind: 'info',
+          text: `Can’t ${direction}: ${e.conflicts.length} cell(s) were changed by someone else since. The latest values are shown, nothing was changed.`,
+        })
+        load()
+      } else showError(e)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  // Ctrl+Z / Cmd+Z undoes, Ctrl+Y or Ctrl+Shift+Z redoes, unless a text field (the cell editor
+  // included) has the focus: there the keys undo typing, as usual.
+  const onKey = useEffectEvent((e: KeyboardEvent) => {
+    const target = e.target as HTMLElement | null
+    if (!(e.ctrlKey || e.metaKey) || target?.closest('input, textarea, [contenteditable="true"]')) return
+    const key = e.key.toLowerCase()
+    if (key === 'z' && !e.shiftKey) {
+      e.preventDefault()
+      void step('undo')
+    } else if (key === 'y' || (key === 'z' && e.shiftKey)) {
+      e.preventDefault()
+      void step('redo')
+    }
+  })
+  useEffect(() => {
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   async function submit() {
     if (!grid) return
@@ -275,6 +329,8 @@ export default function PlanningPage({
             onChange={(code) => {
               setUnit(code)
               setMessage(null)
+              setUndoStack([])
+              setRedoStack([])
             }}
             searchable
             options={units.map((u) => ({
@@ -293,6 +349,30 @@ export default function PlanningPage({
         <div className="pl-actions">
           {grid && <span className={`su-pill ${grid.status}`}>{STATUS_LABEL[grid.status]}</span>}
           {grid?.deadline && <span className="su-pill neutral">Due {grid.deadline}</span>}
+          {open && accountRows > 0 && (
+            <span className="pl-undo" role="group" aria-label="Undo and redo">
+              <button
+                type="button"
+                className="su-icon"
+                disabled={undoStack.length === 0 || saving}
+                onClick={() => void step('undo')}
+                aria-label="Undo"
+                title={`Undo your last change (Ctrl+Z)${undoStack.length ? ` · ${undoStack.length} step${undoStack.length === 1 ? '' : 's'}` : ''}`}
+              >
+                <UndoIcon />
+              </button>
+              <button
+                type="button"
+                className="su-icon"
+                disabled={redoStack.length === 0 || saving}
+                onClick={() => void step('redo')}
+                aria-label="Redo"
+                title="Redo (Ctrl+Y)"
+              >
+                <RedoIcon />
+              </button>
+            </span>
+          )}
           {open && accountRows > 0 && addAccountSelect}
           {open && (
             <button type="button" className="su-btn primary" onClick={() => void submit()}>
@@ -320,7 +400,7 @@ export default function PlanningPage({
         </div>
       ) : (
         grid && (
-          <div className="pl-sheet">
+          <div className="pl-sheet" ref={trimPastes}>
             <RevoGrid
               className="pl-revo"
               columns={columns}
@@ -330,6 +410,8 @@ export default function PlanningPage({
               applyOnClose
               theme="default"
               rowSize={32}
+              // One copied value pasted over a selection fills every selected cell, as in Excel.
+              useClipboard={{ rangeFill: true }}
               onBeforeedit={(e) => {
                 e.preventDefault()
                 void save([{ rowIndex: e.detail.rowIndex, prop: String(e.detail.prop), raw: e.detail.val }])
@@ -359,7 +441,7 @@ export default function PlanningPage({
               {open && (
                 <span className="pl-help">
                   Type in a cell and press Enter. A year total in “Plan” spreads as the entry form says. Paste from
-                  Excel works. Empty is not 0.
+                  Excel works; Ctrl+Z undoes. Empty is not 0.
                 </span>
               )}
             </div>
@@ -368,6 +450,18 @@ export default function PlanningPage({
       )}
     </div>
   )
+}
+
+/** Spreadsheets end copied text with a newline. RevoGrid would paste that empty last line as a
+ * row and blank the cell below the block, so trailing empty rows are dropped before it applies a
+ * paste. The event comes from the grid's clipboard component and bubbles to the sheet. */
+function trimTrailingRows(e: Event) {
+  const rows = (e as CustomEvent<{ parsed: string[][] }>).detail.parsed
+  while (rows.length > 1 && rows[rows.length - 1].every((v) => v === '')) rows.pop()
+}
+
+function trimPastes(el: HTMLDivElement | null) {
+  el?.addEventListener('beforepasteapply', trimTrailingRows) // the same listener is added once
 }
 
 // RevoGrid's hyperscript function, called with plain props and mixed children.

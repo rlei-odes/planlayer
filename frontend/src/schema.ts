@@ -104,6 +104,7 @@ export type GridOut = {
   periods: string[]
   comparisons: ComparisonOut[]
   rows: RowOut[]
+  batch_id?: string | null
 }
 
 export type HTTPValidationError = {
@@ -375,6 +376,10 @@ export type SyncRunOut = {
   members: number
   actual_rows: number
   matched: string[]
+}
+
+export type UndoIn = {
+  batch_id: string
 }
 
 export type UserChange = {

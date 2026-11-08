@@ -36,16 +36,26 @@ Editability already combines the lock and the entry form, so the client renders 
 - **Conflict UX:** nothing is saved. The page says how many cells someone else changed, reloads the grid with the current values, and the planner enters their change again.
 - **No live push:** a planner sees others' changes when the grid reloads: after each save, on switching cost centers, and after a conflict.
 
+### Undo
+
+Every save is one change batch: one transaction, whose rows the change log records with one batch id and each cell's old and new value. A paste, a fill-drag or a year total is one batch.
+
+- `POST …/undo` with a batch id reverts one of the user's own batches on the sheet: every cell it wrote gets its old value back, blank where it had none. The undo is a new batch in the change log, so nothing is erased from history, and undoing the undo redoes the change.
+- **Conflicts:** if any cell no longer holds what the batch wrote, nothing is undone and the response is `409` with those cells, as for an edit. Locks apply as to any write.
+- The planning page keeps the batches of the current visit to a sheet as steps: Ctrl+Z undoes them one by one, Ctrl+Y or Ctrl+Shift+Z redoes. Switching sheets or reloading starts afresh.
+- Undo restores cells as they were stored, whatever the line's entry form allows now.
+
 ## Reasons
 
 - **Whole sheet, no paging:** sheets are small (one cost center, ~20–80 accounts, 12 months) and fast to read. One response keeps subtotals and editability consistent.
 - **Per-cell versions** avoid the false conflicts a whole-sheet version causes between unrelated cells, while still catching every overwrite.
-- **All or nothing** makes a paste behave like one action, and matches undo of the last change batch (E-05).
+- **All or nothing** makes a paste behave like one action, and undo takes it back as one step.
+- **Undo per visit, refused on conflict:** a planner undoes what they just did and can still see; reverting a cell someone else has changed since would silently overwrite their work.
 - **Server-decided editability:** the store refuses what a form or lock forbids, and the database enforces locks and scopes (ADR 0005, 0008, 0009). A client that rendered its own rules would only drift from them.
 - **No live push in v1:** real-time co-editing is out of scope (scope.md). Conflicts are rare in per-cost-center planning, and they are caught exactly.
 
 ## Consequences
 
-- E-05 builds undo of the last change batch on top of the batch id the change log already records, and copy with headers on the client.
+- Copy with row and column headers is built on the client (E-05).
 - Editing group rows (spreading down the hierarchy, D-28) and percentage cells (D-05) extend the edit with new kinds; the conflict rule stays the same.
 - F-04 generates the TypeScript types of these responses from the OpenAPI schema.

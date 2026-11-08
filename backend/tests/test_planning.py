@@ -4,6 +4,7 @@ The source is ``conftest.SOURCE``.
 """
 
 from decimal import Decimal
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -14,7 +15,18 @@ from planlayer.config import Settings
 from planlayer.store.db import create_app_engine
 from planlayer.store.schema import change_log, closure, member
 
-from .conftest import BLANK, CONTROLLER, TEST_DATABASE_URL, URL, plan, rows, run_sync, versions_of
+from .conftest import (
+    BLANK,
+    CONTROLLER,
+    OWNER,
+    TEST_DATABASE_URL,
+    URL,
+    login,
+    plan,
+    rows,
+    run_sync,
+    versions_of,
+)
 
 # --- Sync -----------------------------------------------------------------------------------------
 
@@ -167,3 +179,71 @@ def test_changes_are_audited(client: TestClient, migrated: Settings) -> None:
         (CONTROLLER, "INSERT", None, Decimal("5.00")),
         (CONTROLLER, "UPDATE", Decimal("5.00"), Decimal("7.00")),
     ]
+
+
+# --- Undo (E-05) ----------------------------------------------------------------------------------
+
+
+def save(client: TestClient, *edits: dict[str, Any]) -> Any:
+    response = client.post(f"{URL}/edits", json={"edits": list(edits)})
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def undo(client: TestClient, batch_id: str) -> tuple[int, Any]:
+    response = client.post(f"{URL}/undo", json={"batch_id": batch_id})
+    return response.status_code, response.json()
+
+
+def test_undo_restores_blank_and_undoing_it_redoes(client: TestClient) -> None:
+    first = save(client, {"account_code": "6000", "month": 0, "value": "5", "expected": BLANK})
+    second = save(
+        client,
+        {"account_code": "6000", "month": 0, "value": "7", "expected": versions_of(first, "6000")},
+        {"account_code": "6010", "month": 2, "value": "0", "expected": BLANK},
+    )
+    status, grid = undo(client, second["batch_id"])
+    assert status == 200
+    assert plan(grid, "6000")[0] == "5.00"
+    assert plan(grid, "6010")[2] is None  # blank again, not 0
+    status, redone = undo(client, grid["batch_id"])
+    assert status == 200
+    assert (plan(redone, "6000")[0], plan(redone, "6010")[2]) == ("7.00", "0.00")
+    status, grid = undo(client, first["batch_id"])
+    assert status == 409  # the cell holds 7 now, not what that batch wrote
+
+
+def test_undo_of_a_year_total_takes_back_all_months(client: TestClient) -> None:
+    grid = save(client, {"account_code": "6000", "month": None, "value": "1200", "expected": BLANK})
+    assert plan(grid, "6000") == ["100.00"] * 12
+    status, grid = undo(client, grid["batch_id"])
+    assert status == 200
+    assert plan(grid, "6000") == [None] * 12
+
+
+def test_undo_refuses_when_someone_else_changed_a_cell(client: TestClient) -> None:
+    login(client, OWNER)
+    mine = save(
+        client,
+        {"account_code": "6000", "month": 0, "value": "5", "expected": BLANK},
+        {"account_code": "6000", "month": 1, "value": "6", "expected": BLANK},
+    )
+    login(client, CONTROLLER)
+    save(
+        client,
+        {"account_code": "6000", "month": 1, "value": "60", "expected": versions_of(mine, "6000")},
+    )
+    # The controller can't undo the owner's change.
+    assert undo(client, mine["batch_id"])[0] == 404
+    login(client, OWNER)
+    status, conflicts = undo(client, mine["batch_id"])
+    assert (status, conflicts) == (409, [{"account_code": "6000", "month": 1}])
+    grid = client.get(f"{URL}/grid").json()
+    assert plan(grid, "6000")[:2] == ["5.00", "60.00"]  # nothing undone
+
+
+def test_undo_respects_locks(client: TestClient) -> None:
+    grid = save(client, {"account_code": "6000", "month": 0, "value": "5", "expected": BLANK})
+    body = {"action": "submit", "cost_centers": ["CC1"]}
+    assert client.post("/api/versions/B2026/workflow", json=body).status_code == 200
+    assert undo(client, grid["batch_id"])[0] == 423

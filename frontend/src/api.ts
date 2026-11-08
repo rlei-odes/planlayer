@@ -121,6 +121,13 @@ export const api = {
     if (response.status === 409) throw new ConflictError((await response.json()) as Conflict[])
     return json<Grid>(response)
   },
+  /** Revert one of the user's change batches on the sheet (E-05); the result carries the undo's
+   * own batch, which undoes the undo. */
+  async undo(version: string, code: string, batchId: string): Promise<Grid> {
+    const response = await post(`${cc(version, code)}/undo`, { batch_id: batchId })
+    if (response.status === 409) throw new ConflictError((await response.json()) as Conflict[])
+    return json<Grid>(response)
+  },
   accounts: (version: string) => fetch(`${v(version)}/accounts`).then((r) => json<Account[]>(r)),
   addAccount: (version: string, code: string, account: string) =>
     post(`${cc(version, code)}/accounts`, { account_code: account }).then((r) => json<Grid>(r)),

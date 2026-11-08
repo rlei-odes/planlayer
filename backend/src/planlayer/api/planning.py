@@ -82,6 +82,8 @@ class GridOut(BaseModel):
     periods: list[date]
     comparisons: list[ComparisonOut]
     rows: list[RowOut]
+    # The change batch a save or an undo wrote, for undo (E-05); null on a plain read.
+    batch_id: str | None = None
 
 
 class EditIn(BaseModel):
@@ -93,6 +95,10 @@ class EditIn(BaseModel):
 
 class EditsIn(BaseModel):
     edits: Annotated[list[EditIn], Field(min_length=1, max_length=20_000)]
+
+
+class UndoIn(BaseModel):
+    batch_id: Annotated[str, Field(min_length=1, max_length=64)]
 
 
 class ConflictOut(BaseModel):
@@ -162,8 +168,9 @@ def _version(r: rounds.RoundRef) -> Version:
     )
 
 
-def _grid_out(grid: planning.Grid) -> GridOut:
+def _grid_out(grid: planning.Grid, batch_id: str | None = None) -> GridOut:
     return GridOut(
+        batch_id=batch_id,
         version_code=grid.version_code,
         version_name=grid.version_name,
         fiscal_year=grid.fiscal_year,
@@ -270,19 +277,43 @@ def grid(request: Request, user: CurrentUser, version_code: str, cc_code: str) -
 def edit(
     request: Request, user: CurrentUser, version_code: str, cc_code: str, body: EditsIn
 ) -> GridOut:
-    """Apply edits atomically; returns the updated grid, or 409 with the conflicting cells."""
+    """Apply edits atomically; returns the updated grid with the change batch it wrote, or 409
+    with the conflicting cells."""
     engine = _engine(request)
     edits = [planning.Edit(e.account_code, e.month, e.value, e.expected) for e in body.edits]
     try:
-        planning.apply_edits(engine, user, version_code, cc_code, edits)
+        batch = planning.apply_edits(engine, user, version_code, cc_code, edits)
     except planning.ConflictError as e:
-        return JSONResponse(  # type: ignore[return-value]
-            status_code=409,
-            content=[{"account_code": c.account_code, "month": c.month} for c in e.conflicts],
-        )
+        return _conflict(e)  # type: ignore[return-value]
     except HANDLED as e:
         raise _errors(e) from None
-    return _grid_out(planning.read_grid(engine, user, version_code, cc_code))
+    return _grid_out(planning.read_grid(engine, user, version_code, cc_code), batch)
+
+
+@router.post(
+    "/versions/{version_code}/cost-centers/{cc_code}/undo",
+    responses={404: {}, 409: {"model": list[ConflictOut]}, 423: {}},
+)
+def undo(
+    request: Request, user: CurrentUser, version_code: str, cc_code: str, body: UndoIn
+) -> GridOut:
+    """Revert one of the user's change batches on the sheet; returns the updated grid with the
+    undo's own batch (undoing it redoes the change), or 409 with the cells changed since."""
+    engine = _engine(request)
+    try:
+        batch = planning.undo_batch(engine, user, version_code, cc_code, body.batch_id)
+    except planning.ConflictError as e:
+        return _conflict(e)  # type: ignore[return-value]
+    except HANDLED as e:
+        raise _errors(e) from None
+    return _grid_out(planning.read_grid(engine, user, version_code, cc_code), batch)
+
+
+def _conflict(e: planning.ConflictError) -> JSONResponse:
+    return JSONResponse(
+        status_code=409,
+        content=[{"account_code": c.account_code, "month": c.month} for c in e.conflicts],
+    )
 
 
 @router.get("/versions/{version_code}/accounts")

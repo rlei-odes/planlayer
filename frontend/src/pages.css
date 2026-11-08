@@ -210,6 +210,21 @@
   flex-wrap: wrap;
 }
 
+.pl-undo {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  background: var(--surface);
+}
+
+.pl-undo .su-icon {
+  width: 30px;
+  height: 26px;
+  color: var(--ink-2);
+}
+
 .pl-plus {
   font-size: 16px;
   line-height: 1;

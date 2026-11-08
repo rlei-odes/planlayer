@@ -177,7 +177,7 @@ Mid-size manufacturer of industrial pumps and valves, ~400 employees.
 - [ ] **F-07** Invariant suite: SQL assertions that return violating rows, run in CI and available to admins as a health check. Covers: unique fact grain, signs (revenue above plan is favourable, and a sync → export round trip returns the source signs unchanged), roll-ups tie to leaves **per slice** (not only per node total), no hierarchy cycles, every member assigned in each hierarchy, spreads tie exactly, no writes in locked versions, no plan values outside open periods. Each assertion gets a **must-flag fixture** (from TD-12) that has to make it fail, which proves the check catches the defect (Konsolidat's `.must_flag` pattern).
 - [x] **F-08** `.gitignore` in place: it ignores `research/` (cloned reference repos), `docs_local/` (personal notes) and the usual Python/Node/data/editor artefacts.
 - [ ] **F-09** Row-level security on the `large` dataset: sync it into an app store and measure grid reads, edits and the status page per role, since the access view is evaluated per statement (ADR 0009). On `standard`, a grid read takes ~30 ms for every role.
-- [ ] **F-10** Confirm CI is green with database tests running as the unprivileged role `planlayer_test` (created by the tests; needs a CI database user that may create roles).
+- [x] **F-10** Confirm CI is green with database tests running as the unprivileged role `planlayer_test` (created by the tests; needs a CI database user that may create roles).
 
 ## 6. v1 epics (refined after section 2 is done)
 
@@ -203,7 +203,9 @@ Mid-size manufacturer of industrial pumps and valves, ~400 employees.
     - [ ] Restricting a module to account groups, so a cost center's "add account" offers only the module's accounts (ADR 0007).
     - [ ] Enabling and disabling cost centers on the setup page too (today on the status page).
 - [ ] **E-04** Versions: create, copy with shift + uplift, compare.
-- [ ] **E-05** Planning grid (RevoGrid, ADR 0006) for one planning unit at a time (T-25), with a unit switcher: edit, paste, fill-drag, subtotals, keyboard flow, percentage mode, and cells editable as the entry form allows. Undo of the last change batch; copy with row and column headers.
+- [ ] **E-05** Planning grid (RevoGrid, ADR 0006) for one planning unit at a time (T-25), with a unit switcher: edit, paste, fill-drag, subtotals, keyboard flow, percentage mode, and cells editable as the entry form allows. Built: editing, paste from Excel and LibreOffice (the trailing newline they copy is dropped, so it never blanks the cell below), one copied value pasted over a selection fills it, fill-drag, subtotals, keyboard flow (E-13).
+    - [x] Undo and redo of change batches, several steps per visit to a sheet, refused when someone else changed a cell since ([ADR 0010](docs/adr/0010-grid-api-and-concurrency.md)).
+    - [ ] Copy with row and column headers.
 - [ ] **E-06** Top-down spreading from totals (proportional / equal / profile) and spread profiles.
 - [ ] **E-07** Workflow: submit → approve → lock per version × cost center, with database-enforced locks, and the status page rolled up by department and hierarchy node (T-20). The controller's publish action (T-21).
 - [ ] **E-08** Change log and cell comments.

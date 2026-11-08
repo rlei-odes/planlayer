@@ -13,6 +13,7 @@ Whether the cost center can be edited at all (round open, cost center enabled, s
 submitted or approved) is checked here for a clear message, and enforced by the lock trigger.
 """
 
+import uuid
 from collections import defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass, field
@@ -37,6 +38,7 @@ from planlayer.store.schema import (
     ENTITY,
     H_ACCOUNT,
     MODULE_COST_CENTER,
+    change_log,
     closure,
     comparison,
     entry_form,
@@ -478,16 +480,83 @@ def _leaf_accounts(conn: Connection, codes: set[str]) -> dict[str, int]:
 
 def apply_edits(
     engine: Engine, actor: User, version_code: str, cc_code: str, edits: list[Edit]
-) -> None:
-    """Apply all edits in one transaction, or none: any conflict or invalid edit rolls back."""
+) -> str:
+    """Apply all edits in one transaction, or none: any conflict or invalid edit rolls back.
+    Returns the change batch the edits were written as, which undo reverts."""
+    batch_id = uuid.uuid4().hex
     try:
-        with unit_of_work(engine, actor) as conn:
+        with unit_of_work(engine, actor, batch_id) as conn:
             _apply(conn, actor, version_code, cc_code, edits)
     except DBAPIError as e:
         locked = _locked(e)
         if locked is None:
             raise
         raise locked from None
+    return batch_id
+
+
+def undo_batch(engine: Engine, actor: User, version_code: str, cc_code: str, batch_id: str) -> str:
+    """Revert one of the actor's change batches on a cost center (E-05): every cell it wrote gets
+    its old value back, blank where it had none, as a new batch in the change log. Refused as a
+    conflict, with nothing written, if any of those cells changed since. Returns the new batch, so
+    undoing that one redoes the change.
+
+    The cells are written as they were stored, whatever the line's entry form now allows: undo
+    restores a state, it doesn't enter values."""
+    undo_id = uuid.uuid4().hex
+    log = change_log
+    try:
+        with unit_of_work(engine, actor, undo_id) as conn:
+            ctx = _context(conn, actor, version_code, cc_code)
+            if ctx.lock_reason is not None:
+                raise LockedError(ctx.lock_reason)
+            logged = conn.execute(
+                select(log.c.dim_account, log.c.period, log.c.old_amount, log.c.new_amount)
+                .where(
+                    log.c.batch_id == batch_id,
+                    log.c.actor == actor.login,
+                    log.c.version_id == ctx.version_id,
+                    log.c.dim_cost_center == ctx.cost_center_id,
+                )
+                .order_by(log.c.id)
+            ).all()
+            if not logged:
+                raise NotFoundError(f"no change of yours to undo on {cc_code}")
+            locked = _values(conn, ctx.version_id, ctx.cost_center_id, ctx.periods, lock=True)
+            current = {
+                (a, ctx.periods[m]): c.row_version
+                for a, cells in locked.items()
+                for m, c in enumerate(cells)
+                if c.row_version is not None
+            }
+            # A cell gets the value it had before the batch, and must still hold the batch's last.
+            before: dict[tuple[int, date], Decimal | None] = {}
+            after: dict[tuple[int, date], Decimal | None] = {}
+            for account_id, period, old, new in logged:
+                before.setdefault((account_id, period), old)
+                after[(account_id, period)] = new
+            blank = [Cell(None, None)] * MONTHS
+            changed = sorted(
+                (a, ctx.periods.index(p))
+                for (a, p), new in after.items()
+                if locked.get(a, blank)[ctx.periods.index(p)].value != new
+            )
+            if changed:
+                codes = dict(
+                    conn.execute(
+                        select(member.c.member_id, member.c.code).where(
+                            member.c.member_id.in_({a for a, _ in changed})
+                        )
+                    ).all()
+                )
+                raise ConflictError([Conflict(codes[a], m) for a, m in changed])
+            _write(conn, ctx, before, current)
+    except DBAPIError as e:
+        locked_error = _locked(e)
+        if locked_error is None:
+            raise
+        raise locked_error from None
+    return undo_id
 
 
 def _apply(
@@ -502,7 +571,6 @@ def _apply(
         raise EditError(f"hidden in this round: {', '.join(hidden)}")
     lines = {line.account_id: line for line in _lines(conn, ctx, accounts.values())}
 
-    f = fact_cost_center
     # Lock the cells this request may touch, then compare versions (D-19).
     locked = _values(conn, ctx.version_id, ctx.cost_center_id, ctx.periods, lock=True)
     current = {
@@ -540,7 +608,18 @@ def _apply(
                 writes[(line.account_id, p)] = amount
     if conflicts:
         raise ConflictError(conflicts)
+    _write(conn, ctx, writes, current)
 
+
+def _write(
+    conn: Connection,
+    ctx: _Context,
+    writes: dict[tuple[int, date], Decimal | None],
+    current: dict[tuple[int, date], int],
+) -> None:
+    """Write cells: blank deletes the row, a value inserts it or updates it with the next
+    ``row_version``. ``current`` holds the cells that have a row now."""
+    f = fact_cost_center
     deletes = [k for k, v in writes.items() if v is None and k in current]
     if deletes:
         conn.execute(

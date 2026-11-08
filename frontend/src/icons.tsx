@@ -87,6 +87,20 @@ export const CollapseIcon = ({ collapsed }: { collapsed: boolean }) => (
   </Icon>
 )
 
+export const UndoIcon = () => (
+  <Icon size={16}>
+    <path d="M7.5 5 4 8.5 7.5 12" />
+    <path d="M4 8.5h7.5a4.5 4.5 0 0 1 0 9H9" />
+  </Icon>
+)
+
+export const RedoIcon = () => (
+  <Icon size={16}>
+    <path d="M12.5 5 16 8.5 12.5 12" />
+    <path d="M16 8.5H8.5a4.5 4.5 0 0 0 0 9H11" />
+  </Icon>
+)
+
 export const LogoutIcon = () => (
   <Icon size={16}>
     <path d="M8 4H5.5a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2H8M12.5 6.5 16 10l-3.5 3.5M16 10H8" />
