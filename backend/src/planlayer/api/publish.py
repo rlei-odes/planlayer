@@ -53,7 +53,7 @@ class ChangeOut(BaseModel):
     new: Decimal | None
 
 
-class PreviewOut(BaseModel):
+class PublishPreviewOut(BaseModel):
     version_code: str
     scope: Scope
     rows: int
@@ -66,14 +66,14 @@ class PreviewOut(BaseModel):
     fingerprint: str
 
 
-class RunIn(BaseModel):
+class PublishRunIn(BaseModel):
     scope: Scope
     fingerprint: str
 
 
-class RunOut(BaseModel):
+class PublishRunOut(BaseModel):
     id: int
-    scope: str
+    scope: Scope
     actor: str | None
     started_at: datetime
     finished_at: datetime | None
@@ -83,14 +83,14 @@ class RunOut(BaseModel):
     removed: int | None
 
 
-def _preview_out(p: publish.Preview) -> PreviewOut:
-    return PreviewOut.model_validate(p, from_attributes=True)
+def _preview_out(p: publish.Preview) -> PublishPreviewOut:
+    return PublishPreviewOut.model_validate(p, from_attributes=True)
 
 
 @router.get("/rounds/{code}/publish/preview", responses={403: {}, 404: {}})
 def preview(
     request: Request, user: CurrentUser, code: str, scope: Scope = "approved"
-) -> PreviewOut:
+) -> PublishPreviewOut:
     """What a run would do; writes nothing."""
     output, schema = _output(request)
     try:
@@ -100,7 +100,7 @@ def preview(
 
 
 @router.post("/rounds/{code}/publish", responses={403: {}, 404: {}, 409: {}})
-def run(request: Request, user: CurrentUser, code: str, body: RunIn) -> PreviewOut:
+def run(request: Request, user: CurrentUser, code: str, body: PublishRunIn) -> PublishPreviewOut:
     """Replace the round's rows in the output, if nothing changed since the preview."""
     output, schema = _output(request)
     try:
@@ -113,12 +113,12 @@ def run(request: Request, user: CurrentUser, code: str, body: RunIn) -> PreviewO
 
 
 @router.get("/rounds/{code}/publish/runs", responses={403: {}, 404: {}})
-def runs(request: Request, user: CurrentUser, code: str) -> list[RunOut]:
+def runs(request: Request, user: CurrentUser, code: str) -> list[PublishRunOut]:
     try:
         rows = publish.history(engine_of(request), user, code)
     except HANDLED as e:
         raise _http(e) from None
-    return [RunOut.model_validate(r, from_attributes=True) for r in rows]
+    return [PublishRunOut.model_validate(r, from_attributes=True) for r in rows]
 
 
 @router.get("/rounds/{code}/export.{fmt}", responses={403: {}, 404: {}})

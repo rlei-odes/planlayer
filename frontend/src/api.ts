@@ -1,153 +1,40 @@
-// Planning API client. Mirrors planlayer.api.planning; replaced by the generated client (F-04).
+// API client. The types come from the generated schema.ts (F-04, `npm run gen:api`); the names
+// here are the frontend's short names for them.
 
-import type { Amount } from './amounts'
+import type * as S from './schema'
 
-export type RoundStatus = 'setup' | 'open' | 'closed'
-export type Status = 'not_started' | 'in_progress' | 'submitted' | 'approved'
-export type EntryForm = 'monthly' | 'annual' | 'annual_even' | 'annual_profile' | 'annual_reference'
-export type Action = 'submit' | 'approve' | 'reject' | 'reopen'
+export type RoundStatus = S.Version['status']
+export type Status = S.PlanningUnit['status']
+export type EntryForm = S.RuleIO['form']
+export type Action = S.ActionIn['action']
 
-export type Version = {
-  code: string
-  name: string
-  kind: string
-  fiscal_year: number
-  status: RoundStatus
-  deadline: string | null
-}
-export type PlanningUnit = {
-  code: string
-  name: string
-  entity_code: string | null
-  owner: string | null
-  status: Status
-  can_write: boolean
-}
-export type Cell = { value: Amount; row_version: number | null }
-export type Row = {
-  kind: 'group' | 'account'
-  code: string
-  name: string
-  group_code: string
-  comparisons: Amount[][] // per comparison column, 12 months
-  plan: Cell[]
-  entry_form: EntryForm | null
-  basis: string | null
-  fallback: boolean
-  months_visible: boolean
-  months_editable: boolean
-  total_editable: boolean
-}
-export type Grid = {
-  version_code: string
-  version_name: string
-  fiscal_year: number
-  round_status: RoundStatus
-  deadline: string | null
-  cost_center_code: string
-  cost_center_name: string
-  status: Status
-  lock_reason: string | null
-  periods: string[]
-  comparisons: { kind: string; label: string }[]
-  rows: Row[]
-}
-export type Edit = {
-  account_code: string
-  month: number | null // null = full year, spread by the line's basis
-  value: Amount
-  expected: (number | null)[]
-}
-export type Conflict = { account_code: string; month: number }
-export type Account = { code: string; name: string }
-export type StatusRow = {
-  kind: 'node' | 'cost_center'
-  code: string
-  name: string
-  depth: number
-  counts: Partial<Record<Status, number>>
-  status: Status | null
-  owner: string | null
-  approvers: string[] // empty: the controller
-  changed_at: string | null
-  changed_by: string | null
-  overdue: boolean
-  actions: Action[] // what the logged-in user may do now
-}
-export type Overview = {
-  round: Version
-  rows: StatusRow[]
-  not_planned: { code: string; name: string; reason: 'new' | 'disabled' }[]
-}
-export type ActionRequest = { action: Action; cost_centers?: string[]; node?: string; comment?: string }
+export type Version = S.Version
+export type PlanningUnit = S.PlanningUnit
+export type Cell = S.CellOut
+export type Row = S.RowOut
+export type Grid = S.GridOut
+export type Edit = S.EditIn
+export type Conflict = S.ConflictOut
+export type Account = S.AccountOut
+export type StatusRow = S.StatusRowOut
+export type Overview = S.OverviewOut
+export type ActionRequest = S.ActionIn
 
-export type Me = {
-  login: string
-  display_name: string
-  email: string | null
-  is_admin: boolean
-  is_controller: boolean
-  is_viewer: boolean
-}
-export type User = Me & { disabled: boolean }
-export type Responsibility = {
-  kind: 'node' | 'cost_center'
-  code: string
-  name: string
-  depth: number
-  owner: string | null // synced owner value
-  matched: string | null // login matched from it
-  planner: string | null // effective owner (login)
-  overridden: boolean
-  deputies: string[]
-  approvers: string[]
-}
-export type Responsibilities = { rows: Responsibility[]; unmatched_owners: string[]; users: string[] }
+export type Me = S.Me
+export type User = S.UserOut
+export type Responsibility = S.ResponsibilityOut
+export type Responsibilities = S.ResponsibilitiesOut
 
-export type Dataset = 'entities' | 'cost_centers' | 'accounts' | 'actuals'
+export type Dataset = S.DatasetOut['dataset']
 export type MemberDataset = Exclude<Dataset, 'actuals'>
+// The API takes the hierarchy as a plain object and validates it in the sync; these are its forms.
 export type Hierarchy = { parent: string } | { levels: { code: string; name: string }[] }
-export type Mapping = { query: string; fields: Record<string, string>; hierarchy: Hierarchy | null }
-export type DatasetInfo = {
-  dataset: Dataset
-  fields: { name: string; type: string; required: boolean }[]
-  has_hierarchy: boolean
-  mapping: Mapping | null
-}
-export type Preview = { columns: string[]; rows: (string | null)[][]; error: string | null }
-export type SyncPlan = {
-  datasets: string[]
-  problems: string[]
-  new: string[]
-  changed: string[]
-  gone: string[]
-  matches: { key: string; dimension: string; code: string; name: string }[]
-  actual_cells: number | null
-}
-export type MemberRow = {
-  code: string
-  name: string
-  source_name: string | null
-  origin: 'source' | 'manual'
-  is_group: boolean
-  depth: number
-  parent: string | null
-  source_parent: string | null
-  renamed: boolean
-  moved: boolean
-  entity_code: string | null
-  owner: string | null
-  account_type: string | null
-}
-export type NewMember = {
-  code: string
-  name: string
-  parent: string | null
-  is_group: boolean
-  entity_code?: string | null
-  owner?: string | null
-  account_type?: string | null
-}
+export type Mapping = Omit<S.MappingIO, 'hierarchy'> & { hierarchy: Hierarchy | null }
+export type DatasetInfo = Omit<S.DatasetOut, 'mapping'> & { mapping: Mapping | null }
+export type Preview = S.QueryPreviewOut
+export type SyncPlan = S.PlanOut
+export type MemberRow = S.MemberOut
+export type NewMember = S.MemberIn
 
 /** The session is missing or has ended. */
 export class UnauthorizedError extends Error {}
@@ -187,13 +74,13 @@ const cc = (version: string, code: string) => `${v(version)}/cost-centers/${enco
 
 export const api = {
   me: () => fetch('/api/me').then((res) => json<Me>(res)),
-  loginOptions: () => fetch('/api/auth/options').then((res) => json<{ dev_login: boolean }>(res)),
-  devUsers: () => fetch('/api/auth/dev-users').then((res) => json<{ login: string; display_name: string }[]>(res)),
+  loginOptions: () => fetch('/api/auth/options').then((res) => json<S.LoginOptions>(res)),
+  devUsers: () => fetch('/api/auth/dev-users').then((res) => json<S.DevUser[]>(res)),
   devLogin: (login: string) => post('/api/auth/dev-login', { login }).then((res) => json<Me>(res)),
   logout: () => post('/api/auth/logout', {}).then((res) => json<null>(res)),
   users: () => fetch('/api/users').then((res) => json<User[]>(res)),
-  createUser: (user: Omit<User, 'disabled'>) => post('/api/users', user).then((res) => json<null>(res)),
-  changeUser: (login: string, change: Partial<User>) =>
+  createUser: (user: S.UserIn) => post('/api/users', user).then((res) => json<null>(res)),
+  changeUser: (login: string, change: S.UserChange) =>
     send('PATCH', `/api/users/${encodeURIComponent(login)}`, change).then((res) => json<null>(res)),
   responsibilities: () => fetch('/api/responsibilities').then((res) => json<Responsibilities>(res)),
   setOwner: (cc: string, login: string | null) => send('PUT', `${r(cc)}/owner`, { login }).then((res) => json<null>(res)),
@@ -212,7 +99,7 @@ export const api = {
   syncPlan: (entity: string | null) => post('/api/sync/plan', { entity }).then((res) => json<SyncPlan>(res)),
   syncRun: (entity: string | null, confirm: string[]) =>
     post('/api/sync/run', { entity, confirm }).then((res) =>
-      json<{ members: number; actual_rows: number; matched: string[] }>(res),
+      json<S.SyncRunOut>(res),
     ),
   members: (d: MemberDataset) => fetch(`/api/members/${d}`).then((res) => json<MemberRow[]>(res)),
   addMember: (d: MemberDataset, m: NewMember) => post(`/api/members/${d}`, m).then((res) => json<null>(res)),

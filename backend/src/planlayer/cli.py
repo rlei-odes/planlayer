@@ -64,6 +64,11 @@ def main(argv: list[str] | None = None) -> None:
         "seed-dev-users", help="create the development users of the test data (not in production)"
     )
 
+    types_cmd = commands.add_parser(
+        "api-types", help="write the frontend's TypeScript types from the API schema"
+    )
+    types_cmd.add_argument("file", help="e.g. ../frontend/src/schema.ts")
+
     serve_cmd = commands.add_parser("serve", help="run the web server")
     # All interfaces: the server runs inside a container.
     serve_cmd.add_argument("--host", default="0.0.0.0")
@@ -152,6 +157,11 @@ def main(argv: list[str] | None = None) -> None:
             finally:
                 engine.dispose()
             print(f"created {len(created)} user(s): {', '.join(created) or '-'}")
+        case "api-types":
+            from planlayer.api.typescript import app_schema, typescript
+
+            with open(args.file, "w", encoding="utf-8") as f:
+                f.write(typescript(app_schema()))
         case "serve":
             uvicorn.run(
                 "planlayer.api.app:create_app",

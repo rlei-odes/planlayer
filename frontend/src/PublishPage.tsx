@@ -1,44 +1,15 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api, type Version } from './api'
+import type * as S from './schema'
 import './setup.css'
 
 // Publishing (ADR 0011): download a round's plan values, or preview and run a publish into
 // planlayer_out. The preview shows every row added, changed and removed before anything is
 // written; the run refuses if anything changed since.
 
-type Scope = 'approved' | 'all'
-type Counts = { code: string; added: number; changed: number; removed: number; unchanged: number }
-type Change = {
-  kind: 'added' | 'changed' | 'removed'
-  cost_center_code: string
-  account_code: string
-  period: string
-  old: string | null
-  new: string | null
-}
-type Preview = {
-  version_code: string
-  scope: Scope
-  rows: number
-  added: number
-  changed: number
-  removed: number
-  unchanged: number
-  cost_centers: Counts[]
-  changes: Change[]
-  fingerprint: string
-}
-type Run = {
-  id: number
-  scope: Scope
-  actor: string | null
-  started_at: string
-  finished_at: string | null
-  rows: number | null
-  added: number | null
-  changed: number | null
-  removed: number | null
-}
+type Scope = S.PublishRunIn['scope']
+type Preview = S.PublishPreviewOut
+type Run = S.PublishRunOut
 
 const FMT = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const MONTH = new Intl.DateTimeFormat('en', { month: 'short', year: 'numeric', timeZone: 'UTC' })

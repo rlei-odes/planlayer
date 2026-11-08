@@ -1,5 +1,7 @@
 """Users (admin) and responsibilities (controller): owners, overrides, deputies, approvers."""
 
+from typing import Literal
+
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
@@ -50,7 +52,7 @@ class UserChange(BaseModel):
 
 
 class ResponsibilityOut(BaseModel):
-    kind: str
+    kind: Literal["node", "cost_center"]
     code: str
     name: str
     depth: int

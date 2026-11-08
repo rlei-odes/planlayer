@@ -50,6 +50,9 @@ cd backend && uv run ruff check . && uv run ruff format --check . && uv run mypy
 cd frontend && npm run lint && npm run typecheck && npm run build
 ```
 
+After changing an API model, regenerate the frontend's types with `cd frontend && npm run gen:api`;
+a backend test fails while `frontend/src/schema.ts` is out of date.
+
 Database tests need `PLANLAYER_TEST_DATABASE_URL` (Postgres 18, a role that may create schemas and
 roles). Planlayer itself runs in the tests as the unprivileged role `planlayer_test`, so row-level
 security applies.

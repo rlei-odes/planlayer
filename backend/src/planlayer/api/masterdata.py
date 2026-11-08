@@ -68,11 +68,11 @@ class DatasetOut(BaseModel):
     mapping: MappingIO | None
 
 
-class PreviewIn(MappingIO):
+class QueryPreviewIn(MappingIO):
     mapped: bool = False  # False: the query's own columns; True: cast to the fields
 
 
-class PreviewOut(BaseModel):
+class QueryPreviewOut(BaseModel):
     columns: list[str]
     rows: list[list[str | None]]
     error: str | None = None
@@ -129,7 +129,9 @@ def delete_mapping(request: Request, user: CurrentUser, dataset: Dataset) -> Non
 
 
 @router.post("/datasets/{dataset}/preview", responses={403: {}})
-def preview(request: Request, user: CurrentUser, dataset: Dataset, body: PreviewIn) -> PreviewOut:
+def preview(
+    request: Request, user: CurrentUser, dataset: Dataset, body: QueryPreviewIn
+) -> QueryPreviewOut:
     """The query's first rows; with ``mapped``, as the sync would read them. A source error is
     returned as ``error``, so the admin can fix the query."""
     try:
@@ -140,18 +142,18 @@ def preview(request: Request, user: CurrentUser, dataset: Dataset, body: Preview
     try:
         if not body.mapped:
             columns, rows = source.preview(Query(body.query), PREVIEW_ROWS)
-            return PreviewOut(columns=columns, rows=rows)
+            return QueryPreviewOut(columns=columns, rows=rows)
         m = sync.Mapping(
             dataset, body.query, {f: c for f, c in body.fields.items() if c}, body.hierarchy
         )
         m.validate()
         read = sync.read(source, m, PREVIEW_ROWS)
         columns = list(m.columns())
-        return PreviewOut(columns=columns, rows=[[_text(r[c]) for c in columns] for r in read])
+        return QueryPreviewOut(columns=columns, rows=[[_text(r[c]) for c in columns] for r in read])
     except sync.MappingError as e:
-        return PreviewOut(columns=[], rows=[], error=str(e))
+        return QueryPreviewOut(columns=[], rows=[], error=str(e))
     except sync.SOURCE_ERRORS as e:
-        return PreviewOut(
+        return QueryPreviewOut(
             columns=[], rows=[], error=str(getattr(e, "orig", None) or e).splitlines()[0]
         )
 
@@ -190,7 +192,7 @@ class PlanOut(BaseModel):
     actual_cells: int | None
 
 
-class RunOut(BaseModel):
+class SyncRunOut(BaseModel):
     members: int
     actual_rows: int
     matched: list[str]
@@ -218,13 +220,13 @@ def sync_plan(request: Request, user: CurrentUser, body: SyncIn) -> PlanOut:
 
 
 @router.post("/sync/run", responses={403: {}, 422: {}})
-def sync_run(request: Request, user: CurrentUser, body: SyncRunIn) -> RunOut:
+def sync_run(request: Request, user: CurrentUser, body: SyncRunIn) -> SyncRunOut:
     try:
         _syncer(user)
         r = sync.run(engine_of(request), _source(request), user, body.entity, body.confirm)
     except HANDLED as e:
         raise _http(e) from None
-    return RunOut(members=r.members, actual_rows=r.actual_rows, matched=r.matched)
+    return SyncRunOut(members=r.members, actual_rows=r.actual_rows, matched=r.matched)
 
 
 # --- Members --------------------------------------------------------------------------------------
@@ -234,7 +236,7 @@ class MemberOut(BaseModel):
     code: str
     name: str
     source_name: str | None
-    origin: str
+    origin: Literal["source", "manual"]
     is_group: bool
     depth: int
     parent: str | None
