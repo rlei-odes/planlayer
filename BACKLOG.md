@@ -285,6 +285,35 @@ An MCP (Model Context Protocol) server, so a user can connect the LLM client of 
 - [ ] **P-5 Number display** follows the installation's setting (E-13).
 - [ ] **P-6 Tests:** the report's text content checked against a fixed round (golden), and the close trigger generating exactly one set.
 
+### Line notes (after v1)
+
+Notes on a line of a sheet (cost center × account), for the whole fiscal year rather than a month. They hold to-dos and explanations of why a value is what it is. Unlike E-08's cell comments, which belong to one round, notes carry forward from round to round.
+
+- [ ] **N-1 Decision (ADR): the note model.**
+  - **Key:** cost center × account, not round or month, so a note outlives the round it was written in; each note records the round it was written in.
+  - **Rights:** whoever may read the line reads its notes (the same RLS as plan values, ADR 0009); whoever may plan it writes them. Notes are audited like plan values.
+  - **Relation to E-08:** whether cell comments become notes with a month, or stay separate.
+- [ ] **N-2 Writing and resolving:** a planner adds a note to a line; the line shows a marker and the count of open notes. A note can be resolved, and reopened; resolving records who and when.
+- [ ] **N-3 Mentions:** `@` a user in a note. The mentioned user sees it in their to-dos (and in MCP's to-dos, M-2) until they open or resolve it. To decide: e-mail notifications, which need mail settings the installation doesn't have yet.
+- [ ] **N-4 Carried forward:** a new round shows the open notes of its lines, labelled with the round they came from. The planner keeps or dismisses each; a dismissed note stays in the history but no longer shows in later rounds. To decide: whether resolved notes carry forward too.
+- [ ] **N-5 Tests:** notes visible only under the line's RLS, carry-forward into a new round, dismissed notes not shown again.
+
+### Item lists (after v1)
+
+An optional entry form for a line: instead of typing a value, the planner lists items and their yearly values, and the line's year value is the list's total. Example: the IT planner lists the software the company holds licences for, with each one's yearly maintenance cost. Like notes, a list belongs to the whole fiscal year; the year value then spreads over months as the line's entry form says.
+
+- [ ] **L-1 Decision (ADR): lists and versions.**
+  - **Lists live outside rounds:** a list belongs to cost center × account and is kept up to date during the year (new invoices, price changes), so it is ready when the next round opens.
+  - **Versions:** submitting a round snapshots the lists its lines use; the round's plan refers to that version, so later edits to the list never change a submitted or approved plan. Reopening and submitting again makes a new version.
+  - **Items:** each entry in a list is an item, e.g. "Claude Code subscription" or "Microsoft cloud subscription". An item has a name, a supplier and a yearly amount. Entry stays simple: typing only an amount is enough.
+  - **To decide, quantity:** either quantity defaults to 1 and the amount is quantity × unit price, or an item takes either a yearly amount or a quantity and unit price that give it.
+  - **To decide, optional fields:** a renewal date or contract end per item.
+  - **Values:** amounts as `numeric` and natural-positive like plan values (T-7, T-12); item amounts and the list total are computed by the server and tie exactly.
+- [ ] **L-2 Setup:** the controller allows item lists per account group or account in the yearly setup (E-03), as a further entry form.
+- [ ] **L-3 Editing:** from the line in the grid, the planner opens its list, adds, changes and removes items, and the line's year value follows. A list can also be opened and edited outside a round, from a page listing the planner's lists.
+- [ ] **L-4 History:** each version shows which rounds used it; two versions can be compared item by item.
+- [ ] **L-5 Tests:** the line's value equals the list total; a submitted round keeps its version while the list changes; RLS on lists as on plan values.
+
 **Later (not v1):** layers beyond `base`, rolling forecast, price × volume drivers, headcount planning as a module (T-24), simple formulas, non-Postgres adapters, balance sheet, an "attention" list (everything that needs a person: missing submissions, unexplained variances, unrolled forecast, unapproved version), variance commentary thresholds, and a default spread profile per account group.
 
 ---

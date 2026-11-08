@@ -57,6 +57,8 @@ These are excluded because each one grows the product into a different one, and 
 - **Review support:** an "attention" list of open items, and variance commentary thresholds.
 - **AI access (MCP):** an MCP server in the container, so users can connect the LLM of their choice to read their plans and to-dos and enter plan values, as themselves and under the same rights, locks and audit (BACKLOG M-1 to M-8).
 - **Plan reports:** a cost center's plan as a PDF on demand, and a set generated when a round is closed (BACKLOG P-1 to P-6).
+- **Line notes:** notes on a line with mentions and resolving, carried forward to the next round (BACKLOG N-1 to N-5).
+- **Item lists:** a line entered as a list of items and their yearly values, kept up to date between rounds and versioned on submit (BACKLOG L-1 to L-5).
 
 ## Licence
 
