@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
-import { api, type Version } from './api'
+import type { Version } from './api'
 import type * as S from './schema'
-import './setup.css'
 
 // Publishing (ADR 0011): download a round's plan values, or preview and run a publish into
 // planlayer_out. The preview shows every row added, changed and removed before anything is
@@ -24,30 +23,21 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>
 }
 
-export default function PublishPage() {
-  const [rounds, setRounds] = useState<Version[]>([])
-  const [code, setCode] = useState('')
+export default function PublishPage({ round }: { round: Version }) {
+  const code = round.code
   const [scope, setScope] = useState<Scope>('approved')
   const [preview, setPreview] = useState<Preview | null>(null)
   const [runs, setRuns] = useState<Run[]>([])
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState<{ kind: 'ok' | 'error' | 'warn'; text: string } | null>(null)
 
-  useEffect(() => {
-    api.versions().then((vs) => {
-      setRounds(vs)
-      setCode((c) => c || (vs[0]?.code ?? ''))
-    })
-  }, [])
-
   const loadRuns = useCallback(() => {
     if (code) request<Run[]>(`/api/rounds/${encodeURIComponent(code)}/publish/runs`).then(setRuns, () => setRuns([]))
   }, [code])
   useEffect(loadRuns, [loadRuns])
 
-  function choose(next: { code?: string; scope?: Scope }) {
-    if (next.code) setCode(next.code)
-    if (next.scope) setScope(next.scope)
+  function choose(next: { scope: Scope }) {
+    setScope(next.scope)
     setPreview(null)
     setNote(null)
   }
@@ -86,7 +76,6 @@ export default function PublishPage() {
     }
   }
 
-  const round = rounds.find((r) => r.code === code)
   const nothing = preview && preview.added + preview.changed + preview.removed === 0
   const file = (fmt: string) => `/api/rounds/${encodeURIComponent(code)}/export.${fmt}?scope=${scope}`
   return (
@@ -94,15 +83,7 @@ export default function PublishPage() {
       <div className="su-head">
         <div>
           <div className="su-eyebrow">Publishing</div>
-          <h2 className="su-title">{round?.name ?? 'Planning rounds'}</h2>
-        </div>
-        <div className="su-rounds" role="group" aria-label="Rounds">
-          {rounds.map((r) => (
-            <button key={r.code} type="button" className="su-round" aria-pressed={r.code === code} onClick={() => choose({ code: r.code })}>
-              <i className={`su-dot ${r.status}`} />
-              {r.name}
-            </button>
-          ))}
+          <h2 className="su-title">{round.name}</h2>
         </div>
       </div>
 
@@ -112,7 +93,7 @@ export default function PublishPage() {
             <h3>
               <span className="su-step">1</span> What to publish
             </h3>
-            <p className="su-hint">Plan values of {round?.name}. Actuals stay in the warehouse.</p>
+            <p className="su-hint">Plan values of {round.name}. Actuals stay in the warehouse.</p>
             <div className="su-body">
               <div className="su-forms pb-scope" role="group" aria-label="Scope">
                 <button type="button" aria-pressed={scope === 'approved'} onClick={() => choose({ scope: 'approved' })}>

@@ -13,7 +13,17 @@ const FORM_LABEL: Record<EntryForm, string> = {
   annual_profile: 'Year · season',
   annual_reference: 'Year · reference',
 }
-const FMT = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 })
+const SHORT_LABEL: Record<EntryForm, string> = {
+  monthly: 'Monthly',
+  annual: 'Year',
+  annual_even: 'Even',
+  annual_profile: 'Season',
+  annual_reference: 'Ref.',
+}
+// Example values in thousands, so the account column, comparisons, plan and all twelve months fit
+// beside the settings.
+const K = new Intl.NumberFormat('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+const FMT = { format: (v: number) => K.format(v / 1000) }
 const MONTH = new Intl.DateTimeFormat('en', { month: 'short', timeZone: 'UTC' })
 
 type Props = {
@@ -138,7 +148,7 @@ export default function PlannerPreview(p: Props) {
         <span className="su-eyebrow">
           <i className="pv-live" /> What planners will see
         </span>
-        <span className="pv-sample">example values</span>
+        <span className="pv-sample">example values, in thousands</span>
       </div>
       <div className="pv-head">
         <div>
@@ -154,7 +164,17 @@ export default function PlannerPreview(p: Props) {
         </div>
       </div>
       <div className="pv-scroll">
-        <table className="pv-table">
+        <table className="pv-table" style={{ minWidth: 160 + 48 * (nComp + 1) + 36 * months.length }}>
+          <colgroup>
+            <col className="acc" />
+            {p.draft.comparisons.map((_, i) => (
+              <col key={i} className="year" />
+            ))}
+            <col className="year" />
+            {months.map((m) => (
+              <col key={m} />
+            ))}
+          </colgroup>
           <thead>
             <tr>
               <th className="acc">Account</th>
@@ -247,7 +267,7 @@ export default function PlannerPreview(p: Props) {
                 ? 'No reference values yet: the year total spreads evenly.'
                 : `The year total spreads like ${l.r.reference ? (p.versionNames[l.r.reference] ?? l.r.reference) : 'last year’s actuals'}.`
     return (
-      <tr key={l.code} title={basis}>
+      <tr key={l.code} title={`${FORM_LABEL[l.r.form]}: ${basis}`}>
         <td className="acc">
           <span className="pv-acc">
             <span className="name">
@@ -256,7 +276,8 @@ export default function PlannerPreview(p: Props) {
             </span>
             {prof && <Bars values={prof.values.map(Number)} />}
             <span className={`pv-form ${l.r.form === 'monthly' ? 'monthly' : ''} ${l.fallback ? 'fallback' : ''}`}>
-              {FORM_LABEL[l.r.form]}
+              <span className="full">{FORM_LABEL[l.r.form]}</span>
+              <span className="short">{SHORT_LABEL[l.r.form]}</span>
             </span>
           </span>
         </td>

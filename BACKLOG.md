@@ -212,7 +212,16 @@ Mid-size manufacturer of industrial pumps and valves, ~400 employees.
     - [ ] Export sign rules (E-12): until then values are published natural-positive.
     - [ ] Sales planning's output table, with its module.
     - [ ] A link from the setup page to publishing per round.
-- [ ] **E-13** UI/UX design phase: with the main flows on screen (setup, plan, approve, publish), iterate on the frontend while the backend stays mostly as it is. It starts from the setup page's design tokens (`frontend/src/setup.css`). Known: in the planner preview the December column is cut off on narrower screens. Covers: navigation, visual language, the planning grid's look and keyboard flow, empty and error states, the status and setup pages. Done with real users' walkthroughs where possible (R-4).
+- [ ] **E-13** UI/UX design phase: with the main flows on screen (setup, plan, approve, publish), iterate on the frontend while the backend stays mostly as it is. Covers: navigation, visual language, the planning grid's look and keyboard flow, empty and error states, the status and setup pages. Done with real users' walkthroughs where possible (R-4). The look is the setup page's, carried app-wide, light only (tokens in `frontend/src/theme.css`, so a dark palette stays a change in one place).
+    - [x] App shell: sidebar grouped by role (Plan; Round; Admin), collapsible and collapsed by default below 1360 px; top bar with the current round and the user; login page; "server not reachable" and "no round yet" states.
+    - [x] One current round for Planning, Status, Setup and Publish, chosen in the top bar and remembered per browser.
+    - [x] Planner preview fits beside the settings, all twelve months included: example values in thousands, short form badges when narrow.
+    - [ ] Planning grid in the preview's look, roomy rows: typed-in cells as inputs, calculated cells tinted, year-only months hatched, comparisons muted, entry-form badge per row with ⚠ for the fallback; an empty state for a sheet without accounts.
+    - [ ] The grid's keyboard flow (Enter, Tab, arrows, typing over a cell) checked against Excel habits.
+    - [ ] Status page.
+    - [ ] Master data page.
+    - [ ] Responsibilities and Users pages.
+    - [ ] Real users' walkthroughs (R-4).
 - [ ] **E-11** Self-host packaging: container image on GHCR, the DBA install script and checklist (D-25), upgrade/migration procedure, the scheduled backup and restore (D-30), install docs.
 
 ### Cost center accounting (after v1)

@@ -1,0 +1,94 @@
+// Inline SVG icons (self-hosted: no icon font, no CDN). 20×20, stroked in currentColor.
+
+import type { ReactNode } from 'react'
+
+function Icon({ children, size = 18 }: { children: ReactNode; size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {children}
+    </svg>
+  )
+}
+
+export const LogoMark = () => (
+  <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true">
+    <rect width="26" height="26" rx="7" fill="var(--accent)" />
+    <path d="M6 15.5 13 19l7-3.5" fill="none" stroke="#fff" strokeOpacity=".55" strokeWidth="1.7" strokeLinejoin="round" />
+    <path d="M6 11.5 13 15l7-3.5L13 8z" fill="#fff" />
+  </svg>
+)
+
+export const PlanningIcon = () => (
+  <Icon>
+    <rect x="3" y="3.5" width="14" height="13" rx="2" />
+    <path d="M3 8h14M8 8v8.5" />
+  </Icon>
+)
+
+export const StatusIcon = () => (
+  <Icon>
+    <circle cx="10" cy="10" r="7" />
+    <path d="m7 10.2 2 2 4-4.4" />
+  </Icon>
+)
+
+export const SetupIcon = () => (
+  <Icon>
+    <path d="M4 6h8M15 6h1M4 14h1M8 14h8" />
+    <circle cx="13.5" cy="6" r="1.7" />
+    <circle cx="6.5" cy="14" r="1.7" />
+  </Icon>
+)
+
+export const PublishIcon = () => (
+  <Icon>
+    <path d="M10 12.5V3.5M6.5 7 10 3.5 13.5 7" />
+    <path d="M3.5 12v2.5a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V12" />
+  </Icon>
+)
+
+export const MasterDataIcon = () => (
+  <Icon>
+    <ellipse cx="10" cy="5" rx="6" ry="2.2" />
+    <path d="M4 5v10c0 1.2 2.7 2.2 6 2.2s6-1 6-2.2V5M4 10c0 1.2 2.7 2.2 6 2.2s6-1 6-2.2" />
+  </Icon>
+)
+
+export const ResponsibilitiesIcon = () => (
+  <Icon>
+    <circle cx="7.5" cy="7" r="2.6" />
+    <path d="M2.8 16c.6-2.6 2.4-4 4.7-4s4.1 1.4 4.7 4" />
+    <path d="M13 4.6a2.6 2.6 0 0 1 0 4.8M14.5 12.2c1.4.5 2.4 1.8 2.7 3.8" />
+  </Icon>
+)
+
+export const UsersIcon = () => (
+  <Icon>
+    <circle cx="10" cy="7" r="3" />
+    <path d="M4.5 16.5c.7-3 2.8-4.6 5.5-4.6s4.8 1.6 5.5 4.6" />
+  </Icon>
+)
+
+export const CollapseIcon = ({ collapsed }: { collapsed: boolean }) => (
+  <Icon size={16}>
+    <rect x="3" y="3.5" width="14" height="13" rx="2" />
+    <path d="M8 3.5v13" />
+    <path d={collapsed ? 'm11.5 8 2 2-2 2' : 'm13.5 8-2 2 2 2'} />
+  </Icon>
+)
+
+export const LogoutIcon = () => (
+  <Icon size={16}>
+    <path d="M8 4H5.5a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2H8M12.5 6.5 16 10l-3.5 3.5M16 10H8" />
+  </Icon>
+)

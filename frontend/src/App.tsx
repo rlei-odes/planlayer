@@ -1,6 +1,19 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { api, type Me, type Version } from './api'
+import {
+  CollapseIcon,
+  LogoMark,
+  LogoutIcon,
+  MasterDataIcon,
+  PlanningIcon,
+  PublishIcon,
+  ResponsibilitiesIcon,
+  SetupIcon,
+  StatusIcon,
+  UsersIcon,
+} from './icons'
 import LoginPage from './LoginPage'
+import { initials } from './names'
 import MasterDataPage from './MasterDataPage'
 import PlanningPage from './PlanningPage'
 import PublishPage from './PublishPage'
@@ -9,26 +22,50 @@ import SetupPage from './SetupPage'
 import StatusPage from './StatusPage'
 import UsersPage from './UsersPage'
 
+// The app shell (E-13): a sidebar grouped by role, a top bar with the current round and the user.
+// One current round applies to every page that works on a round.
+
 type Health = { status: 'ok' | 'unavailable'; version: string; schema_revision: string | null }
 type Page = 'planning' | 'status' | 'setup' | 'publish' | 'masterdata' | 'responsibilities' | 'users'
 
-const LABEL: Record<Page, string> = {
-  planning: 'Planning',
-  status: 'Status',
-  setup: 'Setup',
-  publish: 'Publish',
-  masterdata: 'Master data',
-  responsibilities: 'Responsibilities',
-  users: 'Users',
+const NAV: Record<Page, { label: string; icon: () => ReactNode }> = {
+  planning: { label: 'Planning', icon: PlanningIcon },
+  status: { label: 'Status', icon: StatusIcon },
+  setup: { label: 'Setup', icon: SetupIcon },
+  publish: { label: 'Publish', icon: PublishIcon },
+  masterdata: { label: 'Master data', icon: MasterDataIcon },
+  responsibilities: { label: 'Responsibilities', icon: ResponsibilitiesIcon },
+  users: { label: 'Users', icon: UsersIcon },
+}
+const ROUND_PAGES: Page[] = ['planning', 'status', 'setup', 'publish']
+
+function groupsFor(me: Me): { label: string; pages: Page[] }[] {
+  const round: Page[] = me.is_controller ? ['setup', 'publish', 'responsibilities'] : []
+  const admin: Page[] = []
+  if (me.is_controller || me.is_admin) admin.push('masterdata')
+  if (me.is_admin) admin.push('users')
+  const groups: { label: string; pages: Page[] }[] = [
+    { label: 'Plan', pages: ['planning', 'status'] },
+    { label: 'Round', pages: round },
+    { label: 'Admin', pages: admin },
+  ]
+  return groups.filter((g) => g.pages.length > 0)
 }
 
-function pagesFor(me: Me): Page[] {
-  const pages: Page[] = ['planning', 'status']
-  if (me.is_controller) pages.push('setup', 'publish')
-  if (me.is_controller || me.is_admin) pages.push('masterdata')
-  if (me.is_controller) pages.push('responsibilities')
-  if (me.is_admin) pages.push('users')
-  return pages
+// Per-browser conveniences; storage may be unavailable (private mode), which only loses the memory.
+function remembered(key: string): string | null {
+  try {
+    return localStorage.getItem(key)
+  } catch {
+    return null
+  }
+}
+function remember(key: string, value: string) {
+  try {
+    localStorage.setItem(key, value)
+  } catch {
+    // not remembered; nothing else depends on it
+  }
 }
 
 export default function App() {
@@ -37,13 +74,19 @@ export default function App() {
   const [versions, setVersions] = useState<Version[]>([])
   const [version, setVersion] = useState('')
   const [page, setPage] = useState<Page>(() => (window.location.hash.slice(1) as Page) || 'planning')
+  // Collapsed by default on narrow screens, so the grid and the setup preview keep their width.
+  const [collapsed, setCollapsed] = useState(() => {
+    const stored = remembered('planlayer.sidebar')
+    return stored ? stored === 'collapsed' : window.innerWidth < 1360
+  })
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
+  const checkHealth = useCallback(() => {
     fetch('/api/health')
       .then((r) => r.json() as Promise<Health>)
       .then(setHealth, () => setHealth({ status: 'unavailable', version: '', schema_revision: null }))
   }, [])
+  useEffect(checkHealth, [checkHealth])
 
   useEffect(() => {
     if (health?.status !== 'ok') return
@@ -53,11 +96,14 @@ export default function App() {
     return () => window.removeEventListener('planlayer:unauthorized', ended)
   }, [health])
 
-  const loadVersions = useCallback(() => {
+  const loadVersions = useCallback((select?: string) => {
     api.versions().then(
       (vs) => {
         setVersions(vs)
-        setVersion((current) => (vs.some((v) => v.code === current) ? current : (vs[0]?.code ?? '')))
+        setVersion((current) => {
+          const wanted = select ?? (current || remembered('planlayer.round'))
+          return vs.some((v) => v.code === wanted) ? wanted! : (vs[0]?.code ?? '')
+        })
       },
       (e: unknown) => setError(e instanceof Error ? e.message : String(e)),
     )
@@ -67,9 +113,20 @@ export default function App() {
     if (me) loadVersions()
   }, [me, loadVersions])
 
+  useEffect(() => {
+    if (version) remember('planlayer.round', version)
+  }, [version])
+
   function go(next: Page) {
     setPage(next)
     window.location.hash = next
+  }
+
+  function toggleSidebar() {
+    setCollapsed((c) => {
+      remember('planlayer.sidebar', c ? 'expanded' : 'collapsed')
+      return !c
+    })
   }
 
   async function logout() {
@@ -77,63 +134,144 @@ export default function App() {
     setMe(null)
   }
 
-  const pages = me ? pagesFor(me) : []
+  if (health?.status === 'unavailable') {
+    return (
+      <div className="center">
+        <div className="login-card">
+          <div className="sb-brand">
+            <LogoMark />
+            <span>Planlayer</span>
+          </div>
+          <h1>The server isn’t reachable</h1>
+          <p>The app couldn’t reach its server or the server couldn’t reach its database. Try again in a moment.</p>
+          <button type="button" className="su-btn primary" onClick={checkHealth}>
+            Try again
+          </button>
+        </div>
+      </div>
+    )
+  }
+  if (me === null) return <LoginPage onLogin={setMe} />
+  if (!me || !health) return null
+
+  const groups = groupsFor(me)
+  const pages = groups.flatMap((g) => g.pages)
   const current = pages.includes(page) ? page : 'planning'
-  const roles = me ? [me.is_admin && 'admin', me.is_controller && 'controller', me.is_viewer && 'viewer'].filter(Boolean) : []
+  const round = versions.find((v) => v.code === version)
+  const roles = [me.is_admin && 'Admin', me.is_controller && 'Controller', me.is_viewer && 'Viewer'].filter(Boolean)
+  const roleText = roles.join(', ')
+  const subtitle = roleText && roleText !== me.display_name ? roleText : (me.email ?? me.login)
+  const needsRound = ROUND_PAGES.includes(current) && current !== 'setup'
+
   return (
-    <div className="app">
-      <header>
-        <h1>Planlayer</h1>
-        {me && (
-          <nav>
-            {pages.map((p) => (
-              <button type="button" key={p} className={current === p ? 'tab active' : 'tab'} onClick={() => go(p)}>
-                {LABEL[p]}
-              </button>
-            ))}
-          </nav>
-        )}
-        {me && versions.length > 0 && (current === 'planning' || current === 'status') && (
-          <label>
-            Round{' '}
-            <select value={version} onChange={(e) => setVersion(e.target.value)}>
-              {versions.map((v) => (
-                <option key={v.code} value={v.code}>
-                  {v.name} · {v.status}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-        {health && (
-          <span className={`health ${health.status}`}>
-            {health.status === 'ok' ? `v${health.version} · schema ${health.schema_revision ?? '–'}` : 'backend unavailable'}
+    <div className={`sh${collapsed ? ' collapsed' : ''}`}>
+      <aside className="sb" aria-label="Navigation">
+        <div className="sb-brand">
+          <LogoMark />
+          <span>Planlayer</span>
+        </div>
+        <nav>
+          {groups.map((g) => (
+            <div key={g.label} className="sb-group">
+              <div className="sb-label">{g.label}</div>
+              {g.pages.map((p) => {
+                const { label, icon: PageIcon } = NAV[p]
+                return (
+                  <button
+                    type="button"
+                    key={p}
+                    className="sb-item"
+                    aria-current={current === p ? 'page' : undefined}
+                    title={collapsed ? label : undefined}
+                    onClick={() => go(p)}
+                  >
+                    <PageIcon />
+                    <span>{label}</span>
+                  </button>
+                )
+              })}
+            </div>
+          ))}
+        </nav>
+        <div className="sb-foot">
+          <span className="sb-health" title={`Planlayer ${health.version}, schema ${health.schema_revision ?? '–'}`}>
+            <i />
+            <span>
+              <span>v{health.version}</span>
+              <span>schema {health.schema_revision ?? '–'}</span>
+            </span>
           </span>
-        )}
-        {me && (
-          <span className="me">
-            {me.display_name}
-            {roles.length > 0 && <span className="muted"> ({roles.join(', ')})</span>}{' '}
-            <button type="button" onClick={() => void logout()}>
-              Log out
+          <button
+            type="button"
+            className="su-icon"
+            onClick={toggleSidebar}
+            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            <CollapseIcon collapsed={collapsed} />
+          </button>
+        </div>
+      </aside>
+
+      <div className="sh-main">
+        <header className="tb">
+          {ROUND_PAGES.includes(current) && versions.length > 0 && (
+            <label className="tb-round">
+              Round
+              <span className="tb-select-wrap">
+                <i className={`su-dot ${round?.status ?? ''}`} />
+                <select className="tb-select" value={version} onChange={(e) => setVersion(e.target.value)}>
+                  {versions.map((v) => (
+                    <option key={v.code} value={v.code}>
+                      {v.name} · {v.status}
+                    </option>
+                  ))}
+                </select>
+              </span>
+            </label>
+          )}
+          <div className="tb-user">
+            <span className="tb-avatar" aria-hidden="true">
+              {initials(me.display_name)}
+            </span>
+            <span className="tb-who">
+              <strong>{me.display_name}</strong>
+              <span>{subtitle}</span>
+            </span>
+            <button type="button" className="su-icon" onClick={() => void logout()} aria-label="Log out" title="Log out">
+              <LogoutIcon />
             </button>
-          </span>
-        )}
-      </header>
-      {error && <div className="error">{error}</div>}
-      {me === null && <LoginPage onLogin={setMe} />}
-      {me && versions.length === 0 && (current === 'planning' || current === 'status') && (
-        <p>No planning round yet. {me.is_controller ? 'Create one under Setup.' : 'The controller creates one.'}</p>
-      )}
-      {me && version && current === 'planning' && <PlanningPage key={`${me.login}/${version}`} version={version} />}
-      {me && version && current === 'status' && (
-        <StatusPage key={`${me.login}/${version}`} version={version} me={me} onRoundChanged={loadVersions} />
-      )}
-      {me && current === 'setup' && <SetupPage onRoundsChanged={loadVersions} />}
-      {me && current === 'publish' && <PublishPage />}
-      {me && current === 'masterdata' && <MasterDataPage me={me} />}
-      {me && current === 'responsibilities' && <ResponsibilitiesPage />}
-      {me && current === 'users' && <UsersPage />}
+          </div>
+        </header>
+
+        <main className="page">
+          {error && <div className="su-note error">{error}</div>}
+          {needsRound && versions.length === 0 && (
+            <div className="su-card empty-state">
+              <h3>No planning round yet</h3>
+              <p className="su-hint">
+                {me.is_controller
+                  ? 'Create the first round under Setup: it decides what is planned and in what form.'
+                  : 'The controller creates the round; it appears here once it exists.'}
+              </p>
+              {me.is_controller && (
+                <button type="button" className="su-btn primary" onClick={() => go('setup')}>
+                  Go to Setup
+                </button>
+              )}
+            </div>
+          )}
+          {version && current === 'planning' && <PlanningPage key={`${me.login}/${version}`} version={version} />}
+          {version && current === 'status' && (
+            <StatusPage key={`${me.login}/${version}`} version={version} me={me} onRoundChanged={loadVersions} />
+          )}
+          {current === 'setup' && <SetupPage rounds={versions} code={version} onRoundsChanged={loadVersions} />}
+          {round && current === 'publish' && <PublishPage key={round.code} round={round} />}
+          {current === 'masterdata' && <MasterDataPage me={me} />}
+          {current === 'responsibilities' && <ResponsibilitiesPage />}
+          {current === 'users' && <UsersPage />}
+        </main>
+      </div>
     </div>
   )
 }

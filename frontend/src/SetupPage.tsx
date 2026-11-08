@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api, type EntryForm, type MemberRow, type Version } from './api'
 import PlannerPreview, { Bars } from './PlannerPreview'
-import './setup.css'
 import type { ComparisonColumn, NewRound, Profile, Rule, SetupDraft, SetupView } from './setupTypes'
 
 // The yearly planning setup (E-03, ADR 0007): what a round plans and in what form, with a live
@@ -49,9 +48,15 @@ function levelOf(d: SetupDraft): Level | null {
   return null
 }
 
-export default function SetupPage({ onRoundsChanged }: { onRoundsChanged: () => void }) {
-  const [rounds, setRounds] = useState<Version[]>([])
-  const [code, setCode] = useState('')
+export default function SetupPage({
+  rounds,
+  code,
+  onRoundsChanged,
+}: {
+  rounds: Version[]
+  code: string
+  onRoundsChanged: (select?: string) => void
+}) {
   const [view, setView] = useState<SetupView | null>(null)
   const [draft, setDraft] = useState<SetupDraft | null>(null)
   const [accounts, setAccounts] = useState<MemberRow[]>([])
@@ -60,21 +65,12 @@ export default function SetupPage({ onRoundsChanged }: { onRoundsChanged: () => 
   const [creating, setCreating] = useState(false)
   const [saving, setSaving] = useState(false)
 
-  const loadRounds = useCallback(
-    (select?: string) =>
-      api.versions().then((vs) => {
-        setRounds(vs)
-        setCode((current) => select ?? (vs.some((v) => v.code === current) ? current : (vs[0]?.code ?? '')))
-      }),
-    [],
-  )
   const loadProfiles = useCallback(() => setupApi.profiles().then(setProfiles), [])
 
   useEffect(() => {
-    void loadRounds()
     void loadProfiles()
     api.members('accounts').then(setAccounts, () => setAccounts([]))
-  }, [loadRounds, loadProfiles])
+  }, [loadProfiles])
 
   useEffect(() => {
     if (!code) return
@@ -144,17 +140,9 @@ export default function SetupPage({ onRoundsChanged }: { onRoundsChanged: () => 
           <div className="su-eyebrow">Yearly planning setup</div>
           <h2 className="su-title">{round ? `${round.name}` : 'Planning rounds'}</h2>
         </div>
-        <div className="su-rounds" role="group" aria-label="Rounds">
-          {rounds.map((r) => (
-            <button key={r.code} type="button" className="su-round" aria-pressed={r.code === code} onClick={() => setCode(r.code)}>
-              <i className={`su-dot ${r.status}`} />
-              {r.name}
-            </button>
-          ))}
-          <button type="button" className="su-btn primary" onClick={() => setCreating((c) => !c)}>
-            New round
-          </button>
-        </div>
+        <button type="button" className="su-btn primary" onClick={() => setCreating((c) => !c)}>
+          New round
+        </button>
       </div>
 
       {creating && (
@@ -163,8 +151,7 @@ export default function SetupPage({ onRoundsChanged }: { onRoundsChanged: () => 
           onCancel={() => setCreating(false)}
           onCreated={(created) => {
             setCreating(false)
-            void loadRounds(created)
-            onRoundsChanged()
+            onRoundsChanged(created)
           }}
         />
       )}
