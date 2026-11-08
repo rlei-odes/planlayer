@@ -444,3 +444,20 @@ member_shadow = Table(
     Column("confirmed_by", Text),
     Column("confirmed_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )
+
+# One row per publish run (ADR 0011); finished_at NULL means the run failed.
+publish_run = Table(
+    "publish_run",
+    metadata,
+    Column("id", BigInteger, primary_key=True),
+    Column("version_id", SmallInteger, ForeignKey("version.version_id"), nullable=False),
+    Column("scope", Text, nullable=False),  # approved / all
+    Column("actor", Text),
+    Column("started_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("finished_at", DateTime(timezone=True)),
+    Column("rows", Integer),
+    Column("added", Integer),
+    Column("changed", Integer),
+    Column("removed", Integer),
+    Column("fingerprint", Text),
+)

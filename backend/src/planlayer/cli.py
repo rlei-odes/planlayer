@@ -5,11 +5,12 @@ from datetime import date
 
 import uvicorn
 
-from planlayer import access, devdata, rounds, sync
+from planlayer import access, devdata, publish, rounds, sync
 from planlayer.adapters.source import PostgresSource
 from planlayer.config import Settings
 from planlayer.store import migrate
 from planlayer.store.db import create_app_engine
+from planlayer.store.output import create_output_engine
 
 
 def report(p: sync.SyncPlan) -> None:
@@ -56,6 +57,8 @@ def main(argv: list[str] | None = None) -> None:
     version_cmd.add_argument("--kind", choices=["budget", "forecast"], default="budget")
     version_cmd.add_argument("--deadline", type=date.fromisoformat, help="YYYY-MM-DD")
     version_cmd.add_argument("--copy-setup-from", metavar="CODE", help="an earlier round")
+
+    commands.add_parser("republish", help="rebuild the output from every round's last publish run")
 
     commands.add_parser(
         "seed-dev-users", help="create the development users of the test data (not in production)"
@@ -128,6 +131,17 @@ def main(argv: list[str] | None = None) -> None:
             finally:
                 engine.dispose()
             print(f"mapped {', '.join(sync.DATASETS)} to the views in {settings.source_schema}")
+        case "republish":
+            settings = Settings()  # type: ignore[call-arg]
+            engine, output = create_app_engine(settings), create_output_engine(settings)
+            try:
+                codes = publish.republish_all(
+                    engine, output, settings.output_schema, access.system_user(engine)
+                )
+            finally:
+                engine.dispose()
+                output.dispose()
+            print(f"republished {', '.join(codes) or 'nothing (no publish runs yet)'}")
         case "seed-dev-users":
             settings = Settings()  # type: ignore[call-arg]
             if settings.environment == "production":

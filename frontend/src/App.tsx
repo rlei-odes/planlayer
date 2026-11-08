@@ -3,18 +3,20 @@ import { api, type Me, type Version } from './api'
 import LoginPage from './LoginPage'
 import MasterDataPage from './MasterDataPage'
 import PlanningPage from './PlanningPage'
+import PublishPage from './PublishPage'
 import ResponsibilitiesPage from './ResponsibilitiesPage'
 import SetupPage from './SetupPage'
 import StatusPage from './StatusPage'
 import UsersPage from './UsersPage'
 
 type Health = { status: 'ok' | 'unavailable'; version: string; schema_revision: string | null }
-type Page = 'planning' | 'status' | 'setup' | 'masterdata' | 'responsibilities' | 'users'
+type Page = 'planning' | 'status' | 'setup' | 'publish' | 'masterdata' | 'responsibilities' | 'users'
 
 const LABEL: Record<Page, string> = {
   planning: 'Planning',
   status: 'Status',
   setup: 'Setup',
+  publish: 'Publish',
   masterdata: 'Master data',
   responsibilities: 'Responsibilities',
   users: 'Users',
@@ -22,7 +24,7 @@ const LABEL: Record<Page, string> = {
 
 function pagesFor(me: Me): Page[] {
   const pages: Page[] = ['planning', 'status']
-  if (me.is_controller) pages.push('setup')
+  if (me.is_controller) pages.push('setup', 'publish')
   if (me.is_controller || me.is_admin) pages.push('masterdata')
   if (me.is_controller) pages.push('responsibilities')
   if (me.is_admin) pages.push('users')
@@ -128,6 +130,7 @@ export default function App() {
         <StatusPage key={`${me.login}/${version}`} version={version} me={me} onRoundChanged={loadVersions} />
       )}
       {me && current === 'setup' && <SetupPage onRoundsChanged={loadVersions} />}
+      {me && current === 'publish' && <PublishPage />}
       {me && current === 'masterdata' && <MasterDataPage me={me} />}
       {me && current === 'responsibilities' && <ResponsibilitiesPage />}
       {me && current === 'users' && <UsersPage />}

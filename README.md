@@ -56,7 +56,7 @@ docker compose exec app planlayer create-version B2026 --name "Budget 2026" --fi
 docker compose exec app planlayer seed-dev-users
 ```
 
-The development login (`PLANLAYER_DEV_LOGIN`, on in `compose.yaml`, refused in production) lets you log in as any of these users without a password: the cost center owners, `controller@nordwerk.example`, `admin@nordwerk.example`, `cfo@nordwerk.example` and `auditor@nordwerk.example`. A new planning round starts in status `setup`; the controller opens it on the status page. Mappings, sync previews and master data are on the "Master data" page; `planlayer sync --dry-run` shows the plan without writing.
+The development login (`PLANLAYER_DEV_LOGIN`, on in `compose.yaml`, refused in production) lets you log in as any of these users without a password: the cost center owners, `controller@nordwerk.example`, `admin@nordwerk.example`, `cfo@nordwerk.example` and `auditor@nordwerk.example`. A new planning round starts in status `setup`; the controller opens it on the status page. Mappings, sync previews and master data are on the "Master data" page; `planlayer sync --dry-run` shows the plan without writing. The controller sets up rounds on "Setup" and publishes them on "Publish" into `planlayer_out` (documented in [docs/output.md](docs/output.md)); `planlayer republish` rebuilds the output.
 
 Checks, as run in CI:
 
