@@ -15,7 +15,7 @@ A mid-sized company whose actuals and master data already sit in a Postgres ware
 | Area | In v1 |
 |---|---|
 | Planning areas | **Cost center planning** (cost center × account × month) and **sales planning** (country × product group × month, amount and quantity). The plan grain is configurable per area, so planning can happen at an aggregate level. |
-| Data in | Master data, hierarchies and actuals read from the customer's **Postgres**. For each dataset Planlayer needs, the admin points to a view, table or query and maps its columns. The data is synced into Planlayer's schema on demand or on a schedule, with a reconciliation report. Cost centers are enabled per planning round, and their owners get planning rights by default. |
+| Data in | Master data, hierarchies and actuals read from the customer's **Postgres**. For each dataset Planlayer needs, the admin enters a query and names its columns. The data is synced into Planlayer's schema on demand or on a schedule, after a preview of what changes. Without a source, the controller enters master data by hand on the same page. Cost centers are enabled per planning round, and their owners get planning rights by default. |
 | Data out | Plan values published by the controller to a dedicated output schema in the customer's Postgres (typically next to the warehouse's gold layer), as documented, BI-readable tables and views. Each publish shows a preview of the rows it adds, changes and removes before it writes. The same values can be downloaded as CSV or Parquet. |
 | Grid | One planning unit (e.g. cost center) at a time. Edit, paste from Excel/LibreOffice, fill-drag, keyboard navigation, computed subtotals, actuals and comparison versions shown alongside. |
 | Spreading | Top-down from totals, over time (year → months) and down the hierarchy (node → leaves): equal, seasonality profile, in proportion to existing values, or in proportion to a reference (prior-year actuals, another version). Results tie exactly to the entered total. |
@@ -52,6 +52,7 @@ These are excluded because each one grows the product into a different one, and 
 ## Candidates for after v1
 
 - **Planning features:** budget layers beyond `base` (challenge / management / board), rolling forecast, price × volume drivers, headcount planning as a module of the yearly setup, simple formulas.
+- **Cost center accounting:** productive cost centers with activity output and coverage difference, capacity planning, cost forwarding by shares or factors, usage factors, capex planning (BACKLOG K-1 to K-5).
 - **Sources:** non-Postgres adapters (Snowflake, BigQuery, Databricks, Parquet/Delta/Iceberg).
 - **Review support:** an "attention" list of open items, and variance commentary thresholds.
 

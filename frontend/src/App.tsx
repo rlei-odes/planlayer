@@ -1,23 +1,26 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api, type Me, type Version } from './api'
 import LoginPage from './LoginPage'
+import MasterDataPage from './MasterDataPage'
 import PlanningPage from './PlanningPage'
 import ResponsibilitiesPage from './ResponsibilitiesPage'
 import StatusPage from './StatusPage'
 import UsersPage from './UsersPage'
 
 type Health = { status: 'ok' | 'unavailable'; version: string; schema_revision: string | null }
-type Page = 'planning' | 'status' | 'responsibilities' | 'users'
+type Page = 'planning' | 'status' | 'masterdata' | 'responsibilities' | 'users'
 
 const LABEL: Record<Page, string> = {
   planning: 'Planning',
   status: 'Status',
+  masterdata: 'Master data',
   responsibilities: 'Responsibilities',
   users: 'Users',
 }
 
 function pagesFor(me: Me): Page[] {
   const pages: Page[] = ['planning', 'status']
+  if (me.is_controller || me.is_admin) pages.push('masterdata')
   if (me.is_controller) pages.push('responsibilities')
   if (me.is_admin) pages.push('users')
   return pages
@@ -121,6 +124,7 @@ export default function App() {
       {me && version && current === 'status' && (
         <StatusPage key={`${me.login}/${version}`} version={version} me={me} onRoundChanged={loadVersions} />
       )}
+      {me && current === 'masterdata' && <MasterDataPage me={me} />}
       {me && current === 'responsibilities' && <ResponsibilitiesPage />}
       {me && current === 'users' && <UsersPage />}
     </div>

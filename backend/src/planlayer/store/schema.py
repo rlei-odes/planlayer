@@ -24,7 +24,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
-from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 
 APP_SCHEMA = "planlayer_app"
 
@@ -83,6 +83,10 @@ member = Table(
     Column("account_type", Text),  # accounts: revenue / cost (T-7)
     Column("valid_from", Date),
     Column("valid_to", Date),
+    # ADR 0012: synced from a source, or added by hand. ``name`` is effective (a local override
+    # wins); ``source_name`` is what the source delivered.
+    Column("origin", Text, nullable=False, server_default="source"),
+    Column("source_name", Text),
     UniqueConstraint("dim_id", "code"),
 )
 
@@ -101,8 +105,10 @@ hier_edge = Table(
     metadata,
     Column("hier_id", SmallInteger, ForeignKey("hierarchy.hier_id"), nullable=False),
     Column("member_id", Integer, ForeignKey("member.member_id"), nullable=False),
-    Column("parent_id", Integer, ForeignKey("member.member_id")),
+    Column("parent_id", Integer, ForeignKey("member.member_id")),  # effective
     Column("sort_order", Integer, nullable=False, server_default="0"),
+    Column("origin", Text, nullable=False, server_default="source"),
+    Column("source_parent_id", Integer, ForeignKey("member.member_id")),
     PrimaryKeyConstraint("hier_id", "member_id"),
 )
 
@@ -384,4 +390,57 @@ sync_run = Table(
     Column("entity_filter", Text),
     Column("members", Integer),
     Column("actual_rows", Integer),
+    Column("summary", JSONB),
+)
+
+# --- Master data (ADR 0012) -----------------------------------------------------------------------
+
+NO_ENTITY = "-"  # the entity of cost centers that name none
+
+# The admin's query per dataset and the source column of each field.
+dataset_mapping = Table(
+    "dataset_mapping",
+    metadata,
+    Column("dataset", Text, primary_key=True),
+    Column("query", Text, nullable=False),
+    Column("fields", JSONB, nullable=False),
+    Column("hierarchy", JSONB),  # {"parent": column} or {"levels": [{"code": c, "name": c}]}
+    Column("updated_by", Text),
+    Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)
+
+# The controller's name for a synced member; survives syncs.
+member_override = Table(
+    "member_override",
+    metadata,
+    Column("member_id", Integer, ForeignKey("member.member_id"), primary_key=True),
+    Column("name", Text, nullable=False),
+    Column("set_by", Text),
+    Column("set_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)
+
+# The controller's parent for a synced member in a hierarchy; survives syncs.
+edge_override = Table(
+    "edge_override",
+    metadata,
+    Column("hier_id", SmallInteger, ForeignKey("hierarchy.hier_id"), nullable=False),
+    Column("member_id", Integer, ForeignKey("member.member_id"), nullable=False),
+    Column("parent_id", Integer, ForeignKey("member.member_id")),
+    Column("set_by", Text),
+    Column("set_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    PrimaryKeyConstraint("hier_id", "member_id"),
+)
+
+# What a manual member looked like when the source took it over.
+member_shadow = Table(
+    "member_shadow",
+    metadata,
+    Column("id", BigInteger, primary_key=True),
+    Column("member_id", Integer, ForeignKey("member.member_id"), nullable=False),
+    Column("code", Text, nullable=False),
+    Column("name", Text, nullable=False),
+    Column("attributes", JSONB, nullable=False),
+    Column("parents", JSONB, nullable=False),
+    Column("confirmed_by", Text),
+    Column("confirmed_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )

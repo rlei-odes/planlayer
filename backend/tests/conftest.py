@@ -141,7 +141,9 @@ def run_sync(settings: Settings, schema: str) -> sync.SyncResult:
     engine, source = create_app_engine(settings), PostgresSource(settings.app_url)
     try:
         actor = access.system_user(engine)
-        return sync.run(engine, source, sync.default_mapping(schema), actor=actor)
+        for m in sync.default_mappings(schema):
+            sync.save_mapping(engine, actor, m)
+        return sync.run(engine, source, actor)
     finally:
         engine.dispose()
         source.dispose()

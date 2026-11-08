@@ -104,6 +104,51 @@ export type Responsibility = {
 }
 export type Responsibilities = { rows: Responsibility[]; unmatched_owners: string[]; users: string[] }
 
+export type Dataset = 'entities' | 'cost_centers' | 'accounts' | 'actuals'
+export type MemberDataset = Exclude<Dataset, 'actuals'>
+export type Hierarchy = { parent: string } | { levels: { code: string; name: string }[] }
+export type Mapping = { query: string; fields: Record<string, string>; hierarchy: Hierarchy | null }
+export type DatasetInfo = {
+  dataset: Dataset
+  fields: { name: string; type: string; required: boolean }[]
+  has_hierarchy: boolean
+  mapping: Mapping | null
+}
+export type Preview = { columns: string[]; rows: (string | null)[][]; error: string | null }
+export type SyncPlan = {
+  datasets: string[]
+  problems: string[]
+  new: string[]
+  changed: string[]
+  gone: string[]
+  matches: { key: string; dimension: string; code: string; name: string }[]
+  actual_cells: number | null
+}
+export type MemberRow = {
+  code: string
+  name: string
+  source_name: string | null
+  origin: 'source' | 'manual'
+  is_group: boolean
+  depth: number
+  parent: string | null
+  source_parent: string | null
+  renamed: boolean
+  moved: boolean
+  entity_code: string | null
+  owner: string | null
+  account_type: string | null
+}
+export type NewMember = {
+  code: string
+  name: string
+  parent: string | null
+  is_group: boolean
+  entity_code?: string | null
+  owner?: string | null
+  account_type?: string | null
+}
+
 /** The session is missing or has ended. */
 export class UnauthorizedError extends Error {}
 
@@ -159,6 +204,24 @@ export const api = {
   addApprover: (code: string, login: string) => post(`${r(code)}/approvers`, { login }).then((res) => json<null>(res)),
   removeApprover: (code: string, login: string) =>
     send('DELETE', `${r(code)}/approvers/${encodeURIComponent(login)}`).then((res) => json<null>(res)),
+  datasets: () => fetch('/api/datasets').then((res) => json<DatasetInfo[]>(res)),
+  saveMapping: (d: Dataset, m: Mapping) => send('PUT', `/api/datasets/${d}/mapping`, m).then((res) => json<null>(res)),
+  deleteMapping: (d: Dataset) => send('DELETE', `/api/datasets/${d}/mapping`).then((res) => json<null>(res)),
+  preview: (d: Dataset, m: Mapping, mapped: boolean) =>
+    post(`/api/datasets/${d}/preview`, { ...m, mapped }).then((res) => json<Preview>(res)),
+  syncPlan: (entity: string | null) => post('/api/sync/plan', { entity }).then((res) => json<SyncPlan>(res)),
+  syncRun: (entity: string | null, confirm: string[]) =>
+    post('/api/sync/run', { entity, confirm }).then((res) =>
+      json<{ members: number; actual_rows: number; matched: string[] }>(res),
+    ),
+  members: (d: MemberDataset) => fetch(`/api/members/${d}`).then((res) => json<MemberRow[]>(res)),
+  addMember: (d: MemberDataset, m: NewMember) => post(`/api/members/${d}`, m).then((res) => json<null>(res)),
+  changeMember: (d: MemberDataset, code: string, change: Record<string, string | null>) =>
+    send('PATCH', `/api/members/${d}/${encodeURIComponent(code)}`, change).then((res) => json<null>(res)),
+  resetMember: (d: MemberDataset, code: string) =>
+    send('DELETE', `/api/members/${d}/${encodeURIComponent(code)}/override`).then((res) => json<null>(res)),
+  deleteMember: (d: MemberDataset, code: string) =>
+    send('DELETE', `/api/members/${d}/${encodeURIComponent(code)}`).then((res) => json<null>(res)),
   versions: () => fetch('/api/versions').then((r) => json<Version[]>(r)),
   setRoundStatus: (version: string, status: RoundStatus) =>
     post(`${v(version)}/status`, { status }).then((r) => json<Version>(r)),

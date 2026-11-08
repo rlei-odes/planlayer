@@ -95,20 +95,14 @@ Each item lists the options and how to decide. Items marked ⚙ are decided by a
 
   "Live" means "connected and refreshable", not "queried per cell". What a sync does is set by D-27.
 - [x] **D-10 Adapter interface.** Decided: [ADR 0004](docs/adr/0004-adapters.md). Sources are relations or queries; reads stream Arrow batches cast to the contract schema from the field mapping; targets replace a partition atomically and idempotently.
-- [ ] **D-11 Logical datasets and source mapping (T-16).** Define the datasets Planlayer needs and their required and optional fields:
-  - **members** per dimension: code, name, description, parent code, sort order, optional validity dates, owner (T-17), and further attributes;
-  - **actuals:** period, one code per dimension, measure, and amount in group currency (T-6).
-
-  Accounts must carry an account type (at least revenue/cost) so the T-7 sign rules can be applied. The amount may arrive in either sign convention, as configured in E-12. Hierarchies arrive parent–child; the app computes all sums, and source sums are used only for reconciliation.
-
-  Also define the **mapping**: how the admin binds a dataset to a view, table or query; how columns are mapped to fields (by name, renamed, constant, or a simple expression); what validation and preview run before the first sync; and how a mapping is stored and versioned. Publish the result as `docs/data-contract.md`.
+- [x] **D-11 Logical datasets and source mapping (T-16).** Decided: [ADR 0012](docs/adr/0012-datasets-and-master-data.md). Datasets entities, cost centers, accounts and actuals; one query per dataset with named columns, typed by the dataset's contract; hierarchies by parent column or level columns; read-only preview before saving. Still to write: `docs/data-contract.md` for admins.
 - [x] **D-12 Write-back / export shape.** Decided: [ADR 0011](docs/adr/0011-publishing.md). Scope chosen per run (approved only by default, or the whole round); one row per cost center × account × month with codes, status and publish time; a run replaces the round's rows in `planlayer_out` after a preview of rows added, changed and removed, and is refused if the result changed since the preview; the same rows as CSV or Parquet downloads.
 - [ ] **D-13 Master data changes between syncs.** Roll-up restates under the current tree (T-19). Still to define, for a member that is renamed, moved, new, or no longer delivered by the source:
   - what happens to plan values keyed on a member that disappeared (kept and flagged as orphaned, not deleted);
   - how the sync report shows each kind of change to the controller;
   - whether a new member is enabled for planning automatically or waits for the controller (T-17): decided in [ADR 0007](docs/adr/0007-planning-rounds.md) for running rounds; a new cost center waits for the controller.
-- [ ] **D-31 Planning without a source.** The Simple and Medium setup levels (E-03) plan without actuals. Decide where cost centers, accounts, owners and hierarchies come from then: entered on a setup page, uploaded as CSV, or both; and how such members later meet a source when the installation moves to the Full level.
-- [ ] **D-27 Sync discipline.** Adopt Budget & Forecast's import rules for every sync: resolve everything before writing anything, list every unmapped member, idempotent re-runs, no silent overwrite of changed actuals without an explicit flag, dry-run, and a sync-run record with source hash/row counts and actor.
+- [x] **D-31 Master data in Planlayer's tables.** Decided: [ADR 0012](docs/adr/0012-datasets-and-master-data.md). Master data lives in Planlayer's tables, fed by sync or entered by hand on the same page; manual members the source later delivers are matched and confirmed, their manual data kept as a shadow record; synced members can be renamed and moved locally, and the override survives syncs.
+- [ ] **D-27 Sync discipline.** Done in [ADR 0012](docs/adr/0012-datasets-and-master-data.md): resolve everything before writing, list every unknown code, idempotent re-runs, a preview (dry run), confirmation of matches, a sync-run record with actor and counts. Open: no silent overwrite of changed actuals in closed periods without an explicit flag, and a source hash per run.
 
 ### Application
 - [x] **D-14 Where totals and spreading run.** Decided: [ADR 0003](docs/adr/0003-totals-and-spreading.md). Spreading and grid subtotals in Python, roll-ups over unseen subtrees in SQL through the closure table; the spread is recorded in the change log.
@@ -213,6 +207,16 @@ Mid-size manufacturer of industrial pumps and valves, ~400 employees.
 - [ ] **E-13** UI/UX design phase: with the main flows on screen (setup, plan, approve, publish), iterate on the frontend while the backend stays mostly as it is: navigation, visual language, the planning grid's look and keyboard flow, empty and error states, the status and setup pages. Done with real users' walkthroughs where possible (R-4).
 - [ ] **E-11** Self-host packaging: container image on GHCR, the DBA install script and checklist (D-25), upgrade/migration procedure, the scheduled backup and restore (D-30), install docs.
 
+### Cost center accounting (after v1)
+
+German terms in parentheses, as controllers know them.
+
+- [ ] **K-1 Productive cost centers and activity output (Leistungen).** A productive cost center outputs activity and is credited for it. Its sheet shows the credits at the top, as negative values while costs are positive, then a total cost line, and at the end the coverage difference (Deckungsdifferenz): costs plus credits. Activity types (Leistungsarten): directly productive (credited to COGS), indirect (e.g. for internal R&D projects), machine hours, personnel hours. Fits T-7: credits are stored natural-positive with their own account type, and shown negative.
+- [ ] **K-2 Capacity planning (Auslastungsplanung)** (optional). Per productive cost center, its work centers are listed and their hours planned; hours × the cost center's hourly rate per activity type give the activity output, written to the cost center (K-1). A cost center driven by manual labour plans the hours the team works instead.
+- [ ] **K-3 Cost forwarding (Leistungsverrechnung).** Service cost centers collect costs and pass them on to consuming cost centers, by percentage shares or by factors (e.g. buildings by the square metres each consumer occupies). Two methods: pass on all costs by the factors; or set a plan rate per unit (e.g. per m²) and pass on only rate × quantity, leaving a difference between costs and costs passed on. There can be multiple units for one cost center with different plan rates.
+- [ ] **K-4 Usage factors (Auslastungsfaktoren)** (much later). When demand drops in a later round (e.g. machining_2 at 70% capacity), the activity output scales down, and each cost type gets a variability percentage: electricity scales 1:1 with machine hours, salaries and depreciation don't.
+- [ ] **K-5 Capex planning** as a module (T-24): planners add planned investments; later their depreciation feeds the cost center plans.
+
 **Later (not v1):** layers beyond `base`, rolling forecast, price × volume drivers, headcount planning as a module (T-24), simple formulas, non-Postgres adapters, balance sheet, an "attention" list (everything that needs a person: missing submissions, unexplained variances, unrolled forecast, unapproved version), variance commentary thresholds, and a default spread profile per account group.
 
 ---
@@ -228,7 +232,8 @@ Mid-size manufacturer of industrial pumps and valves, ~400 employees.
 7. ✓ Rounds and workflow in the store (ADR 0007, ADR 0008): planning rounds with modules, enabled cost centers, entry forms per account group and account, comparison columns, seasonality profiles, sheet and hidden accounts, copy-from-round; workflow status and events, approvers per node; the lock trigger reading round, enabled cost center, status and hidden accounts. The grid returns per row its entry form, spread basis, fallback and editable cells; the planning page renders them, adds accounts and submits; the status page rolls up per node, approves (also in bulk), rejects, reopens, opens and closes the round, and enables cost centers. Not yet in it: the setup page (E-03) and clearing values before hiding an account, who may take which action (D-21), restricting a module to account groups, notifications.
 8. ✓ D-21 (ADR 0009) and the development login: users with admin, controller and viewer roles; owners matched by e-mail or login, overrides and deputies on the responsibilities page, approvers per node; forced RLS on the fact table; every request as the logged-in user; status page actions per user ("waiting for me"); users page; TD-09 seed. Not yet in it: OIDC and LDAPS (E-09), roles from directory groups.
 9. ✓ D-18, D-19 (ADR 0010), D-12 (ADR 0011).
-10. D-31, then E-03: the setup page with the live planner preview, at the Simple, Medium and Full levels.
-11. E-10 first cut: downloads, then preview and run into `planlayer_out`.
-12. E-13 UI/UX design phase over the main flows, backend mostly frozen.
-13. Remaining ADRs (D-13, D-24, D-25, D-27, D-28, D-29, D-30) and F-items, then epics E-01 → E-05 → E-06 → E-09 → E-11 → the rest.
+10. ✓ D-11, D-31 (ADR 0012) and the master-data page: source queries with named columns and preview (admin), sync preview with confirmation of matches and run, the member tree with manual members and local overrides (controller). Parts of E-01 and E-02.
+11. E-03: the setup page with the live planner preview, at the Simple, Medium and Full levels.
+12. E-10 first cut: downloads, then preview and run into `planlayer_out`.
+13. E-13 UI/UX design phase over the main flows, backend mostly frozen.
+14. Remaining ADRs (D-13, D-24, D-25, D-27, D-28, D-29, D-30) and F-items, then epics E-01 → E-05 → E-06 → E-09 → E-11 → the rest.

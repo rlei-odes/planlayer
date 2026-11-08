@@ -196,3 +196,40 @@ select.overridden {
 .users input:not([type]) {
   margin-right: 6px;
 }
+
+.masterdata textarea {
+  width: 100%;
+  max-width: 900px;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+}
+
+details.dataset {
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 6px 10px;
+  margin-bottom: 8px;
+}
+
+table.fields td {
+  padding: 2px 8px 2px 0;
+  vertical-align: top;
+}
+
+.scroll {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+table.preview td {
+  white-space: nowrap;
+}
+
+form.inline {
+  display: inline;
+}
+
+.badge.overridden {
+  background: #fff4d6;
+  color: #6b4e00;
+}

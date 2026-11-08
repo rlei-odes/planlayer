@@ -50,12 +50,13 @@ cd tools/gen_testdata && uv run gen-testdata --db postgresql://postgres:postgres
 Sync the test company into the app and create a budget to plan (the planning page is on http://localhost:8000, or :5173 with Vite):
 
 ```
+docker compose exec app planlayer seed-dev-mappings     # map the datasets to the gold views
 docker compose exec app planlayer sync --entity DE
 docker compose exec app planlayer create-version B2026 --name "Budget 2026" --fiscal-year 2026
 docker compose exec app planlayer seed-dev-users
 ```
 
-The development login (`PLANLAYER_DEV_LOGIN`, on in `compose.yaml`, refused in production) lets you log in as any of these users without a password: the cost center owners, `controller@nordwerk.example`, `admin@nordwerk.example`, `cfo@nordwerk.example` and `auditor@nordwerk.example`. A new planning round starts in status `setup`; the controller opens it on the status page.
+The development login (`PLANLAYER_DEV_LOGIN`, on in `compose.yaml`, refused in production) lets you log in as any of these users without a password: the cost center owners, `controller@nordwerk.example`, `admin@nordwerk.example`, `cfo@nordwerk.example` and `auditor@nordwerk.example`. A new planning round starts in status `setup`; the controller opens it on the status page. Mappings, sync previews and master data are on the "Master data" page; `planlayer sync --dry-run` shows the plan without writing.
 
 Checks, as run in CI:
 
