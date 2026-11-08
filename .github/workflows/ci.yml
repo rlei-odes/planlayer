@@ -49,11 +49,15 @@ jobs:
           export PLANLAYER_APP_DATABASE_URL=postgresql+psycopg://planlayer:planlayer@localhost/planlayer
           export PLANLAYER_OUTPUT_DATABASE_URL=postgresql+psycopg://planlayer:planlayer@localhost/dwh
           export PLANLAYER_SOURCE_DATABASE_URL=postgresql+psycopg://planlayer:planlayer@localhost/dwh
-          uv run planlayer migrate
-          uv run planlayer serve --port 8000 &
+          .venv/bin/planlayer migrate
+          # Started from the venv, not via `uv run`: a uv process left running holds uv's cache
+          # lock, and the setup-uv post step then times out.
+          .venv/bin/planlayer serve --port 8000 &
+          server=$!
+          trap 'kill $server' EXIT
           for _ in $(seq 30); do curl -sf localhost:8000/api/health > health.json && break; sleep 1; done
           cat health.json
-          head=$(uv run python -c "from planlayer.store.migrate import head_revision; print(head_revision())")
+          head=$(.venv/bin/python -c "from planlayer.store.migrate import head_revision; print(head_revision())")
           grep -q "\"schema_revision\":\"$head\"" health.json
 
   testdata:
