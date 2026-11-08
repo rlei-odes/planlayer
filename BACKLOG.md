@@ -63,8 +63,8 @@ Decision records go in `docs/adr/NNNN-title.md`. Each `D-` item is done when its
 Each item lists the options and how to decide. Items marked ⚙ are decided by a spike from section 3.
 
 ### Data model
-- [ ] **D-01 ⚙ Fact table dimension encoding.** Options: (a) generic `member_key`, (b) one FK column per dimension, fixed in the schema, (c) columns generated from a dimension registry plus migrations (the Konsolidat pattern). Criteria: pivot query speed at 1M/10M rows, RLS expressibility, how readable it is for BI tools, cost of adding a dimension. Konsolidat runs (c) in production (`dim_*` columns generated from config, added but never auto-dropped), which makes it the leading candidate. *Spike S-01.*
-- [ ] **D-02 ⚙ Hierarchy storage and roll-up.** Parent–child only (recursive CTE) vs. a precomputed closure table / materialized paths vs. level columns. Also decide whether **alternate hierarchies** (same members, different roll-up) are in v1. Konsolidat's model is a reference: named hierarchies per dimension, an explicit `is_group` flag (input on leaves only), and a closure table built by recursive CTE. *Spike S-02.*
+- [x] **D-01 Fact table dimension encoding.** Decided: [ADR 0001](docs/adr/0001-fact-tables.md). One fact table per planning area, one column per dimension generated from the registry, grain as a unique index, actuals synced at plan grain.
+- [x] **D-02 Hierarchy storage and roll-up.** Decided: [ADR 0002](docs/adr/0002-hierarchies.md). Named hierarchies with parent-child edges, alternate hierarchies in v1, a closure table rebuilt on sync, values on leaves only.
 - [ ] **D-03 Time model.** One fiscal year definition per installation with a configurable start month (T-18). Open: period as first day of month vs. a period dimension table (fiscal year, fiscal period, calendar month), and whether day grain is ever needed (the brief says optional; recommendation: month only in v1). **Closed periods:** derived from where actuals exist (Budget & Forecast) or stored as an explicit close status per entity (Konsolidat). Recommendation: explicit, because roll-forecast and the open-for-input periods depend on it.
 - [ ] **D-04 Planning area definition.** What an admin configures: dimensions in scope, plan grain level per dimension, the periods and versions open for input, which actuals versions are shown alongside, and, per planning round, which members (e.g. cost centers) are enabled for planning (T-17). This is the central config object, so its shape should be settled early.
 - [ ] **D-05 Percentage-mode cells.** Storage: `input_type` + `ref_line` + stored percentage, with the amount derived on write vs. on read. Recalculation order when the reference line changes. Only one level of reference in v1.
@@ -80,7 +80,8 @@ Each item lists the options and how to decide. Items marked ⚙ are decided by a
   - **Open questions:**
     - **Scope:** are profiles global, per planning area, or both?
     - **Defaults:** can a default profile be attached to an account group or a dimension member (e.g. revenue lines use "Sales seasonality")?
-    - **Sub-ranges:** when spreading over only part of the year (e.g. Apr–Dec), are the profile's shares for those months re-normalised? Recommendation: yes.
+    - **Sub-ranges:** re-normalised; built into the engine (ADR 0003).
+    - **Engine defaults:** the engine (`planlayer.domain.spreading`) takes the policy as parameters: a negative reference value is an error or counts as 0; an all-zero reference is an error or falls back to equal. Decide the default per entry mode. In a single node × months spread by reference, a leaf without reference values (e.g. a cost center that didn't exist last year) receives 0. Decide whether that needs a warning or a per-leaf fallback.
 - [ ] **D-29 Entry modes for v1.** Which ways of entering data the grid supports: typing in month cells; typing a **year (or quarter) total** that spreads immediately and visibly using D-28; **paste** of a block from Excel/LibreOffice; fill-drag; and a **spread dialog** on a selected range or total ("spread 1.2M over Jan–Dec by prior-year actuals"). Also decide whether entry in a percentage cell (D-05) and an "uplift selection by x%" action are in v1.
 
 ### Integration
@@ -110,7 +111,7 @@ Each item lists the options and how to decide. Items marked ⚙ are decided by a
 - [ ] **D-27 Sync discipline.** Adopt Budget & Forecast's import rules for every sync: resolve everything before writing anything, list every unmapped member, idempotent re-runs, no silent overwrite of changed actuals without an explicit flag, dry-run, and a sync-run record with source hash/row counts and actor.
 
 ### Application
-- [ ] **D-14 ⚙ Where totals and spreading run.** Spreading rules are implemented once, in the Python `domain` package (T-11). Open: whether grid subtotals and large spreads are computed in SQL (`GROUP BY ROLLUP`, `INSERT … SELECT`) for speed, with the Python implementation as the reference the SQL must match. Spread results must tie **exactly** to the entered total (largest-remainder rounding); Konsolidat only tolerates 0.01 drift. Also decide whether the spread input (total + method/profile) is kept alongside the leaf rows so it can be re-spread later. *Spike S-01/S-03.*
+- [x] **D-14 Where totals and spreading run.** Decided: [ADR 0003](docs/adr/0003-totals-and-spreading.md). Spreading and grid subtotals in Python, roll-ups over unseen subtrees in SQL through the closure table; the spread is recorded in the change log.
 - [x] **D-15 Python stack.** Decided: T-10.
 - [x] **D-16 Frontend stack.** Decided: T-9.
 - [ ] **D-17 ⚙ Grid component.** Glide Data Grid vs. RevoGrid. *Spike S-04.*
@@ -138,9 +139,9 @@ Each item lists the options and how to decide. Items marked ⚙ are decided by a
 
 Throwaway code in `spikes/`, timeboxed. Each spike ends with numbers and a recommendation in the matching ADR.
 
-- [ ] **S-01 Fact table + pivot benchmark.** Build schema variants (a) and (b)/(c) from D-01. Load the large test dataset (TD-11: ~1M and ~10M rows). Measure: a 60 cost centers × 12 months grid with subtotals, a 12 countries × 40 product groups × 12 months grid, a 5,000-cell bulk upsert, and the same queries with RLS enabled. Timebox: 3 days.
-- [ ] **S-02 Hierarchy roll-up.** Recursive CTE vs. closure table on the ragged cost center tree and the account tree. Include an alternate hierarchy. Measure correctness against golden totals (TD-14) and speed. Timebox: 1 day.
-- [ ] **S-03 Spreading engine.** Implement the D-28 bases (equal, profile, proportional to target values, proportional to a reference version/period range) on both axes (time and hierarchy), plus the rounding rule (the sum must tie exactly to the entered total). Run it against the golden cases in TD-14 in both SQL and Python. Timebox: 2 days.
+- [x] **S-01 Fact table + pivot benchmark.** Build schema variants (a) and (b)/(c) from D-01. Load the large test dataset (TD-11: ~1M and ~10M rows). Measure: a 60 cost centers × 12 months grid with subtotals, a 12 countries × 40 product groups × 12 months grid, a 5,000-cell bulk upsert, and the same queries with RLS enabled. Timebox: 3 days.
+- [x] **S-02 Hierarchy roll-up.** Recursive CTE vs. closure table on the ragged cost center tree and the account tree. Include an alternate hierarchy. Measure correctness against golden totals (TD-14) and speed. Timebox: 1 day.
+- [x] **S-03 Spreading engine.** Implement the D-28 bases (equal, profile, proportional to target values, proportional to a reference version/period range) on both axes (time and hierarchy), plus the rounding rule (the sum must tie exactly to the entered total). Run it against the golden cases in TD-14 in both SQL and Python. Timebox: 2 days.
 - [ ] **S-04 Grid component shoot-out.** Same mock cell-block API behind Glide and RevoGrid. Test: paste of 2,000+ cells from Excel (including `1.234,56`-style locale numbers), fill-drag, keyboard flow (Enter/Tab/arrows), frozen row headers, editable subtotal rows, a percentage cell showing both % and amount, read-only/locked cell styling, 50k-cell scroll performance. Score on a fixed sheet. Timebox: 4 days.
 - [ ] **S-05 Adapter prototype.** SQLAlchemy Postgres adapter that reads members and actuals from the simulated warehouse (TD-10) into Arrow and writes a plan table back. Then a 2-hour check: can a DuckDB-over-Parquet adapter implement the same interface unchanged? Validates D-10. Timebox: 2 days.
 - [ ] **S-06 RLS + session context.** Prove per-request `SET LOCAL app.user_id` with a SQLAlchemy connection pool and RLS policies on member scopes, and that the lock trigger and audit trigger see the same context. Timebox: 1 day.
@@ -212,7 +213,7 @@ Mid-size manufacturer of industrial pumps and valves, ~400 employees.
 
 1. ✓ F-01, F-02, F-06 (repo skeleton, compose, ADR template). F-03 (CI) waits for its first green run.
 2. ✓ TD-01…TD-05, TD-07, TD-10, TD-11 (the generator's core).
-3. S-01, S-02, S-03 → close D-01, D-02, D-14. S-03's spreading code becomes the first `domain` module.
+3. ✓ S-01, S-02, S-03 → D-01, D-02, D-14 closed (ADRs 0001–0003). The spreading engine is the first `domain` module.
 4. S-04 → close D-17. S-05 → close D-10. S-06 → close D-21, D-23. D-25 before F-02 is extended for production.
 5. A thin end-to-end slice: sync one entity's cost centers, accounts and actuals; one budget version; the grid with prior-year actuals beside plan; edit and save a cell with the per-cell version check; enter a year total and spread it by prior-year actuals.
 6. Remaining ADRs and F-items, then epics in order E-01 → E-05 → E-06 → E-09 → E-07 → the rest.
