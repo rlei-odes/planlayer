@@ -314,6 +314,18 @@ An optional entry form for a line: instead of typing a value, the planner lists 
 - [ ] **L-4 History:** each version shows which rounds used it; two versions can be compared item by item.
 - [ ] **L-5 Tests:** the line's value equals the list total; a submitted round keeps its version while the list changes; RLS on lists as on plan values.
 
+### Sales Module
+
+Should support both Sales as well as Order intake planning, using the same methodology.
+Has additional dimension **order type** which can be different types of products or services, provided by different departments and having different margins. Examples include sales of machines, spare parts, inhouse repairs, onsite service work, pefurbishment.
+Sales output could optionally be used to feed into Income Statement, or management p&l/segment reporting (controller defines account to be mapped)
+
+### Order Backlog and Opportunities Module
+
+An optional module, fed by its own data source from the erp/crm. Concrete order backlog with customers, their countries, planned sales dates and values. Sales opportunities with customers, expected closing date, and probability. Both form the basis of the sales planning. Optional plan orders can be added, or the sums can be fed into the sales planning grid, where they get modified. A tooltip could show the original value from the OBOM, a conditional coloring could show where the plan value is below OBOM-level.
+
+### Various
+
 **Later (not v1):** layers beyond `base`, rolling forecast, price × volume drivers, headcount planning as a module (T-24), simple formulas, non-Postgres adapters, balance sheet, an "attention" list (everything that needs a person: missing submissions, unexplained variances, unrolled forecast, unapproved version), variance commentary thresholds, and a default spread profile per account group.
 
 ---
