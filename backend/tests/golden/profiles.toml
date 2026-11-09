@@ -1,0 +1,87 @@
+# TD-17: seasonality profiles covering the edge cases of D-28.
+#
+# Values are per fiscal month (month 1 is the fiscal year's first month, T-18), exactly as
+# entered; decimals are strings so they reach Decimal unchanged (T-12). Valid profiles are used
+# by spreads.toml. Invalid ones carry `error`, a fragment of the message they are refused with.
+
+[[profile]]
+code = "EVEN"
+name = "Even"
+entered_as = "relative"
+values = ["1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1"]
+
+[[profile]]
+# Calendar Q4 peak for a January fiscal year: 7 % Jan-Sep, then 10, 12 and 15 %.
+code = "RETAIL_Q4"
+name = "Retail, Q4 peak"
+entered_as = "percent"
+values = ["7", "7", "7", "7", "7", "7", "7", "7", "7", "10", "12", "15"]
+
+[[profile]]
+# August shutdown (a zero month) and a quieter December; 96 points in all.
+code = "MFG_AUG_SHUTDOWN"
+name = "Manufacturing, August shutdown"
+entered_as = "relative"
+values = ["9", "9", "9", "9", "9", "9", "9", "0", "9", "9", "9", "6"]
+
+[[profile]]
+# Percentages with decimals summing to exactly 100: 11 x 8.33 + 8.37 = 100.00.
+code = "PCT_DECIMALS"
+name = "Percentages with decimals"
+entered_as = "percent"
+values = ["8.33", "8.33", "8.33", "8.33", "8.33", "8.33", "8.33", "8.33", "8.33", "8.33", "8.33", "8.37"]
+
+[[profile]]
+# Raw unit counts (pumps sold per month), normalised to shares; 1,800 units in all.
+code = "UNITS"
+name = "Pump units sold"
+entered_as = "relative"
+values = ["120", "135", "150", "160", "155", "140", "130", "60", "150", "170", "190", "240"]
+
+[[profile]]
+# Derived from a production cost center's prior-year actuals and saved as a fixed profile:
+# bonus months in June and December, nothing booked in the August shutdown. Sum 107,000.00.
+code = "DERIVED_PY"
+name = "Production, prior-year actuals"
+entered_as = "relative"
+values = ["8412.50", "8120.00", "9305.25", "9010.00", "9644.75", "11980.40", "8870.10", "0.00", "9215.60", "9488.30", "9902.95", "13050.15"]
+
+# --- Invalid -------------------------------------------------------------------------------------
+
+[[profile]]
+# 11 x 8.33 + 8.27 = 99.90.
+code = "PCT_99_9"
+name = "Percentages summing to 99.9"
+entered_as = "percent"
+values = ["8.33", "8.33", "8.33", "8.33", "8.33", "8.33", "8.33", "8.33", "8.33", "8.33", "8.33", "8.27"]
+error = "not 100"
+
+[[profile]]
+# 11 x 8.33 + 8.47 = 100.10.
+code = "PCT_100_1"
+name = "Percentages summing to 100.1"
+entered_as = "percent"
+values = ["8.33", "8.33", "8.33", "8.33", "8.33", "8.33", "8.33", "8.33", "8.33", "8.33", "8.33", "8.47"]
+error = "not 100"
+
+[[profile]]
+# A month of net returns.
+code = "NEGATIVE"
+name = "Units with a negative month"
+entered_as = "relative"
+values = ["120", "135", "150", "160", "155", "140", "130", "-5", "150", "170", "190", "240"]
+error = "must not be negative"
+
+[[profile]]
+code = "ALL_ZERO"
+name = "All zero"
+entered_as = "relative"
+values = ["0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0"]
+error = "can't be all zero"
+
+[[profile]]
+code = "ELEVEN_VALUES"
+name = "Eleven values"
+entered_as = "percent"
+values = ["9", "9", "9", "9", "9", "9", "9", "9", "9", "9", "10"]
+error = "needs 12 values"
