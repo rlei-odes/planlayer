@@ -287,7 +287,7 @@ An MCP (Model Context Protocol) server, so a user can connect the LLM client of 
 
 ### Line notes (after v1)
 
-Notes on a line of a sheet (cost center × account), for the whole fiscal year rather than a month. They hold to-dos and explanations of why a value is what it is. Unlike E-08's cell comments, which belong to one round, notes carry forward from round to round.
+Notes on a line of a sheet (cost center × account), for the whole fiscal year rather than a month. They hold to-dos and explanations of why a value is what it is. Unlike E-08's cell comments (TBD), which belong to one round, notes carry forward from round to round.
 
 - [ ] **N-1 Decision (ADR): the note model.**
   - **Key:** cost center × account, not round or month, so a note outlives the round it was written in; each note records the round it was written in.
@@ -297,6 +297,7 @@ Notes on a line of a sheet (cost center × account), for the whole fiscal year r
 - [ ] **N-3 Mentions:** `@` a user in a note. The mentioned user sees it in their to-dos (and in MCP's to-dos, M-2) until they open or resolve it. To decide: e-mail notifications, which need mail settings the installation doesn't have yet.
 - [ ] **N-4 Carried forward:** a new round shows the open notes of its lines, labelled with the round they came from. The planner keeps or dismisses each; a dismissed note stays in the history but no longer shows in later rounds. To decide: whether resolved notes carry forward too.
 - [ ] **N-5 Tests:** notes visible only under the line's RLS, carry-forward into a new round, dismissed notes not shown again.
+- [ ] **N-6 Table note type** notes can be of type table, a type which offers a limited spreadsheet space with limited amount of columns. One column is forced to the number type, which also gives the table note a total. The total can be inserted/updated as the value of the cell.
 
 ### Item lists (after v1)
 
