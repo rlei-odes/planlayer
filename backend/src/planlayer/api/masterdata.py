@@ -206,6 +206,7 @@ class SyncRunOut(BaseModel):
     members: int
     actual_rows: int
     matched: list[str]
+    seconds: float  # how long the run took
 
 
 @router.post("/sync/plan", responses={403: {}})
@@ -236,7 +237,9 @@ def sync_run(request: Request, user: CurrentUser, body: SyncRunIn) -> SyncRunOut
         r = sync.run(engine_of(request), _source(request), user, body.entity, body.confirm)
     except HANDLED as e:
         raise _http(e) from None
-    return SyncRunOut(members=r.members, actual_rows=r.actual_rows, matched=r.matched)
+    return SyncRunOut(
+        members=r.members, actual_rows=r.actual_rows, matched=r.matched, seconds=r.seconds
+    )
 
 
 # --- Members --------------------------------------------------------------------------------------

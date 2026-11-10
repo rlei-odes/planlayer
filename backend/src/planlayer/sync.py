@@ -12,6 +12,7 @@ Members and edges keep effective values (the controller's overrides win) next to
 
 import json
 import logging
+import time
 from collections import defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass, field
@@ -20,7 +21,20 @@ from decimal import Decimal
 from typing import Any, cast
 
 import pyarrow as pa
-from sqlalchemy import Connection, Engine, delete, func, insert, literal, or_, select, update
+from sqlalchemy import (
+    Connection,
+    Engine,
+    Table,
+    column,
+    delete,
+    func,
+    insert,
+    literal,
+    or_,
+    select,
+    text,
+    update,
+)
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import DBAPIError
 
@@ -637,6 +651,26 @@ class SyncResult:
     members: int
     actual_rows: int
     matched: list[str]
+    seconds: float = 0.0  # how long the run took, preview included
+
+
+class _Steps:
+    """Times the steps of a run; each is logged, and all are kept in the run's summary."""
+
+    def __init__(self) -> None:
+        self.started = time.perf_counter()
+        self.last = self.started
+        self.seconds: dict[str, float] = {}
+
+    def done(self, step: str, detail: str = "") -> None:
+        now = time.perf_counter()
+        self.seconds[step] = round(now - self.last, 2)
+        log.info("sync: %s in %.1f s%s", step, now - self.last, f" ({detail})" if detail else "")
+        self.last = now
+
+    @property
+    def total(self) -> float:
+        return round(time.perf_counter() - self.started, 2)
 
 
 def run(
@@ -648,7 +682,9 @@ def run(
 ) -> SyncResult:
     """Plan and apply. ``confirm`` lists the matches (``Match.key``) the user confirmed; a run
     refuses while there are problems or unconfirmed matches."""
+    steps = _Steps()
     p = plan(engine, adapter, entity)
+    steps.done("read the source", f"{len(p.datasets)} datasets")
     if p.problems:
         raise SyncError(p.problems)
     unconfirmed = [m.key for m in p.matches if m.key not in set(confirm)]
@@ -665,6 +701,7 @@ def run(
             _shadow(conn, match, actor)
         for dim, members in p.members.items():
             _write_members(conn, dim, members)
+        members_written = sum(len(ms) for ms in p.members.values())
         ids = {
             (d, c): i
             for d, c, i in conn.execute(select(member.c.dim_id, member.c.code, member.c.member_id))
@@ -673,29 +710,35 @@ def run(
             if hier_id is not None and dim in p.members:
                 _write_hierarchy(conn, hier_id, dim, p.members[dim], ids)
         rebuild_closure(conn)
+        steps.done("write members and hierarchies", f"{members_written} members")
         n = _write_actuals(conn, p.actuals, ids, entity) if p.actual_cells is not None else 0
+        steps.done("write actuals", f"{n} cells")
         if p.rates is not None:
             _write_rates(conn, p.rates, ids)
         if p.capacity is not None:
-            _write_capacity_actuals(conn, p.capacity, ids, entity)
+            hours = _write_capacity_actuals(conn, p.capacity, ids, entity)
+            steps.done("write rates and actual hours", f"{hours} cells")
         summary = {
             "datasets": p.datasets,
             "new": len(p.new),
             "changed": len(p.changed),
             "gone": len(p.gone),
             "matched": [m.key for m in p.matches],
+            "seconds": steps.seconds,
         }
+        # now() is the transaction's start; the clock gives the real end.
         conn.execute(
             update(sync_run)
             .where(sync_run.c.id == run_id)
             .values(
-                finished_at=func.now(),
-                members=sum(len(ms) for ms in p.members.values()),
+                finished_at=func.clock_timestamp(),
+                members=members_written,
                 actual_rows=n,
                 summary=summary,
             )
         )
-    return SyncResult(sum(len(ms) for ms in p.members.values()), n, [m.key for m in p.matches])
+    log.info("sync: done in %.1f s (%d members, %d actual cells)", steps.total, members_written, n)
+    return SyncResult(members_written, n, [m.key for m in p.matches], steps.total)
 
 
 def _shadow(conn: Connection, match: Match, actor: Actor) -> None:
@@ -862,24 +905,46 @@ def _write_actuals(
     if entity is not None:
         stmt = stmt.where(fact_cost_center.c.dim_entity == ids[(ENTITY, entity)])
     conn.execute(stmt)
-    if cells:
-        conn.execute(
-            insert(fact_cost_center),
-            [
-                {
-                    "version_id": vid,
-                    "layer_id": BASE_LAYER,
-                    "measure_id": AMOUNT,
-                    "period": p,
-                    "dim_entity": ids[(ENTITY, e)],
-                    "dim_cost_center": ids[(COST_CENTER, c)],
-                    "dim_account": ids[(ACCOUNT, a)],
-                    "amount": v,
-                }
-                for (p, e, c, a), v in cells.items()
-            ],
-        )
+    _insert_all(
+        conn,
+        fact_cost_center,
+        [
+            {
+                "version_id": vid,
+                "layer_id": BASE_LAYER,
+                "measure_id": AMOUNT,
+                "period": p,
+                "dim_entity": ids[(ENTITY, e)],
+                "dim_cost_center": ids[(COST_CENTER, c)],
+                "dim_account": ids[(ACCOUNT, a)],
+                "amount": v,
+            }
+            for (p, e, c, a), v in cells.items()
+        ],
+    )
     return len(cells)
+
+
+CHUNK = 50_000
+
+
+def _insert_all(conn: Connection, table: Table, rows: list[dict[str, Any]]) -> None:
+    """Insert rows with one statement per chunk: the columns go as parallel arrays and are
+    unnested. Row-level security checks and statement triggers then run once per chunk, not once
+    per row, which makes a full sync of actuals several times faster than a row-wise insert."""
+    if not rows:
+        return
+    columns = list(rows[0])
+    dialect = conn.dialect
+    types = {c: table.c[c].type.compile(dialect=dialect) for c in columns}
+    arrays = ", ".join(f"CAST(:{c} AS {types[c]}[])" for c in columns)
+    source = text(f"unnest({arrays}) AS t({', '.join(columns)})")
+    stmt = insert(table).from_select(
+        columns, select(*(column(c) for c in columns)).select_from(source)
+    )
+    for start in range(0, len(rows), CHUNK):
+        chunk = rows[start : start + CHUNK]
+        conn.execute(stmt, {c: [r[c] for r in chunk] for c in columns})
 
 
 def _write_rates(
@@ -940,8 +1005,7 @@ def _write_capacity_actuals(
                 "amount": hours,
             }
         )
-    if rows:
-        conn.execute(insert(fact_capacity), rows)
+    _insert_all(conn, fact_capacity, rows)
     return len(rows)
 
 

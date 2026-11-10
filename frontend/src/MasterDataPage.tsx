@@ -326,15 +326,34 @@ function columnsOf(m: Mapping | null): string[] {
 
 // --- Sync ---------------------------------------------------------------------------------------
 
+/** A long step in progress: what it does, and for how long it has been running. */
+function Working({ text, since }: { text: string; since: number }) {
+  const [now, setNow] = useState(since)
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(timer)
+  }, [])
+  return (
+    <div className="su-note info md-working" role="status">
+      <span className="md-spinner" aria-hidden="true" />
+      <span>{text}</span>
+      <span className="md-elapsed">{Math.floor((now - since) / 1000)} s</span>
+    </div>
+  )
+}
+
 function Sync() {
   const [entity, setEntity] = useState('')
   const [plan, setPlan] = useState<SyncPlan | null>(null)
   const [confirmed, setConfirmed] = useState<Set<string>>(new Set())
   const [note, setNote] = useState<Note | null>(null)
   const [busy, setBusy] = useState(false)
+  // What is running and since when, for the working panel.
+  const [working, setWorking] = useState<{ text: string; since: number } | null>(null)
 
   async function preview() {
     setBusy(true)
+    setWorking({ text: 'Reading every mapped dataset from the source…', since: Date.now() })
     try {
       const p = await api.syncPlan(entity || null)
       setPlan(p)
@@ -344,19 +363,33 @@ function Sync() {
       setNote({ kind: 'error', text: errorText(e) })
     } finally {
       setBusy(false)
+      setWorking(null)
     }
   }
 
   async function runSync() {
     setBusy(true)
+    const cells = plan?.actual_cells
+    setWorking({
+      text:
+        `Syncing: reading the source again, then writing members` +
+        (cells ? ` and ${cells.toLocaleString('en-US')} actual cells` : '') +
+        ' in one transaction. Nothing changes until it is done.',
+      since: Date.now(),
+    })
+    setNote(null)
     try {
       const r = await api.syncRun(entity || null, [...confirmed])
-      setNote({ kind: 'ok', text: `Synced ${r.members} members and ${r.actual_rows} actual cells.` })
+      setNote({
+        kind: 'ok',
+        text: `Synced ${r.members.toLocaleString('en-US')} members and ${r.actual_rows.toLocaleString('en-US')} actual cells in ${Math.max(1, Math.round(r.seconds))} s.`,
+      })
       setPlan(null)
     } catch (e) {
       setNote({ kind: 'error', text: errorText(e) })
     } finally {
       setBusy(false)
+      setWorking(null)
     }
   }
 
@@ -384,6 +417,7 @@ function Sync() {
         </div>
       </section>
 
+      {working && <Working text={working.text} since={working.since} />}
       {note && <div className={`su-note ${note.kind}`}>{note.text}</div>}
 
       {plan && (

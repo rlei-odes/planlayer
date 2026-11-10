@@ -13,7 +13,7 @@ from sqlalchemy import create_engine, func, select, text
 from planlayer import sync
 from planlayer.config import Settings
 from planlayer.store.db import create_app_engine
-from planlayer.store.schema import change_log, closure, member
+from planlayer.store.schema import change_log, closure, member, sync_run
 
 from .conftest import (
     BLANK,
@@ -43,6 +43,10 @@ def test_sync_writes_members_hierarchies_and_actuals(
         # NW, DEP, CC1, CC2 / PL, A, B, C, 6000, 6010, 7000, 4900 / DE, the built-in entity "-"
         # / work centers WC1, WC2, WC9 / activity types MH, RW
         assert conn.execute(select(func.count()).select_from(member)).scalar() == 19
+        # Every run records how long it took, in all and per step.
+        run = conn.execute(select(sync_run).order_by(sync_run.c.id.desc())).first()
+        assert run is not None and run.finished_at > run.started_at
+        assert set(run.summary["seconds"]) >= {"read the source", "write actuals"}
         # Leaf CC1 has ancestors CC1, DEP, NW; leaf 6000 has 6000, A, PL.
         n = conn.execute(select(func.count()).select_from(closure)).scalar()
         assert n == (1 + 2 + 3 + 3) + (1 + 2 + 2 + 2 + 3 + 3 + 3 + 3)

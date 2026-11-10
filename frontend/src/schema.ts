@@ -483,6 +483,7 @@ export type SyncRunOut = {
   members: number
   actual_rows: number
   matched: string[]
+  seconds: number
 }
 
 export type UndoIn = {

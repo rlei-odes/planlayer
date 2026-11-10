@@ -186,6 +186,8 @@ Mid-size manufacturer of industrial pumps and valves, ~400 employees.
 ## 6. v1 epics (refined after section 2 is done)
 
 - [ ] **E-01** Connections & sync: configure a source; map each dataset to a view, table or query and its columns to fields (T-16), with validation and preview; sync members and actuals; show a reconciliation report.
+    - [x] A running sync shows what it writes and for how long; each run records its duration per step, also in the server log.
+    - [ ] Real progress for long syncs (current step, rows written), once a sync can run as a background job (D-24).
 - [ ] **E-12** Setup pages (admin): one place for the settings a new installation needs before planning starts. It covers:
   - **Sign rules (T-7):** how the source delivers signs (natural or ledger) and how the export target expects them. The flip is defined per account type or account group, with per-account overrides. A preview shows sample accounts with their raw source value, the stored value and the exported value.
   - **Fiscal calendar:** the fiscal year's start month (T-18).

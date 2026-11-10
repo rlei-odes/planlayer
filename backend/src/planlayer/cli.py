@@ -1,6 +1,7 @@
 """The ``planlayer`` command."""
 
 import argparse
+import logging
 from datetime import date
 
 import uvicorn
@@ -28,6 +29,8 @@ def report(p: sync.SyncPlan) -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
+    # Planlayer's own messages (e.g. sync steps and their times) next to the server's.
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s:     %(name)s: %(message)s")
     parser = argparse.ArgumentParser(prog="planlayer")
     commands = parser.add_subparsers(dest="command", required=True)
 
