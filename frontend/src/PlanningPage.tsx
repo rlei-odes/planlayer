@@ -175,9 +175,9 @@ export default function PlanningPage({
     api.profiles().then(setProfiles, showError)
   }, [version, loadUnits, showError])
 
-  // Nothing chosen yet (a first visit): the cost center this page starts on becomes the choice.
+  // The cost center shown here is the one the capacity page shows next, where it is productive.
   useEffect(() => {
-    if (!chosen && unit) onUnit(unit)
+    if (unit && unit !== chosen) onUnit(unit)
   }, [chosen, unit, onUnit])
 
   const load = useCallback(() => {

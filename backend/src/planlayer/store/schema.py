@@ -559,6 +559,33 @@ capacity_change_log = Table(
     Column("new_amount", AMOUNT_TYPE),
 )
 
+# Changes to capacity lines, written by a trigger (migration 0009): a line's state before and
+# after, under the request's change batch, for audit and undo. No old state: the line was added.
+capacity_line_log = Table(
+    "capacity_line_log",
+    metadata,
+    Column("id", BigInteger, primary_key=True),
+    Column("at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("actor", Text),
+    Column("batch_id", Text),
+    Column("op", Text, nullable=False),
+    Column("version_id", SmallInteger, nullable=False),
+    Column("cost_center_id", Integer, nullable=False),
+    Column("work_center_id", Integer, nullable=False),
+    Column("activity_type_id", Integer, nullable=False),
+    *(
+        Column(f"{when}_{name}", kind)
+        for when in ("old", "new")
+        for name, kind in (
+            ("rate", RATE_TYPE),
+            ("variable_rate", RATE_TYPE),
+            ("active", Boolean),
+            ("basis", Text),
+            ("profile_id", SmallInteger),
+        )
+    ),
+)
+
 # Capacity planners: they write the capacity of a cost center, or of every one below a node.
 capacity_grant = Table(
     "capacity_grant",

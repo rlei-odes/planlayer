@@ -210,6 +210,8 @@ def test_planners_add_lines_and_new_work_centers(engine: Engine, client: TestCli
     sheet = client.post(f"{SHEET}/lines", json=new).json()
     laser = lines(sheet)["WC_LASER/MH"]
     assert (laser["rate"], laser["added"], laser["prior"]) == ("120.50", True, [None] * 12)
+    # No history: it spreads evenly, without a warning, unless the line chooses otherwise.
+    assert (laser["spread"], laser["fallback"], laser["chosen_spread"]) == ("even", False, None)
     assert client.post(f"{SHEET}/lines", json=new).status_code == 422  # exists
     other = {"work_center_code": "WC9", "activity_type_code": "MH", "rate": "1"}
     refused = client.post(f"{SHEET}/lines", json=other)
@@ -310,3 +312,50 @@ def test_a_new_round_copies_productive_cost_centers(client: TestClient) -> None:
     assert client.post("/api/rounds", json=new).status_code == 200
     setup = client.get("/api/rounds/F2026/setup").json()["setup"]
     assert setup["productive_cost_centers"] == ["CC1"]
+
+
+def undo(client: TestClient, batch: str) -> object:
+    return client.post(f"{SHEET}/undo", json={"batch_id": batch})
+
+
+def test_undo_and_redo(client: TestClient) -> None:
+    productive(client, "CC1")
+    edited = hours(client, "WC1", "MH", None, "1140").json()  # type: ignore[attr-defined]
+    rated = client.patch(f"{SHEET}/lines/WC1/MH", json={"rate": "90"}).json()
+    assert credits(rated)["MH"][7] == "1832.40"
+
+    # Undo the rate: back to 80, credits follow.
+    sheet = undo(client, rated["batch_id"]).json()  # type: ignore[attr-defined]
+    assert (lines(sheet)["WC1/MH"]["rate"], credits(sheet)["MH"][7]) == ("80.00", "1628.80")
+    # Then the hours: nothing changed them since, so the batch can be undone too.
+    sheet = undo(client, edited["batch_id"]).json()  # type: ignore[attr-defined]
+    assert lines(sheet)["WC1/MH"]["plan"][0]["value"] is None
+    assert credits(sheet)["MH"] == [None] * 12
+    # Undoing the undo redoes it.
+    sheet = undo(client, sheet["batch_id"]).json()  # type: ignore[attr-defined]
+    assert lines(sheet)["WC1/MH"]["plan"][0]["value"] == "101.79"
+    assert credits(sheet)["MH"][7] == "1628.80"
+
+
+def test_undo_is_refused_after_later_changes(client: TestClient) -> None:
+    productive(client, "CC1")
+    first = hours(client, "WC1", "MH", 0, "10").json()  # type: ignore[attr-defined]
+    seen = [c["row_version"] for c in lines(first)["WC1/MH"]["plan"]]
+    hours(client, "WC1", "MH", 0, "20", seen)
+    refused = undo(client, first["batch_id"])
+    assert refused.status_code == 409  # type: ignore[attr-defined]
+    assert refused.json() == [{"account_code": "WC1 / MH", "month": 0}]  # type: ignore[attr-defined]
+    assert undo(client, "nope").status_code == 404  # type: ignore[attr-defined]
+    login(client, OWNER)  # someone else's batch is not theirs to undo
+    assert undo(client, first["batch_id"]).status_code == 404  # type: ignore[attr-defined]
+
+
+def test_undo_line_changes(client: TestClient) -> None:
+    productive(client, "CC1")
+    new = {"work_center_code": "WC_NEW", "activity_type_code": "MH", "rate": "50",
+           "new_work_center_name": "New"}  # fmt: skip
+    added = client.post(f"{SHEET}/lines", json=new).json()
+    assert "WC_NEW/MH" in lines(added)
+    assert "WC_NEW/MH" not in lines(undo(client, added["batch_id"]).json())  # type: ignore[attr-defined]
+    off = client.patch(f"{SHEET}/lines/WC2/MH", json={"active": False}).json()
+    assert "WC2/MH" in lines(undo(client, off["batch_id"]).json())  # type: ignore[attr-defined]

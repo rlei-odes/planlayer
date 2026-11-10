@@ -561,18 +561,27 @@ function ProductiveCostCenters({ draft, setDraft, round }: DraftProps & { round:
   const on = units.filter((u) => productive.has(u.code))
   const off = units.filter((u) => !productive.has(u.code) && (!q || `${u.code} ${u.name}`.toLowerCase().includes(q)))
 
-  function toggle(code: string) {
+  // Only the toggled row takes part in the transition (it slides to its new place); the rest of
+  // the page, the other rows included, changes at once.
+  const [moving, setMoving] = useState<string | null>(null)
+
+  function toggle(code: string, row: HTMLElement | null) {
     const next = productive.has(code)
       ? [...productive].filter((c) => c !== code)
       : [...productive, code].sort()
-    const apply = () => flushSync(() => setDraft({ ...draft, productive_cost_centers: next }))
-    if (document.startViewTransition && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      document.startViewTransition(apply)
+    const apply = () =>
+      flushSync(() => {
+        setMoving(code)
+        setDraft({ ...draft, productive_cost_centers: next })
+      })
+    if (row && document.startViewTransition && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      row.style.viewTransitionName = 'pc-moving'
+      void document.startViewTransition(apply).finished.finally(() => setMoving(null))
     } else apply()
   }
 
   const item = (u: PlanningUnit, isOn: boolean) => (
-    <li key={u.code} style={{ viewTransitionName: `pc-${u.code.replace(/[^A-Za-z0-9_-]/g, '_')}` }}>
+    <li key={u.code} style={moving === u.code ? { viewTransitionName: 'pc-moving' } : undefined}>
       <span className="pc-name">
         <span className="pl-code">{u.code}</span>
         {u.name}
@@ -583,7 +592,7 @@ function ProductiveCostCenters({ draft, setDraft, round }: DraftProps & { round:
         aria-checked={isOn}
         aria-label={`${u.code} ${u.name} productive`}
         className="pc-switch"
-        onClick={() => toggle(u.code)}
+        onClick={(e) => toggle(u.code, e.currentTarget.closest('li'))}
       >
         <i />
       </button>

@@ -390,12 +390,13 @@ ACCOUNT_GROUPS = (
     ("OTHER_OPEX", "Other operating expenses", "OPEX", 7300, 15, "cost", ("admin",), 1400),
     ("DEPRECIATION", "Depreciation", "DA", 7800, 10, "cost", ("production", "admin"), 1200),
     # Credited by capacity planning (ADR 0013), never booked directly: no functions.
-    ("CREDITS", "Activity credits", "ALLOC", 8900, 3, "cost", (), 0),
+    ("CREDITS", "Activity credits", "ALLOC", 8900, 4, "cost", (), 0),
 )
 CREDIT_ACCOUNT_NAMES = {
     "8900": "Credits machine hours",
     "8910": "Credits measurement and quality control",
     "8920": "Credits repair work",
+    "8930": "Credits engineering hours",
 }
 
 # Revenue accounts per product line: sales revenue is booked by line (TD-07).
@@ -581,6 +582,7 @@ ACTIVITY_TYPES = (
     ("MACHINE_HOURS", "Machine hours", "8900"),
     ("QUALITY_MEASUREMENT", "Measurement and quality control", "8910"),
     ("REPAIR_WORK", "Repair work", "8920"),
+    ("ENGINEERING_HOURS", "Engineering hours", "8930"),
 )
 
 # Work centers of production cost centers, by cost center name: (name, activity type, rate in
@@ -605,6 +607,34 @@ WORK_CENTERS: dict[str, tuple[tuple[str, tuple[tuple[str, int, int], ...]], ...]
     "Valve Machining": (("Valve machining centre", (("MACHINE_HOURS", 105, 400),)),),
     "Pressure Testing": (("Pressure test rig", (("QUALITY_MEASUREMENT", 125, 280),)),),
     "Valve Maintenance": (("Valve maintenance crew", (("REPAIR_WORK", 85, 500),)),),
+    "Painting": (("Paint line", (("MACHINE_HOURS", 75, 330),)),),
+    "Plant Logistics": (("Forklift fleet", (("MACHINE_HOURS", 45, 500),)),),
+    "Tooling": (
+        ("Tool grinding", (("MACHINE_HOURS", 85, 260),)),
+        ("Toolmaker team", (("REPAIR_WORK", 68, 300),)),
+    ),
+    "Prototyping": (
+        ("Prototype workshop", (("ENGINEERING_HOURS", 110, 280), ("MACHINE_HOURS", 90, 120))),
+    ),
+    "Hydraulic Design": (("Hydraulic design team", (("ENGINEERING_HOURS", 105, 600),)),),
+    "Mechanical Design": (("Mechanical design team", (("ENGINEERING_HOURS", 100, 520),)),),
+    "Assembly PL": (("Assembly line PL", (("MACHINE_HOURS", 40, 400),)),),
+    "Quality PL": (("Measuring room PL", (("QUALITY_MEASUREMENT", 60, 220),)),),
+    "Maintenance PL": (("Maintenance crew PL", (("REPAIR_WORK", 45, 480),)),),
+    "Valve Assembly": (
+        ("Valve assembly cell 1", (("MACHINE_HOURS", 80, 360),)),
+        ("Valve assembly cell 2", (("MACHINE_HOURS", 80, 340),)),
+    ),
+    "Coating": (("Coating booth", (("MACHINE_HOURS", 95, 300),)),),
+    "Valve Quality": (("Valve measuring room", (("QUALITY_MEASUREMENT", 130, 240),)),),
+    "Materials Lab": (
+        (
+            "Materials testing lab",
+            (("QUALITY_MEASUREMENT", 140, 200), ("ENGINEERING_HOURS", 125, 160)),
+        ),
+    ),
+    "US Assembly": (("US assembly line", (("MACHINE_HOURS", 70, 380),)),),
+    "US Testing": (("US test rig", (("QUALITY_MEASUREMENT", 115, 260),)),),
 }
 
 

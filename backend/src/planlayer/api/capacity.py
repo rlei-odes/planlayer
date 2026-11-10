@@ -239,10 +239,10 @@ def change_line(
             if body.spread is None
             else planning.LineSpread(body.spread.basis, body.spread.profile_code),
         )
-        capacity.change_line(
+        batch = capacity.change_line(
             engine, user, version_code, cc_code, work_center_code, activity_type_code, change
         )
-        return _sheet_out(capacity.read_sheet(engine, user, version_code, cc_code))
+        return _sheet_out(capacity.read_sheet(engine, user, version_code, cc_code), batch)
     except HANDLED as e:
         raise _errors(e) from None
 
@@ -254,7 +254,7 @@ def add_line(
     """Add a line to the sheet in this round, creating a new work center when named."""
     engine = engine_of(request)
     try:
-        capacity.add_line(
+        batch = capacity.add_line(
             engine,
             user,
             version_code,
@@ -264,6 +264,26 @@ def add_line(
             _rate(body.rate),
             body.new_work_center_name,
         )
-        return _sheet_out(capacity.read_sheet(engine, user, version_code, cc_code))
+        return _sheet_out(capacity.read_sheet(engine, user, version_code, cc_code), batch)
     except HANDLED as e:
         raise _errors(e) from None
+
+
+class UndoIn(BaseModel):
+    batch_id: Annotated[str, Field(min_length=1, max_length=64)]
+
+
+@router.post(V + "/{cc_code}/undo", responses={404: {}, 409: {"model": list[ConflictOut]}, 423: {}})
+def undo(
+    request: Request, user: CurrentUser, version_code: str, cc_code: str, body: UndoIn
+) -> CapacitySheetOut:
+    """Revert one of the user's change batches on the sheet; returns the sheet with the undo's
+    own batch (undoing it redoes the change), or 409 with what changed since."""
+    engine = engine_of(request)
+    try:
+        batch = capacity.undo_batch(engine, user, version_code, cc_code, body.batch_id)
+    except planning.ConflictError as e:
+        return _conflict(e)  # type: ignore[return-value]
+    except HANDLED as e:
+        raise _errors(e) from None
+    return _sheet_out(capacity.read_sheet(engine, user, version_code, cc_code), batch)

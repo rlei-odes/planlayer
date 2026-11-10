@@ -516,6 +516,16 @@
   font-weight: 400;
 }
 
+/* The page itself doesn't cross-fade; only the moving row (pc-moving) slides. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+}
+
+::view-transition-group(pc-moving) {
+  animation-duration: 0.28s;
+}
+
 .pc-switch {
   flex: none;
   width: 32px;

@@ -44,8 +44,9 @@ Two new dimensions, each with its own optional dataset, synced and curated like 
 
 - Planned hours live in `fact_capacity`, one column per dimension (ADR 0001): version, layer, measure, period, entity, cost center, work center and activity type. The cost center is fixed when the line enters the round, so scopes and locks work on that column, as on the cost center facts.
 - Actual hours are synced into the same table under the actuals version.
-- Hours are entered like cost lines: per month, or as a year total. A year total spreads like the line's prior-year actual hours by default, or evenly, or by a seasonality profile (working days are the typical choice). The choice is kept on the line, as with a line spread (ADR 0007).
-- Row-level security, the lock trigger and an audit trigger apply as for plan values. Changes go into `capacity_change_log`, under the same change batch as the request.
+- Hours are entered like cost lines: per month, or as a year total. A year total spreads like the line's prior-year actual hours by default, or evenly, or by a seasonality profile (working days are the typical choice). The choice is kept on the line, as with a line spread (ADR 0007). A work center added by hand has no history, so its lines spread evenly by default.
+- Row-level security, the lock trigger and an audit trigger apply as for plan values. Changes go into `capacity_change_log`, under the same change batch as the request. Changes to a line (plan rate, state, spread) go into `capacity_line_log` by a trigger, with the same batch.
+- **Undo** works as on the cost sheet (ADR 0010): one of the user's batches is reverted as a new batch (hours, line states, and a line the batch added is removed), and the credits are recomputed in it. It is refused as a conflict if anything the batch wrote changed since. A work center created with a line stays in master data.
 
 ### Credits are stored plan values on the cost center
 
@@ -57,7 +58,7 @@ Two new dimensions, each with its own optional dataset, synced and curated like 
 
 - A cost center has one status per round (ADR 0008), covering both its capacity sheet and its cost sheet. Submitting from either page submits the cost center. Editing either sheet sets it in progress, and approval locks both.
 - The sidebar shows Capacity before Planning, the usual order of work, but neither waits for the other.
-- Both pages share the selected cost center, so switching between them keeps it.
+- Both pages share the selected cost center: the one a page shows is the one the other opens with, where it can (the capacity page lists only productive cost centers).
 
 ### Capacity planners
 
@@ -77,7 +78,7 @@ Two new dimensions, each with its own optional dataset, synced and curated like 
 
 ## Consequences
 
-- New tables: `work_center_rate` (the source's rates, replaced by each sync), `capacity_line`, `fact_capacity`, `capacity_change_log`, `capacity_grant`. New view: `capacity_access`. `member` gets a work center's cost center and an activity type's accounts, as codes like a cost center's entity. The module check allows `capacity`.
+- New tables: `work_center_rate` (the source's rates, replaced by each sync), `capacity_line`, `fact_capacity`, `capacity_change_log`, `capacity_line_log`, `capacity_grant`. New view: `capacity_access`. `member` gets a work center's cost center and an activity type's accounts, as codes like a cost center's entity. The module check allows `capacity`.
 - New pages and steps: the capacity page (Plan, before Planning); a setup step for productive cost centers; activity types and work centers on the master-data page; capacity planners on the responsibilities page.
-- Not in this decision: undo on the capacity sheet; a published table of planned hours; showing credits negative with the coverage difference (K-1); usage factors (K-4). They are on the backlog under K-1 and K-2.
+- Not in this decision: a published table of planned hours; showing credits negative with the coverage difference (K-1); usage factors (K-4). They are on the backlog under K-1 and K-2.
 - Cost forwarding (K-3) can follow the same pattern: lines per round, a quantity per line, and stored credits and charges on the cost center facts.

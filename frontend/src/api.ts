@@ -136,6 +136,11 @@ export const api = {
       `${cap(version, code)}/lines/${encodeURIComponent(workCenter)}/${encodeURIComponent(activityType)}`,
       change,
     ).then((r) => json<CapacitySheet>(r)),
+  async capacityUndo(version: string, code: string, batchId: string): Promise<CapacitySheet> {
+    const response = await post(`${cap(version, code)}/undo`, { batch_id: batchId })
+    if (response.status === 409) throw new ConflictError((await response.json()) as Conflict[])
+    return json<CapacitySheet>(response)
+  },
   addLine: (version: string, code: string, line: S.LineIn) =>
     post(`${cap(version, code)}/lines`, line).then((r) => json<CapacitySheet>(r)),
   costCenters: (version: string) => fetch(`${v(version)}/cost-centers`).then((r) => json<PlanningUnit[]>(r)),

@@ -52,7 +52,7 @@ def test_standard_sizes() -> None:
     master = build()
     assert len(master.entities) == 4
     assert 55 <= len(master.cost_centers) <= 65
-    assert len(master.accounts) == 153
+    assert len(master.accounts) == 154
     assert len(master.account_groups) == 13
     assert len(master.products) == 400
     assert len(master.product_groups) == 40
@@ -99,7 +99,9 @@ def test_small_variant() -> None:
     master = build("small")
     assert [e.code for e in master.entities] == ["DE"]
     assert len(master.cost_centers) <= 16
-    assert len(master.accounts) <= 30
+    # Capped per group, except the credit accounts capacity planning needs.
+    assert len([a for a in master.accounts if a.group != "CREDITS"]) <= 27
+    assert len([a for a in master.accounts if a.group == "CREDITS"]) == 4
     assert master.calendar.periods[0] == date(2025, 1, 1)
 
 
@@ -122,7 +124,7 @@ def test_gl_needs_billing_first() -> None:
 def test_work_centers_of_production_cost_centers() -> None:
     master = build()
     by_code = {c.code: c for c in master.cost_centers}
-    assert len(master.work_centers) == 15
+    assert len(master.work_centers) == 32
     assert all(by_code[w.cost_center].function == "production" for w in master.work_centers)
     machining = [w for w in master.work_centers if by_code[w.cost_center].name == "Machining"]
     assert [w.name for w in machining] == ["Machining centre 1", "Machining centre 2", "Lathe"]

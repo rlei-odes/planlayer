@@ -64,6 +64,11 @@ def main(argv: list[str] | None = None) -> None:
         "seed-dev-users", help="create the development users of the test data (not in production)"
     )
 
+    plans_cmd = commands.add_parser(
+        "seed-dev-plans",
+        help="plan values for some cost centers, as their owners began planning (development)",
+    )
+    plans_cmd.add_argument("--round", default="B2026", help="the planning round (default B2026)")
     types_cmd = commands.add_parser(
         "api-types", help="write the frontend's TypeScript types from the API schema"
     )
@@ -157,6 +162,18 @@ def main(argv: list[str] | None = None) -> None:
             finally:
                 engine.dispose()
             print(f"created {len(created)} user(s): {', '.join(created) or '-'}")
+        case "seed-dev-plans":
+            settings = Settings()  # type: ignore[call-arg]
+            if settings.environment == "production":
+                raise SystemExit("seed-dev-plans is refused in production")
+            engine = create_app_engine(settings)
+            try:
+                seeded = devdata.seed_plans(engine, args.round)
+            finally:
+                engine.dispose()
+            for code, owner, status in seeded:
+                print(f"{code}: {status} ({owner})")
+            print(f"seeded plan values for {len(seeded)} cost center(s) in {args.round}")
         case "api-types":
             from planlayer.api.typescript import app_schema, typescript
 

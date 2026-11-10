@@ -1,6 +1,6 @@
 import { RevoGrid } from '@revolist/react-datagrid'
 import type { HyperFunc, VNode } from '@revolist/revogrid'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useEffectEvent, useMemo, useState } from 'react'
 import { format, parse, sum } from './amounts'
 import {
   api,
@@ -14,6 +14,7 @@ import {
   type PlanningUnit,
   type ProfileRef,
 } from './api'
+import { RedoIcon, UndoIcon } from './icons'
 import Select, { type Option } from './Select'
 import { pickUnit } from './units'
 
@@ -151,6 +152,10 @@ export default function CapacityPage({
   const [saving, setSaving] = useState(false)
   const [menu, setMenu] = useState<{ key: string; anchor: DOMRect } | null>(null)
   const [adding, setAdding] = useState(false)
+  // Undo (ADR 0010): the change batches of this visit to the sheet, newest last. Undoing a batch
+  // writes a new one, which goes on the other stack, so redo is undoing the undo.
+  const [undoStack, setUndoStack] = useState<string[]>([])
+  const [redoStack, setRedoStack] = useState<string[]>([])
   const unit = units ? pickUnit(units, chosen) : ''
 
   const showError = useCallback((e: unknown) => setMessage({ kind: 'error', text: errorText(e) }), [])
@@ -166,9 +171,17 @@ export default function CapacityPage({
   }, [loadUnits, showError])
 
   // Nothing chosen yet (a first visit): the cost center this page starts on becomes the choice.
+  // The cost center shown here is the one the planning page shows next.
   useEffect(() => {
-    if (!chosen && unit) onUnit(unit)
+    if (unit && unit !== chosen) onUnit(unit)
   }, [chosen, unit, onUnit])
+
+  /** A change was saved: show it and make it undoable. */
+  function applied(updated: CapacitySheet) {
+    setSheet(updated)
+    if (updated.batch_id) setUndoStack((s) => [...s, updated.batch_id!])
+    setRedoStack([])
+  }
 
   const load = useCallback(() => {
     if (!unit) return
@@ -257,11 +270,14 @@ export default function CapacityPage({
     setSaving(true)
     try {
       let updated = sheet
-      if (edits.length) updated = await api.capacityEdit(version, sheet.cost_center_code, edits)
+      if (edits.length) {
+        updated = await api.capacityEdit(version, sheet.cost_center_code, edits)
+        applied(updated)
+      }
       for (const { row, rate } of rates) {
         updated = await api.changeLine(version, sheet.cost_center_code, row.work_center_code!, row.activity_type_code, { rate })
+        applied(updated)
       }
-      setSheet(updated)
       if (updated.status !== sheet.status) loadUnits()
     } catch (e) {
       if (e instanceof ConflictError) {
@@ -280,7 +296,7 @@ export default function CapacityPage({
     try {
       const change = choice === INACTIVE ? { active: false } : { spread: spreadOf(choice) }
       const updated = await api.changeLine(version, sheet.cost_center_code, row.work_center_code!, row.activity_type_code, change)
-      setSheet(updated)
+      applied(updated)
       const after = updated.rows.find((r) => r.kind === 'line' && lineKey(r) === key)
       setMessage({
         kind: 'ok',
@@ -297,12 +313,59 @@ export default function CapacityPage({
   async function activate(workCenter: string, activityType: string) {
     if (!sheet) return
     try {
-      setSheet(await api.changeLine(version, sheet.cost_center_code, workCenter, activityType, { active: true }))
+      applied(await api.changeLine(version, sheet.cost_center_code, workCenter, activityType, { active: true }))
       setMessage(null)
     } catch (e) {
       showError(e)
     }
   }
+
+  async function step(direction: 'undo' | 'redo') {
+    const stack = direction === 'undo' ? undoStack : redoStack
+    const batch = stack[stack.length - 1]
+    if (!sheet || !batch || saving || locked) return
+    const take = direction === 'undo' ? setUndoStack : setRedoStack
+    const give = direction === 'undo' ? setRedoStack : setUndoStack
+    setSaving(true)
+    try {
+      const updated = await api.capacityUndo(version, sheet.cost_center_code, batch)
+      setSheet(updated)
+      take((s) => s.slice(0, -1))
+      if (updated.batch_id) give((s) => [...s, updated.batch_id!])
+      setMessage(null)
+    } catch (e) {
+      if (e instanceof ConflictError) {
+        // Someone else changed it since: this step can't be taken any more.
+        take((s) => s.slice(0, -1))
+        setMessage({
+          kind: 'info',
+          text: `Can’t ${direction}: ${e.conflicts.length} cell(s) or line(s) were changed by someone else since. The latest values are shown, nothing was changed.`,
+        })
+        load()
+      } else showError(e)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  // Ctrl+Z / Cmd+Z undoes, Ctrl+Y or Ctrl+Shift+Z redoes, unless a text field (the cell editor
+  // included) has the focus: there the keys undo typing, as usual.
+  const onKey = useEffectEvent((e: KeyboardEvent) => {
+    const target = e.target as HTMLElement | null
+    if (!(e.ctrlKey || e.metaKey) || target?.closest('input, textarea, [contenteditable="true"]')) return
+    const key = e.key.toLowerCase()
+    if (key === 'z' && !e.shiftKey) {
+      e.preventDefault()
+      void step('undo')
+    } else if (key === 'y' || (key === 'z' && e.shiftKey)) {
+      e.preventDefault()
+      void step('redo')
+    }
+  })
+  useEffect(() => {
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   async function submit() {
     if (!sheet) return
@@ -342,8 +405,12 @@ export default function CapacityPage({
   const canSubmit = open && planning.some((p) => p.code === unit && p.can_write)
   const menuRow = menu && sheet?.rows.find((r) => r.kind === 'line' && lineKey(r) === menu.key)
   const menuOptions: Option[] = [
-    { value: 'default', label: 'Like last year’s hours', hint: 'default' },
-    { value: 'even', label: 'Evenly' },
+    ...(menuRow?.added
+      ? [{ value: 'default', label: 'Evenly', hint: 'default for a new work center' }]
+      : [
+          { value: 'default', label: 'Like last year’s hours', hint: 'default' },
+          { value: 'even', label: 'Evenly' },
+        ]),
     ...profiles.map((p) => ({ value: `profile:${p.code}`, label: p.name, hint: 'profile' })),
     ...(controller ? [{ value: INACTIVE, label: 'Set inactive in this round', hint: 'line' }] : []),
   ]
@@ -361,6 +428,8 @@ export default function CapacityPage({
               onUnit(code)
               setMessage(null)
               setAdding(false)
+              setUndoStack([])
+              setRedoStack([])
             }}
             searchable
             options={units.map((u) => ({
@@ -379,6 +448,30 @@ export default function CapacityPage({
         <div className="pl-actions">
           {current && <span className={`su-pill ${current.status}`}>{STATUS_LABEL[current.status]}</span>}
           {sheet?.deadline && <span className="su-pill neutral">Due {sheet.deadline}</span>}
+          {open && (
+            <span className="pl-undo" role="group" aria-label="Undo and redo">
+              <button
+                type="button"
+                className="su-icon"
+                disabled={undoStack.length === 0 || saving}
+                onClick={() => void step('undo')}
+                aria-label="Undo"
+                title={`Undo your last change (Ctrl+Z)${undoStack.length ? ` · ${undoStack.length} step${undoStack.length === 1 ? '' : 's'}` : ''}`}
+              >
+                <UndoIcon />
+              </button>
+              <button
+                type="button"
+                className="su-icon"
+                disabled={redoStack.length === 0 || saving}
+                onClick={() => void step('redo')}
+                aria-label="Redo"
+                title="Redo (Ctrl+Y)"
+              >
+                <RedoIcon />
+              </button>
+            </span>
+          )}
           {open && (
             <button type="button" className="su-btn" aria-expanded={adding} onClick={() => setAdding((a) => !a)}>
               <span className="pl-plus">+</span> Add line
@@ -404,7 +497,7 @@ export default function CapacityPage({
           onCancel={() => setAdding(false)}
           onAdd={async (line) => {
             try {
-              setSheet(await api.addLine(version, sheet.cost_center_code, line))
+              applied(await api.addLine(version, sheet.cost_center_code, line))
               setAdding(false)
               setMessage({ kind: 'ok', text: `${line.work_center_code} added to the sheet.` })
             } catch (e) {
@@ -461,7 +554,7 @@ export default function CapacityPage({
               {open && (
                 <span className="pl-help">
                   Hours per month, or a year total in “Plan” that spreads as the line’s badge says. Rates are per hour. The
-                  credits appear on the cost center’s planning sheet.
+                  credits appear on the cost center’s planning sheet. Ctrl+Z undoes.
                 </span>
               )}
             </div>

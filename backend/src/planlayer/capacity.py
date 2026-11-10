@@ -48,7 +48,9 @@ from planlayer.store.schema import (
     MODULE_CAPACITY,
     NO_ENTITY,
     WORK_CENTER,
+    capacity_change_log,
     capacity_line,
+    capacity_line_log,
     credit_account,
     fact_capacity,
     fact_cost_center,
@@ -151,6 +153,13 @@ class _Line:
     basis: Basis | None  # chosen on the line; None: like prior-year actual hours
     profile_id: int | None
     stored: bool  # kept with the round in capacity_line
+    added: bool = False  # a work center entered by hand: no history, so it spreads evenly
+
+    @property
+    def default_basis(self) -> Basis:
+        """How a year total spreads unless the line chooses: like last year's hours, or evenly
+        for a work center added by hand (e.g. a machine still to be bought)."""
+        return "even" if self.added else "reference"
 
 
 def productive(conn: Connection, version_id: int) -> set[int]:
@@ -239,6 +248,15 @@ def _lines(conn: Connection, ctx: _Context) -> dict[tuple[int, int], _Line]:
         .where(member.c.cost_center_code == ctx.cost_center_code)
     ):
         lines.setdefault((wc, at), _Line(wc, at, rate, True, None, None, False))
+    manual = set(
+        conn.execute(
+            select(member.c.member_id).where(
+                member.c.member_id.in_({wc for wc, _ in lines}), member.c.origin == "manual"
+            )
+        ).scalars()
+    )
+    for line in lines.values():
+        line.added = line.work_center_id in manual
     return lines
 
 
@@ -284,7 +302,7 @@ def _profiles(conn: Connection, lines: Iterable[_Line]) -> dict[int, tuple[str, 
 def _spread_of(
     line: _Line, profiles: dict[int, tuple[str, str, Profile]], prior: list[Decimal | None]
 ) -> tuple[Basis, str, Profile | None]:
-    basis: Basis = line.basis or "reference"
+    basis: Basis = line.basis or line.default_basis
     if basis == "profile":
         assert line.profile_id is not None
         _, name, profile = profiles[line.profile_id]
@@ -785,7 +803,7 @@ def add_line(
     at_code: str,
     rate: Decimal,
     new_work_center_name: str | None = None,
-) -> None:
+) -> str:
     """Add a line to the cost center's sheet in this round. With ``new_work_center_name``, the
     work center is created first, as a manual work center of the cost center (e.g. a machine
     planned to be bought)."""
@@ -841,7 +859,130 @@ def add_line(
             )
         )
 
-    _run(engine, actor, work)
+    return _run(engine, actor, work)
+
+
+LINE_STATE = ("rate", "variable_rate", "active", "basis", "profile_id")
+
+
+def undo_batch(engine: Engine, actor: User, version_code: str, cc_code: str, batch_id: str) -> str:
+    """Revert one of the actor's change batches on a capacity sheet (ADR 0010): planned hours
+    get their old values, lines their old rate, state and spread (a line the batch added goes
+    again), and the credits follow. Refused as a conflict, with nothing written, if any of it
+    changed since. Returns the new batch, so undoing that one redoes the change."""
+
+    def work(conn: Connection) -> None:
+        ctx = _editable(conn, actor, version_code, cc_code)
+        h, ln = capacity_change_log, capacity_line_log
+        hours_log = conn.execute(
+            select(
+                h.c.dim_work_center,
+                h.c.dim_activity_type,
+                h.c.period,
+                h.c.old_amount,
+                h.c.new_amount,
+            )
+            .where(
+                h.c.batch_id == batch_id,
+                h.c.actor == actor.login,
+                h.c.version_id == ctx.version_id,
+                h.c.dim_cost_center == ctx.cost_center_id,
+            )
+            .order_by(h.c.id)
+        ).all()
+        line_log = conn.execute(
+            select(ln)
+            .where(
+                ln.c.batch_id == batch_id,
+                ln.c.actor == actor.login,
+                ln.c.version_id == ctx.version_id,
+                ln.c.cost_center_id == ctx.cost_center_id,
+            )
+            .order_by(ln.c.id)
+        ).all()
+        if not hours_log and not line_log:
+            raise NotFoundError(f"no change of yours to undo on {cc_code}")
+
+        # Lines: the state before the batch (None: it didn't exist), and the batch's last state.
+        def state(row: object, when: str) -> tuple[object, ...] | None:
+            values = tuple(getattr(row, f"{when}_{n}") for n in LINE_STATE)
+            return None if getattr(row, f"{when}_active") is None else values
+
+        line_before: dict[tuple[int, int], tuple[object, ...] | None] = {}
+        line_after: dict[tuple[int, int], tuple[object, ...] | None] = {}
+        for r in line_log:
+            key = (r.work_center_id, r.activity_type_id)
+            line_before.setdefault(key, state(r, "old"))
+            line_after[key] = state(r, "new")
+        stored = {
+            (r.work_center_id, r.activity_type_id): tuple(getattr(r, n) for n in LINE_STATE)
+            for r in conn.execute(
+                select(capacity_line)
+                .where(
+                    capacity_line.c.version_id == ctx.version_id,
+                    capacity_line.c.cost_center_id == ctx.cost_center_id,
+                )
+                .with_for_update()
+            )
+        }
+        locked = _hours(conn, ctx.version_id, ctx.cost_center_id, ctx.periods, lock=True)
+        current = {
+            (key, ctx.periods[m]): c.row_version
+            for key, cells in locked.items()
+            for m, c in enumerate(cells)
+            if c.row_version is not None
+        }
+        hours_before: dict[tuple[tuple[int, int], date], Decimal | None] = {}
+        hours_after: dict[tuple[tuple[int, int], date], Decimal | None] = {}
+        for wc, at, period, old, new in hours_log:
+            hours_before.setdefault(((wc, at), period), old)
+            hours_after[((wc, at), period)] = new
+
+        blank = [Cell(None, None)] * MONTHS
+        conflicts = [(key, -1) for key, after in line_after.items() if stored.get(key) != after]
+        conflicts += [
+            (key, ctx.periods.index(p))
+            for (key, p), new in hours_after.items()
+            if locked.get(key, blank)[ctx.periods.index(p)].value != new
+        ]
+        if conflicts:
+            ids = {i for (wc, at), _ in conflicts for i in (wc, at)}
+            codes = dict(
+                conn.execute(
+                    select(member.c.member_id, member.c.code).where(member.c.member_id.in_(ids))
+                ).all()
+            )
+            raise ConflictError(
+                [Conflict(f"{codes[wc]} / {codes[at]}", m) for (wc, at), m in sorted(conflicts)]
+            )
+
+        for (wc, at), before in line_before.items():
+            where = (
+                capacity_line.c.version_id == ctx.version_id,
+                capacity_line.c.work_center_id == wc,
+                capacity_line.c.activity_type_id == at,
+            )
+            if before is None:
+                conn.execute(delete(capacity_line).where(*where))
+                continue
+            values = dict(zip(LINE_STATE, before, strict=True)) | {"changed_by": actor.login}
+            if (wc, at) in stored:
+                conn.execute(update(capacity_line).where(*where).values(**values))
+            else:
+                conn.execute(
+                    pg_insert(capacity_line).values(
+                        version_id=ctx.version_id,
+                        module=MODULE_CAPACITY,
+                        cost_center_id=ctx.cost_center_id,
+                        work_center_id=wc,
+                        activity_type_id=at,
+                        **values,
+                    )
+                )
+        _write_hours(conn, ctx, hours_before, current)
+        _write_credits(conn, ctx)
+
+    return _run(engine, actor, work)
 
 
 @dataclass
