@@ -5,7 +5,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from planlayer import rounds
@@ -179,5 +179,39 @@ def add_profile(request: Request, user: CurrentUser, body: ProfileIO) -> None:
     try:
         profile = Profile(tuple(body.values), body.entered_as)
         rounds.add_profile(engine_of(request), user, body.code, body.name, profile)
+    except HANDLED as e:
+        raise _http(e) from None
+
+
+@router.put("/profiles/{code}", responses={403: {}, 404: {}, 422: {}})
+def update_profile(request: Request, user: CurrentUser, code: str, body: ProfileIO) -> None:
+    """Applies to the next spread; months already stored keep their values. The code stays."""
+    try:
+        if body.code != code:
+            raise rounds.RoundError("a profile's code can't change")
+        profile = Profile(tuple(body.values), body.entered_as)
+        rounds.update_profile(engine_of(request), user, code, body.name, profile)
+    except HANDLED as e:
+        raise _http(e) from None
+
+
+@router.delete("/profiles/{code}", responses={403: {}, 404: {}, 422: {}})
+def delete_profile(request: Request, user: CurrentUser, code: str) -> None:
+    try:
+        rounds.delete_profile(engine_of(request), user, code)
+    except HANDLED as e:
+        raise _http(e) from None
+
+
+@router.get("/profile-presets/{preset}", responses={403: {}})
+def profile_preset(
+    request: Request,
+    user: CurrentUser,
+    preset: rounds.Preset,
+    fiscal_year: Annotated[int, Query(ge=1900, le=2200)],
+) -> list[Decimal]:
+    """Starting values for a new profile, one per fiscal month of ``fiscal_year``."""
+    try:
+        return rounds.profile_preset(engine_of(request), user, preset, fiscal_year)
     except HANDLED as e:
         raise _http(e) from None

@@ -18,6 +18,7 @@ const PROFILE_FORMS: EntryForm[] = ['monthly', 'annual_profile']
 const REFERENCE_FORMS: EntryForm[] = ['monthly', 'annual_reference']
 
 type Level = 'simple' | 'medium' | 'full'
+type ProfilePreset = 'working_days' | 'calendar_days'
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, { headers: { 'Content-Type': 'application/json' }, ...init })
@@ -35,6 +36,11 @@ const setupApi = {
   createRound: (round: NewRound) => request<Version>('/api/rounds', { method: 'POST', body: JSON.stringify(round) }),
   profiles: () => request<Profile[]>('/api/profiles'),
   addProfile: (p: Profile) => request<null>('/api/profiles', { method: 'POST', body: JSON.stringify(p) }),
+  updateProfile: (p: Profile) =>
+    request<null>(`/api/profiles/${encodeURIComponent(p.code)}`, { method: 'PUT', body: JSON.stringify(p) }),
+  deleteProfile: (code: string) => request<null>(`/api/profiles/${encodeURIComponent(code)}`, { method: 'DELETE' }),
+  preset: (preset: ProfilePreset, fiscalYear: number) =>
+    request<string[]>(`/api/profile-presets/${preset}?fiscal_year=${fiscalYear}`),
 }
 
 function levelOf(d: SetupDraft): Level | null {
@@ -233,7 +239,7 @@ export default function SetupPage({
             <EntryForms draft={draft} setDraft={setDraft} accounts={accounts} profiles={profiles} rounds={rounds} current={code} />
             <Comparisons draft={draft} setDraft={setDraft} rounds={rounds} current={code} actuals={view.actuals_available} />
             <HiddenAccounts draft={draft} setDraft={setDraft} accounts={accounts} />
-            <Profiles profiles={profiles} onCreated={() => void loadProfiles()} />
+            <Profiles profiles={profiles} periods={view.periods} fiscalYear={round.fiscal_year} onChanged={() => void loadProfiles()} />
           </div>
 
           <PlannerPreview
@@ -536,14 +542,33 @@ function HiddenAccounts({ draft, setDraft, accounts }: DraftProps & { accounts: 
   )
 }
 
-const MONTHS = Array.from({ length: 12 }, (_, m) => new Intl.DateTimeFormat('en', { month: 'short' }).format(new Date(2026, m, 1)))
+const MONTH = new Intl.DateTimeFormat('en', { month: 'short', timeZone: 'UTC' })
+const PRESETS: { preset: ProfilePreset; label: string }[] = [
+  { preset: 'working_days', label: 'Working days' },
+  { preset: 'calendar_days', label: 'Calendar days' },
+]
+const PRESET_NAME = /^(Working|Calendar) days \d{4}$/
 
-function Profiles({ profiles, onCreated }: { profiles: Profile[]; onCreated: () => void }) {
-  const [open, setOpen] = useState(false)
+function Profiles({
+  profiles,
+  periods,
+  fiscalYear,
+  onChanged,
+}: {
+  profiles: Profile[]
+  periods: string[]
+  fiscalYear: number
+  onChanged: () => void
+}) {
+  // null: closed; '': a new profile; otherwise the code of the profile being edited.
+  const [editing, setEditing] = useState<string | null>(null)
   const [name, setName] = useState('')
   const [enteredAs, setEnteredAs] = useState<'percent' | 'relative'>('relative')
   const [values, setValues] = useState<string[]>(Array(12).fill('1'))
+  const [presetYear, setPresetYear] = useState('')
+  const [deleting, setDeleting] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const months = periods.length === 12 ? periods.map((d) => MONTH.format(new Date(d))) : []
   const numbers = values.map((v) => Number(v.replace(',', '.')))
   const total = numbers.reduce((a, b) => a + (Number.isFinite(b) ? b : 0), 0)
   const valid =
@@ -551,17 +576,54 @@ function Profiles({ profiles, onCreated }: { profiles: Profile[]; onCreated: () 
     numbers.every((n) => Number.isFinite(n) && n >= 0) &&
     total > 0 &&
     (enteredAs === 'relative' || Math.abs(total - 100) < 1e-9)
-  const code = name.trim().toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 20)
+  const year = Number(presetYear)
+  const yearValid = Number.isInteger(year) && year >= 1900 && year <= 2200
 
-  async function create() {
+  function open(p: Profile | null) {
+    setEditing(p?.code ?? '')
+    setName(p?.name ?? '')
+    setEnteredAs(p?.entered_as ?? 'relative')
+    setValues(p ? p.values.map(String) : Array(12).fill('1'))
+    setPresetYear(String(fiscalYear))
+    setDeleting(null)
+    setError(null)
+  }
+
+  async function fill(preset: ProfilePreset, label: string) {
     try {
-      await setupApi.addProfile({ code, name: name.trim(), entered_as: enteredAs, values: values.map((v) => v.replace(',', '.')) })
-      setOpen(false)
-      setName('')
-      setValues(Array(12).fill('1'))
+      const days = await setupApi.preset(preset, year)
+      setValues(days.map(String))
+      setEnteredAs('relative')
+      if (name.trim() === '' || PRESET_NAME.test(name.trim())) setName(`${label} ${year}`)
       setError(null)
-      onCreated()
     } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    }
+  }
+
+  async function save() {
+    const trimmed = name.trim()
+    const body = { name: trimmed, entered_as: enteredAs, values: values.map((v) => v.replace(',', '.')) }
+    try {
+      if (editing) await setupApi.updateProfile({ ...body, code: editing })
+      else await setupApi.addProfile({ ...body, code: profileCode(trimmed) })
+      setEditing(null)
+      setError(null)
+      onChanged()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    }
+  }
+
+  async function remove(code: string) {
+    try {
+      await setupApi.deleteProfile(code)
+      setDeleting(null)
+      if (editing === code) setEditing(null)
+      setError(null)
+      onChanged()
+    } catch (e) {
+      setDeleting(null)
       setError(e instanceof Error ? e.message : String(e))
     }
   }
@@ -575,24 +637,50 @@ function Profiles({ profiles, onCreated }: { profiles: Profile[]; onCreated: () 
       <div className="su-body">
         <div className="su-profiles">
           {profiles.map((p) => (
-            <div className="su-profile" key={p.code}>
+            <div className={`su-profile${editing === p.code ? ' editing' : ''}`} key={p.code}>
               <Bars values={p.values.map(Number)} height={22} />
               <div className="meta">
                 <strong>{p.name}</strong>
-                <span>
-                  {p.code} · {p.entered_as === 'percent' ? 'percentages' : 'relative numbers'}
-                </span>
+                <span>{p.entered_as === 'percent' ? 'percentages' : 'relative numbers'}</span>
               </div>
+              {deleting === p.code ? (
+                <span className="su-actions su-confirm">
+                  Delete?
+                  <button type="button" className="su-btn danger" onClick={() => void remove(p.code)}>
+                    Delete
+                  </button>
+                  <button type="button" className="su-btn ghost" onClick={() => setDeleting(null)}>
+                    Keep
+                  </button>
+                </span>
+              ) : (
+                <span className="su-actions">
+                  <button type="button" className="su-btn ghost" aria-label={`Edit ${p.name}`} onClick={() => open(p)}>
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    className="su-btn ghost"
+                    aria-label={`Delete ${p.name}`}
+                    onClick={() => {
+                      setDeleting(p.code)
+                      setError(null)
+                    }}
+                  >
+                    Delete
+                  </button>
+                </span>
+              )}
             </div>
           ))}
           {profiles.length === 0 && <div className="su-empty">No profiles yet.</div>}
         </div>
-        {!open ? (
-          <button type="button" className="su-btn" style={{ marginTop: 10 }} onClick={() => setOpen(true)}>
+        {editing === null ? (
+          <button type="button" className="su-btn" style={{ marginTop: 10 }} onClick={() => open(null)}>
             New profile
           </button>
         ) : (
-          <div style={{ marginTop: 12 }}>
+          <div className="su-profile-form">
             <div className="su-row">
               <label className="su-field" style={{ flex: 1 }}>
                 Name
@@ -611,15 +699,35 @@ function Profiles({ profiles, onCreated }: { profiles: Profile[]; onCreated: () 
                 />
               </div>
             </div>
+            <div className="su-field su-presets">
+              <label className="su-row">
+                Fill with the days of fiscal year
+                <input
+                  className="su-input su-year"
+                  inputMode="numeric"
+                  aria-label="Fiscal year"
+                  value={presetYear}
+                  onChange={(e) => setPresetYear(e.target.value.trim())}
+                />
+              </label>
+              <span className="su-row">
+                {PRESETS.map(({ preset, label }) => (
+                  <button key={preset} type="button" className="su-btn" disabled={!yearValid} onClick={() => void fill(preset, label)}>
+                    {label}
+                  </button>
+                ))}
+              </span>
+              <span className="su-presets-hint">Working days leave out weekends; deduct holidays and shutdowns by hand.</span>
+            </div>
             <div className="su-months">
-              {MONTHS.map((m, i) => (
-                <label key={m}>
-                  {m}
+              {values.map((v, i) => (
+                <label key={i}>
+                  {months[i] ?? `M${i + 1}`}
                   <input
                     inputMode="decimal"
-                    aria-label={`${m} value`}
-                    value={values[i]}
-                    onChange={(e) => setValues(values.map((v, j) => (j === i ? e.target.value : v)))}
+                    aria-label={`${months[i] ?? `Month ${i + 1}`} value`}
+                    value={v}
+                    onChange={(e) => setValues(values.map((w, j) => (j === i ? e.target.value : w)))}
                   />
                 </label>
               ))}
@@ -633,20 +741,29 @@ function Profiles({ profiles, onCreated }: { profiles: Profile[]; onCreated: () 
                 </span>
               </span>
               <span className="su-row">
-                <button type="button" className="su-btn ghost" onClick={() => setOpen(false)}>
+                <button type="button" className="su-btn ghost" onClick={() => setEditing(null)}>
                   Cancel
                 </button>
-                <button type="button" className="su-btn primary" disabled={!valid} onClick={() => void create()}>
-                  Create profile
+                <button type="button" className="su-btn primary" disabled={!valid} onClick={() => void save()}>
+                  {editing ? 'Save profile' : 'Create profile'}
                 </button>
               </span>
             </div>
-            {error && <div className="su-note error" style={{ marginTop: 8 }}>{error}</div>}
+            {editing && (
+              <p className="su-hint" style={{ margin: '8px 0 0' }}>
+                Changes apply to year totals typed from now on; months already planned keep their values.
+              </p>
+            )}
           </div>
         )}
+        {error && <div className="su-note error" style={{ marginTop: 8 }}>{error}</div>}
       </div>
     </section>
   )
+}
+
+function profileCode(name: string): string {
+  return name.toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 20)
 }
 
 function NewRoundCard({

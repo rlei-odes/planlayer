@@ -19,7 +19,7 @@ The controller sets up each fiscal year's planning from modules (T-24): what is 
 | **Enabled members** | The planning units of a module in the round, e.g. the cost centers to plan, each enabled or disabled. All cost centers valid in the fiscal year when the round is created start enabled, and the controller disables the rest. A cost center that first arrives with a later sync isn't planned until the controller enables it; the status page lists it as new. |
 | **Entry form** | How a line is entered, set per module as a default, per **account group**, and optionally per single account. The most specific setting wins. |
 | **Comparison columns** | The reference columns shown next to the plan, per module, in order: prior-year actuals (default), another version (e.g. the last budget), or the current year's actuals to date. |
-| **Seasonality profiles** | Named, installation-wide profiles (D-28, TD-17), entered as percentages or relative numbers, chosen by entry forms. |
+| **Seasonality profiles** | Named, installation-wide profiles (D-28, TD-17), entered as percentages or relative numbers, chosen by entry forms. A new profile can start from the working days (Monday to Friday) or the calendar days of each month of a chosen fiscal year, which the controller then adjusts for holidays and shutdowns. |
 | **Sheet accounts** | Accounts a planner added to a cost center's sheet in a round. |
 | **Hidden accounts** | Accounts the controller excludes from a module in a round, e.g. an account being phased out that still has actuals. |
 
@@ -49,6 +49,7 @@ Hidden accounts are the exception:
 - **New rounds:** a new round copies its setup (modules, entry forms, comparisons, disabled members) from a chosen earlier round, or starts from the module defaults: every group `monthly`, prior-year actuals as the only comparison.
 - **Spreading fallbacks** (D-28): a negative reference value counts as 0. A line whose reference is all zero or missing is spread evenly, and the grid marks the line ("spread evenly: no reference values").
 - **Changing an entry form during a round** changes how new input is entered. Stored values stay until a line is entered again.
+- **Changing a seasonality profile** changes how year totals typed from then on are spread. Months already stored keep their values, as with a changed entry form. A profile can't be deleted while an entry form in any round uses it.
 
 ## Reasons
 
@@ -58,6 +59,8 @@ Hidden accounts are the exception:
 - **New cost centers wait for the controller:** what is planned in a running round stays the controller's decision; the status page keeps a new cost center from being overlooked.
 - **Hiding:** accounts are phased out while their actuals stay in history. Hiding keeps them off the sheets without touching the source.
 - **Copying the previous round's setup** makes a new year's preparation a review, not a rebuild.
+- **Profile edits don't re-spread:** stored months are what planners entered and may have submitted or had approved. A profile edit that rewrote them would change approved plans without anyone entering anything.
+- **Working-day presets per fiscal year:** working days differ from year to year and follow the fiscal calendar, so the preset is computed for the year and the installation's start month. Public holidays vary by country and region; the controller enters them rather than Planlayer keeping a holiday calendar.
 
 ## Consequences
 

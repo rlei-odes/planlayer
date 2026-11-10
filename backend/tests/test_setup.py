@@ -101,8 +101,39 @@ def test_profiles_are_validated(client: TestClient) -> None:
     assert client.get("/api/profiles").json()[0]["values"][-1] == "0"
 
 
+def test_edit_and_delete_profiles(client: TestClient) -> None:
+    p = {"code": "WD", "name": "Working days", "entered_as": "relative", "values": ["1"] * 12}
+    client.post("/api/profiles", json=p)
+    edited = {**p, "name": "Working days 2026", "values": ["20"] * 11 + ["15.5"]}
+    assert client.put("/api/profiles/WD", json=edited).status_code == 200
+    assert client.get("/api/profiles").json() == [edited]
+    assert client.put("/api/profiles/WD", json={**edited, "values": ["-1"] * 12}).status_code == 422
+    assert client.put("/api/profiles/WD", json={**edited, "code": "X"}).status_code == 422
+    assert client.put("/api/profiles/NOPE", json={**edited, "code": "NOPE"}).status_code == 404
+
+    rule = {"account_code": "A", "form": "annual_profile", "profile_code": "WD"}
+    used = {**setup(client)["setup"], "entry_forms": [rule]}
+    client.put(S, json=used)
+    refused = client.delete("/api/profiles/WD")
+    assert refused.status_code == 422 and "B2026" in refused.json()["detail"]
+    client.put(S, json={**used, "entry_forms": []})
+    assert client.delete("/api/profiles/WD").status_code == 200
+    assert client.get("/api/profiles").json() == []
+    assert client.delete("/api/profiles/WD").status_code == 404
+
+
+def test_profile_presets(client: TestClient) -> None:
+    wd = client.get("/api/profile-presets/working_days", params={"fiscal_year": 2026})
+    assert wd.json()[:2] == ["22", "20"]
+    cd = client.get("/api/profile-presets/calendar_days", params={"fiscal_year": 2028})
+    assert cd.json()[1] == "29"
+    assert client.get("/api/profile-presets/moon", params={"fiscal_year": 2026}).status_code == 422
+
+
 def test_only_controllers(client: TestClient) -> None:
     login(client, OWNER)
     assert client.get(S).status_code == 403
     new = {"code": "X", "name": "X", "kind": "budget", "fiscal_year": 2027}
     assert client.post("/api/rounds", json=new).status_code == 403
+    assert client.delete("/api/profiles/ANY").status_code == 403
+    assert client.get("/api/profile-presets/working_days?fiscal_year=2026").status_code == 403

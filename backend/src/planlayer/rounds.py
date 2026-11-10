@@ -14,7 +14,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from planlayer.access import User
 from planlayer.domain.entry_forms import FORMS, Form
-from planlayer.domain.periods import fiscal_year_periods
+from planlayer.domain.periods import calendar_days, fiscal_year_periods, working_days
 from planlayer.domain.spreading import Profile
 from planlayer.domain.workflow import RoundStatus, round_transition
 from planlayer.store.schema import (
@@ -263,6 +263,64 @@ def add_profile(engine: Engine, actor: User, code: str, name: str, profile: Prof
                 .returning(seasonality_profile.c.profile_id)
             ).scalar_one()
         )
+
+
+def update_profile(engine: Engine, actor: User, code: str, name: str, profile: Profile) -> None:
+    """New name and values; they apply to the next spread. Months already stored stay."""
+    actor.require_controller()
+    with unit_of_work(engine, actor) as conn:
+        changed = conn.execute(
+            update(seasonality_profile)
+            .where(seasonality_profile.c.code == code)
+            .values(name=name, entered_as=profile.entered_as, values=list(profile.values))
+        ).rowcount
+        if changed == 0:
+            raise NotFoundError(f"seasonality profile {code} not found")
+
+
+def delete_profile(engine: Engine, actor: User, code: str) -> None:
+    """Refused while an entry form in any round uses the profile."""
+    actor.require_controller()
+    with unit_of_work(engine, actor) as conn:
+        profile_id = conn.execute(
+            select(seasonality_profile.c.profile_id)
+            .where(seasonality_profile.c.code == code)
+            .with_for_update()
+        ).scalar()
+        if profile_id is None:
+            raise NotFoundError(f"seasonality profile {code} not found")
+        used_by = (
+            conn.execute(
+                select(version.c.code)
+                .join(entry_form, entry_form.c.version_id == version.c.version_id)
+                .where(entry_form.c.profile_id == profile_id)
+                .group_by(version.c.code)
+                .order_by(version.c.code)
+            )
+            .scalars()
+            .all()
+        )
+        if used_by:
+            raise RoundError(f"profile {code} is used by round {', '.join(used_by)}")
+        conn.execute(
+            delete(seasonality_profile).where(seasonality_profile.c.profile_id == profile_id)
+        )
+
+
+Preset = Literal["working_days", "calendar_days"]
+
+
+def profile_preset(engine: Engine, actor: User, preset: Preset, fiscal_year: int) -> list[Decimal]:
+    """Starting values for a new profile, one per fiscal month of the given year."""
+    actor.require_controller()
+    with unit_of_work(engine, actor) as conn:
+        start = conn.execute(select(installation.c.fiscal_year_start_month)).scalar_one()
+    match preset:
+        case "working_days":
+            days = working_days(fiscal_year, start)
+        case "calendar_days":
+            days = calendar_days(fiscal_year, start)
+    return [Decimal(d) for d in days]
 
 
 def set_entry_form(

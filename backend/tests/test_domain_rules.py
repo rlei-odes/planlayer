@@ -4,6 +4,7 @@ from decimal import Decimal
 import pytest
 
 from planlayer.domain.entry_forms import EntryForm, resolve, weights
+from planlayer.domain.periods import calendar_days, working_days
 from planlayer.domain.spreading import Profile
 from planlayer.domain.workflow import (
     WorkflowError,
@@ -66,3 +67,13 @@ def test_weights_fallback() -> None:
     assert not weights("reference", 12, None, [Decimal(3)] + [None] * 11).fallback
     profile = Profile.percentages([10] * 10 + [0, 0])
     assert weights("profile", 12, profile, []).weights[-1] == 0
+
+
+def test_working_and_calendar_days() -> None:
+    # 2026 starts on a Thursday: 52 weeks and one Thursday, 261 working days.
+    assert working_days(2026, 1) == [22, 20, 22, 22, 21, 22, 23, 21, 22, 22, 21, 23]
+    assert sum(working_days(2026, 1)) == 261
+    # April start: April 2026 to March 2027; February 2027 is four whole weeks.
+    assert working_days(2026, 4)[-2:] == [20, 23]
+    assert calendar_days(2028, 1)[1] == 29 and calendar_days(2027, 1)[1] == 28
+    assert calendar_days(2026, 4)[0] == 30 and sum(calendar_days(2026, 4)) == 365
