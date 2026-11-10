@@ -119,6 +119,7 @@ class Row:
     spread: Basis | None = None  # the kind of basis, chosen on the sheet or by the entry form
     chosen_spread: LineSpread | None = None  # chosen on the sheet for this line
     reference_version: str | None = None  # a reference basis other than prior-year actuals
+    profile: str | None = None  # the profile a profile basis spreads by
     months_visible: bool = True
     months_editable: bool = False
     total_editable: bool = False
@@ -178,6 +179,7 @@ class _Line:
     reference: list[Decimal | None]
     chosen: LineSpread | None
     reference_code: str | None  # the version a reference basis spreads like; None: actuals
+    profile_code: str | None  # the profile a profile basis spreads by
 
 
 def _context(conn: Connection, user: User, version_code: str, cc_code: str) -> _Context:
@@ -374,7 +376,7 @@ def _lines(conn: Connection, ctx: _Context, account_ids: Iterable[int]) -> list[
 
     profile_ids = {f.profile_id for f in forms.values() if f.profile_id is not None}
     profiles = {
-        p.profile_id: (p.name, Profile(tuple(p.values), p.entered_as))
+        p.profile_id: (p.name, p.code, Profile(tuple(p.values), p.entered_as))
         for p in conn.execute(
             select(seasonality_profile).where(seasonality_profile.c.profile_id.in_(profile_ids))
         )
@@ -395,13 +397,14 @@ def _lines(conn: Connection, ctx: _Context, account_ids: Iterable[int]) -> list[
     for account_id, code, name, gcode, gname in meta:
         form = forms[account_id]
         profile = None
+        profile_code = None
         match form.basis:
             case "even":
                 basis = "even"
                 reference: list[Decimal | None] = [None] * MONTHS
             case "profile":
                 assert form.profile_id is not None
-                pname, profile = profiles[form.profile_id]
+                pname, profile_code, profile = profiles[form.profile_id]
                 basis = f"profile {pname}"
                 reference = [None] * MONTHS
             case "reference":
@@ -420,6 +423,7 @@ def _lines(conn: Connection, ctx: _Context, account_ids: Iterable[int]) -> list[
                 reference,
                 chosen.get(account_id),
                 codes[form.reference_version_id] if form.basis == "reference" else None,
+                profile_code,
             )
         )
     return lines
@@ -477,6 +481,7 @@ def read_grid(engine: Engine, user: User, version_code: str, cc_code: str) -> Gr
             spread=line.form.basis,
             chosen_spread=line.chosen,
             reference_version=line.reference_code,
+            profile=line.profile_code,
             months_visible=line.form.months_visible,
             months_editable=editable and line.form.months_editable,
             total_editable=editable,

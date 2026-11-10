@@ -326,6 +326,7 @@ export type RowOut = {
   spread: "even" | "profile" | "reference" | null
   chosen_spread: LineSpreadIO | null
   reference_version: string | null
+  profile: string | null
   months_visible: boolean
   months_editable: boolean
   total_editable: boolean

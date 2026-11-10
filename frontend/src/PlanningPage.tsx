@@ -206,13 +206,13 @@ export default function PlanningPage({
         ...column(COL_ACCOUNT, 'Account', 390, 'pl-head-acc'),
         pin: 'colPinStart' as const,
         cellTemplate: (h: HyperFunc<VNode>, { rowIndex }: { rowIndex: number }) =>
-          accountCell(h as unknown as H, grid?.rows[rowIndex]),
+          accountCell(h as unknown as H, grid?.rows[rowIndex], profiles),
       },
       ...(grid?.comparisons ?? []).map((c, i) => column(comparisonProp(i), c.label, 112, 'pl-head-cmp')),
       column(COL_FY, `Plan ${grid?.fiscal_year ?? ''}`, 116, 'pl-head-plan'),
       ...periods.map((p, m) => column(monthProp(m), MONTH_LABEL.format(new Date(p)), 92)),
     ]
-  }, [grid, locked])
+  }, [grid, locked, profiles])
 
   // The page is as wide as its columns (plus the sheet's border), so nothing stretches past them.
   const sheetWidth = columns.reduce((n, c) => n + c.size, 0) + 2 + SCROLLBAR
@@ -556,24 +556,37 @@ function trimPastes(el: HTMLDivElement | null) {
 // RevoGrid's hyperscript function, called with plain props and mixed children.
 type H = (tag: string, props: Record<string, unknown> | null, children?: unknown) => unknown
 
+/** A profile's shape as tiny bars, as in the setup page's preview. */
+function profileBars(h: H, values: number[]) {
+  const max = Math.max(...values, 0) || 1
+  return h(
+    'span',
+    { class: 'pv-bars', 'aria-hidden': 'true' },
+    values.map((v) => h('i', { style: { height: `${Math.max(1, (v / max) * 14)}px` } })),
+  )
+}
+
 /** The account cell: code, name and the line's entry form, which opens the spread menu where
- * the line's spread can be chosen; group rows show their name only. */
-function accountCell(h: H, row: Row | undefined) {
+ * the line's spread can be chosen; a line spread by a profile shows its shape. Group rows show
+ * their name only. */
+function accountCell(h: H, row: Row | undefined, profiles: ProfileRef[]) {
   if (!row) return ''
   if (row.kind === 'group') return h('span', { class: 'pl-acc-name' }, row.name)
   const form = row.entry_form
   const label = badgeLabel(row) + (row.fallback ? ' ⚠' : '')
   const classes = `pv-form${form === 'monthly' ? ' monthly' : ''}${row.fallback ? ' fallback' : ''}${row.chosen_spread ? ' chosen' : ''}`
+  const profile = row.spread === 'profile' ? profiles.find((p) => p.code === row.profile) : undefined
+  const badge = !form
+    ? ''
+    : spreadChoosable(row)
+      ? h(
+          'button',
+          { type: 'button', class: `${classes} pl-spread`, 'data-spread': row.code, 'aria-label': `How ${row.code} spreads: ${label}` },
+          label,
+        )
+      : h('span', { class: classes }, label)
   return h('span', { class: 'pl-acc-in', title: form ? `${label}: ${basisText(row)}` : undefined }, [
     h('span', { class: 'pl-acc-name' }, [h('span', { class: 'pl-code' }, row.code), row.name]),
-    !form
-      ? ''
-      : spreadChoosable(row)
-        ? h(
-            'button',
-            { type: 'button', class: `${classes} pl-spread`, 'data-spread': row.code, 'aria-label': `How ${row.code} spreads: ${label}` },
-            label,
-          )
-        : h('span', { class: classes }, label),
+    h('span', { class: 'pl-acc-tags' }, [profile ? profileBars(h, profile.values.map(Number)) : '', badge]),
   ])
 }

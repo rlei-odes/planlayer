@@ -79,6 +79,7 @@ class RowOut(BaseModel):
     chosen_spread: LineSpreadIO | None
     # The version a reference basis spreads like; None: prior-year actuals.
     reference_version: str | None
+    profile: str | None  # the profile a profile basis spreads by
     months_visible: bool
     months_editable: bool
     total_editable: bool
@@ -210,6 +211,7 @@ def _grid_out(grid: planning.Grid, batch_id: str | None = None) -> GridOut:
                 fallback=r.fallback,
                 spread=r.spread,
                 reference_version=r.reference_version,
+                profile=r.profile,
                 chosen_spread=(
                     None
                     if r.chosen_spread is None

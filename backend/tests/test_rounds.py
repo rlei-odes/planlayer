@@ -400,7 +400,11 @@ def test_line_spread(engine: Engine, client: TestClient) -> None:
     response = spread(client, "6000", {"basis": "profile", "profile_code": "SHUT"})
     row = rows(response.json())["6000"]  # type: ignore[attr-defined]
     assert row["chosen_spread"] == {"basis": "profile", "profile_code": "SHUT"}
-    assert (row["spread"], row["basis"]) == ("profile", "profile August shutdown")
+    assert (row["spread"], row["basis"], row["profile"]) == (
+        "profile",
+        "profile August shutdown",
+        "SHUT",
+    )
     grid = post(client, year("6000", "1100")).json()  # type: ignore[attr-defined]
     assert plan(grid, "6000") == ["100.00"] * 7 + ["0.00"] + ["100.00"] * 4
 

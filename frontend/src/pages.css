@@ -335,6 +335,14 @@ revo-grid.pl-revo revogr-viewport-scroll.colPinStart revogr-data .rgCell {
   gap: 8px;
 }
 
+/* A profile's mini chart and the line's badge, kept together at the right. */
+.pl-acc-tags {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+
 /* A line's badge opens its spread menu where the spread can be chosen. */
 .pv-form.pl-spread {
   border: 1px solid transparent;
