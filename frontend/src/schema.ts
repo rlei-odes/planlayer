@@ -17,6 +17,51 @@ export type AddAccountIn = {
   account_code: string
 }
 
+export type CapacityRowOut = {
+  kind: "group" | "line" | "credit"
+  activity_type_code: string
+  activity_type_name: string
+  plan: CellOut[]
+  prior: (string | null)[]
+  work_center_code: string | null
+  work_center_name: string | null
+  added: boolean
+  rate: string | null
+  basis: string | null
+  spread: "even" | "profile" | "reference" | null
+  chosen_spread: LineSpreadIO | null
+  profile: string | null
+  fallback: boolean
+  editable: boolean
+  account_code: string | null
+  account_name: string | null
+}
+
+export type CapacitySheetOut = {
+  version_code: string
+  version_name: string
+  fiscal_year: number
+  round_status: "setup" | "open" | "closed"
+  deadline: string | null
+  cost_center_code: string
+  cost_center_name: string
+  status: "not_started" | "in_progress" | "submitted" | "approved"
+  lock_reason: string | null
+  periods: string[]
+  rows: CapacityRowOut[]
+  inactive: InactiveLineOut[]
+  work_centers: CodeName[]
+  activity_types: CodeName[]
+  batch_id?: string | null
+}
+
+export type CapacityUnitOut = {
+  code: string
+  name: string
+  status: "not_started" | "in_progress" | "submitted" | "approved"
+  can_write: boolean
+}
+
 export type CellOut = {
   value: string | null
   row_version: number | null
@@ -29,6 +74,11 @@ export type ChangeOut = {
   period: string
   old: string | null
   new: string | null
+}
+
+export type CodeName = {
+  code: string
+  name: string
 }
 
 export type ComparisonIO = {
@@ -55,7 +105,7 @@ export type CountsOut = {
 }
 
 export type DatasetOut = {
-  dataset: "entities" | "cost_centers" | "accounts" | "actuals"
+  dataset: "entities" | "cost_centers" | "accounts" | "actuals" | "activity_types" | "work_centers" | "work_center_rates" | "capacity_actuals"
   fields: FieldOut[]
   has_hierarchy: boolean
   mapping: MappingIO | null
@@ -117,6 +167,38 @@ export type Health = {
   schema_revision: string | null
 }
 
+export type HoursEditIn = {
+  work_center_code: string
+  activity_type_code: string
+  month?: number | null
+  value: string | null
+  expected: (number | null)[]
+}
+
+export type HoursEditsIn = {
+  edits: HoursEditIn[]
+}
+
+export type InactiveLineOut = {
+  work_center_code: string
+  work_center_name: string
+  activity_type_code: string
+  activity_type_name: string
+}
+
+export type LineChangeIn = {
+  rate?: string | null
+  active?: boolean | null
+  spread?: LineSpreadIO | null
+}
+
+export type LineIn = {
+  work_center_code: string
+  activity_type_code: string
+  rate: string
+  new_work_center_name?: string | null
+}
+
 export type LineSpreadIO = {
   basis: "even" | "profile" | "reference"
   profile_code?: string | null
@@ -159,6 +241,9 @@ export type MemberChange = {
   entity_code?: string | null
   owner?: string | null
   account_type?: string | null
+  cost_center_code?: string | null
+  account_code?: string | null
+  variable_account_code?: string | null
 }
 
 export type MemberIn = {
@@ -169,6 +254,9 @@ export type MemberIn = {
   entity_code?: string | null
   owner?: string | null
   account_type?: string | null
+  cost_center_code?: string | null
+  account_code?: string | null
+  variable_account_code?: string | null
 }
 
 export type MemberOut = {
@@ -187,6 +275,9 @@ export type MemberOut = {
   account_type: string | null
   valid_from: string | null
   valid_to: string | null
+  cost_center_code: string | null
+  account_code: string | null
+  variable_account_code: string | null
 }
 
 export type NotPlannedOut = {
@@ -297,6 +388,7 @@ export type ResponsibilityOut = {
   planner: string | null
   overridden: boolean
   deputies: string[]
+  capacity_planners: string[]
   approvers: string[]
 }
 
@@ -330,6 +422,7 @@ export type RowOut = {
   months_visible: boolean
   months_editable: boolean
   total_editable: boolean
+  capacity: boolean
 }
 
 export type RuleIO = {
@@ -345,6 +438,7 @@ export type SetupIO = {
   comparisons: ComparisonIO[]
   hidden_accounts: string[]
   deadline: string | null
+  productive_cost_centers?: string[]
 }
 
 export type SetupOut = {

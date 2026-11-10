@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { api, type EntryForm, type MemberRow, type Version } from './api'
+import { flushSync } from 'react-dom'
+import { api, type EntryForm, type MemberRow, type PlanningUnit, type Version } from './api'
 import PlannerPreview, { Bars } from './PlannerPreview'
 import Select, { type Option } from './Select'
 import type { ComparisonColumn, NewRound, Profile, Rule, SetupDraft, SetupView } from './setupTypes'
@@ -239,6 +240,7 @@ export default function SetupPage({
             <EntryForms draft={draft} setDraft={setDraft} accounts={accounts} profiles={profiles} rounds={rounds} current={code} />
             <Comparisons draft={draft} setDraft={setDraft} rounds={rounds} current={code} actuals={view.actuals_available} />
             <HiddenAccounts draft={draft} setDraft={setDraft} accounts={accounts} />
+            <ProductiveCostCenters key={code} draft={draft} setDraft={setDraft} round={code} />
             <Profiles profiles={profiles} periods={view.periods} fiscalYear={round.fiscal_year} onChanged={() => void loadProfiles()} />
           </div>
 
@@ -546,6 +548,79 @@ function HiddenAccounts({ draft, setDraft, accounts }: DraftProps & { accounts: 
   )
 }
 
+/** Cost centers whose plan starts from capacity: the round's productive cost centers (ADR 0013).
+ * A toggle moves a cost center between the two lists, animated where the browser can. */
+function ProductiveCostCenters({ draft, setDraft, round }: DraftProps & { round: string }) {
+  const [units, setUnits] = useState<PlanningUnit[]>([])
+  const [query, setQuery] = useState('')
+  useEffect(() => {
+    api.costCenters(round).then(setUnits, () => setUnits([]))
+  }, [round])
+  const productive = new Set(draft.productive_cost_centers ?? [])
+  const q = query.trim().toLowerCase()
+  const on = units.filter((u) => productive.has(u.code))
+  const off = units.filter((u) => !productive.has(u.code) && (!q || `${u.code} ${u.name}`.toLowerCase().includes(q)))
+
+  function toggle(code: string) {
+    const next = productive.has(code)
+      ? [...productive].filter((c) => c !== code)
+      : [...productive, code].sort()
+    const apply = () => flushSync(() => setDraft({ ...draft, productive_cost_centers: next }))
+    if (document.startViewTransition && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      document.startViewTransition(apply)
+    } else apply()
+  }
+
+  const item = (u: PlanningUnit, isOn: boolean) => (
+    <li key={u.code} style={{ viewTransitionName: `pc-${u.code.replace(/[^A-Za-z0-9_-]/g, '_')}` }}>
+      <span className="pc-name">
+        <span className="pl-code">{u.code}</span>
+        {u.name}
+      </span>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={isOn}
+        aria-label={`${u.code} ${u.name} productive`}
+        className="pc-switch"
+        onClick={() => toggle(u.code)}
+      >
+        <i />
+      </button>
+    </li>
+  )
+
+  return (
+    <section className="su-card">
+      <h3>
+        <span className="su-step">6</span> Productive cost centers
+      </h3>
+      <p className="su-hint">
+        Their plan starts from capacity: work center hours × rates, credited to the cost center. They get a sheet on the
+        Capacity page.
+      </p>
+      <div className="su-body">
+        <div className="su-sub">Productive · {on.length}</div>
+        <ul className="pc-list">
+          {on.map((u) => item(u, true))}
+          {on.length === 0 && <li className="su-empty">None yet: switch cost centers on below.</li>}
+        </ul>
+        <div className="su-sub pc-others">
+          Other cost centers
+          <input
+            className="su-input pc-filter"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Filter"
+            aria-label="Filter cost centers"
+          />
+        </div>
+        <ul className="pc-list pc-scroll">{off.map((u) => item(u, false))}</ul>
+      </div>
+    </section>
+  )
+}
+
 const MONTH = new Intl.DateTimeFormat('en', { month: 'short', timeZone: 'UTC' })
 const PRESETS: { preset: ProfilePreset; label: string }[] = [
   { preset: 'working_days', label: 'Working days' },
@@ -635,7 +710,7 @@ function Profiles({
   return (
     <section className="su-card">
       <h3>
-        <span className="su-step">6</span> Seasonality profiles
+        <span className="su-step">7</span> Seasonality profiles
       </h3>
       <p className="su-hint">Shared by all rounds. Entered as percentages (summing to 100) or as any relative numbers.</p>
       <div className="su-body">

@@ -83,6 +83,7 @@ class RowOut(BaseModel):
     months_visible: bool
     months_editable: bool
     total_editable: bool
+    capacity: bool  # credited by capacity planning, read only
 
 
 class GridOut(BaseModel):
@@ -222,6 +223,7 @@ def _grid_out(grid: planning.Grid, batch_id: str | None = None) -> GridOut:
                 months_visible=r.months_visible,
                 months_editable=r.months_editable,
                 total_editable=r.total_editable,
+                capacity=r.capacity,
             )
             for r in grid.rows
         ],

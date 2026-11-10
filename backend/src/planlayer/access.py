@@ -27,6 +27,8 @@ from planlayer.store.schema import (
     H_COST_CENTER,
     app_user,
     approver_assignment,
+    capacity_access,
+    capacity_grant,
     closure,
     cost_center_access,
     cost_center_owner,
@@ -319,6 +321,7 @@ class ResponsibilityRow:
     planner: str | None = None  # effective owner-planner (login)
     overridden: bool = False
     deputies: list[str] = field(default_factory=list)  # granted here
+    capacity_planners: list[str] = field(default_factory=list)  # granted here (ADR 0013)
     approvers: list[str] = field(default_factory=list)  # assigned here (nodes)
 
 
@@ -348,6 +351,9 @@ def responsibilities(engine: Engine, user: User) -> Responsibilities:
             )
         ):
             deputies[m].append(logins[u])
+        capacity: dict[int, list[str]] = defaultdict(list)
+        for m, u in conn.execute(select(capacity_grant.c.member_id, capacity_grant.c.user_id)):
+            capacity[m].append(logins[u])
         assigned: dict[int, list[str]] = defaultdict(list)
         for m, u in conn.execute(
             select(approver_assignment.c.member_id, approver_assignment.c.user_id)
@@ -374,6 +380,7 @@ def responsibilities(engine: Engine, user: User) -> Responsibilities:
                     m.name,
                     depth,
                     deputies=sorted(deputies[node]),
+                    capacity_planners=sorted(capacity[node]),
                     approvers=sorted(assigned[node]),
                 )
             )
@@ -392,6 +399,7 @@ def responsibilities(engine: Engine, user: User) -> Responsibilities:
                 planner=logins.get(o.user_id) if o and o.user_id else None,
                 overridden=bool(o and o.overridden),
                 deputies=sorted(deputies[node]),
+                capacity_planners=sorted(capacity[node]),
             )
         )
 
@@ -445,14 +453,15 @@ def clear_owner(engine: Engine, actor: User, cc_code: str) -> None:
 def _assignment(
     engine: Engine, actor: User, table: Table, code: str, login: str, add: bool, node_only: bool
 ) -> None:
-    """Add or remove a deputy (``planner_grant``) or an approver (``approver_assignment``)."""
+    """Add or remove a deputy (``planner_grant``), a capacity planner (``capacity_grant``) or an
+    approver (``approver_assignment``)."""
     actor.require_controller()
     with unit_of_work(engine, actor) as conn:
         member_id = _member(conn, code, leaf=False if node_only else None)
         user_id = user_by_login(conn, login).user_id
         if add:
             values: dict[str, object] = {"member_id": member_id, "user_id": user_id}
-            if table is planner_grant:
+            if table is planner_grant or table is capacity_grant:
                 values["granted_by"] = actor.login
             conn.execute(pg_insert(table).values(**values).on_conflict_do_nothing())
         else:
@@ -468,6 +477,28 @@ def add_deputy(engine: Engine, actor: User, code: str, login: str) -> None:
 
 def remove_deputy(engine: Engine, actor: User, code: str, login: str) -> None:
     _assignment(engine, actor, planner_grant, code, login, add=False, node_only=False)
+
+
+def add_capacity_planner(engine: Engine, actor: User, code: str, login: str) -> None:
+    """Capacity planning rights for ``login`` on a cost center, or every one below a node: they
+    read its sheets and write its capacity (ADR 0013)."""
+    _assignment(engine, actor, capacity_grant, code, login, add=True, node_only=False)
+
+
+def remove_capacity_planner(engine: Engine, actor: User, code: str, login: str) -> None:
+    _assignment(engine, actor, capacity_grant, code, login, add=False, node_only=False)
+
+
+def capacity_rights(conn: Connection, user: User) -> dict[int, bool]:
+    """Cost centers whose capacity the user may read, and whether they may write it."""
+    rights: dict[int, bool] = {}
+    for cc, can_write in conn.execute(
+        select(capacity_access.c.cost_center_id, capacity_access.c.can_write).where(
+            capacity_access.c.user_id == user.user_id
+        )
+    ):
+        rights[cc] = rights.get(cc, False) or can_write
+    return rights
 
 
 def add_approver(engine: Engine, actor: User, node_code: str, login: str) -> None:

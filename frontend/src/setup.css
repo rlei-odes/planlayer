@@ -463,6 +463,97 @@
   color: var(--ink);
 }
 
+/* --- Productive cost centers (ADR 0013) ----------------------------------------------------- */
+
+.pc-list {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.pc-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 8px;
+  border-radius: var(--radius-s);
+}
+
+.pc-list li:hover {
+  background: var(--canvas);
+}
+
+.pc-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.pc-scroll {
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.pc-others {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.su-input.pc-filter {
+  width: 140px;
+  min-height: 28px;
+  padding: 3px 8px;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 400;
+}
+
+.pc-switch {
+  flex: none;
+  width: 32px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 9px;
+  background: var(--line);
+  position: relative;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.pc-switch i {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--surface);
+  box-shadow: 0 1px 2px rgb(16 24 40 / 20%);
+  transition: transform 0.15s;
+}
+
+.pc-switch[aria-checked='true'] {
+  background: var(--accent-2);
+}
+
+.pc-switch[aria-checked='true'] i {
+  transform: translateX(14px);
+}
+
+.pc-switch:focus-visible {
+  outline: 2px solid var(--accent-2);
+  outline-offset: 2px;
+}
+
 /* --- Profiles ----------------------------------------------------------------------------- */
 
 .su-profiles {

@@ -68,6 +68,16 @@ class Rows:
         self._revenue: dict[tuple[str, str, date, str], int] = defaultdict(int)
         self._sales_done = False
 
+    def capacity_hours(self) -> Iterator[tuple[object, ...]]:
+        """(periode, arbpl, lstar, menge): actual hours per work center, activity type and
+        month, with the production season (August shutdown) and noise."""
+        for wc in self.master.work_centers:
+            for activity, _rate, hours in wc.outputs:
+                rng = random.Random(f"{self.seed}:hours:{wc.code}:{activity}")
+                for period in self.periods:
+                    factor = SEASON["production"].get(period.month, 1.0) * rng.uniform(0.9, 1.1)
+                    yield (period, wc.code, activity, f"{hours * factor:.2f}")
+
     def fx_rates(self) -> Iterator[tuple[object, ...]]:
         for i, period in enumerate(self.periods):
             for currency in sorted(set(self.currency.values())):

@@ -16,6 +16,7 @@ import {
 } from './api'
 import { RedoIcon, UndoIcon } from './icons'
 import Select, { type Option } from './Select'
+import { pickUnit } from './units'
 
 // The planning sheet of one cost center (T-25, ADR 0007, ADR 0010), in the look of the setup
 // page's preview: typed-in cells look like inputs, months calculated from the year total are
@@ -60,6 +61,7 @@ function spreadChoosable(row: Row): boolean {
 /** How the line is entered, then what a year total typed there does: "Monthly · actuals". A
  * line whose reference has no values spreads evenly, and the badge says so (with ⚠). */
 function badgeLabel(row: Row): string {
+  if (row.capacity) return 'From capacity'
   if (!row.entry_form) return ''
   if (row.entry_form === 'annual') return 'Year only'
   const entry = row.entry_form === 'monthly' ? 'Monthly' : 'Year'
@@ -94,6 +96,7 @@ function spreadText(row: Row): string {
 }
 
 function basisText(row: Row): string {
+  if (row.capacity) return 'Credited by capacity planning: planned hours × rate of the work centers. Change it on the Capacity page.'
   const text =
     row.entry_form === 'monthly'
       ? `Months are typed in; a year total ${spreadText(row)}.`
@@ -135,14 +138,19 @@ const SCROLLBAR = 18
 
 export default function PlanningPage({
   version,
+  unit: chosen,
+  onUnit,
   onWidth,
 }: {
   version: string
+  /** The cost center chosen last, here or on the capacity page. */
+  unit: string
+  onUnit: (code: string) => void
   /** Reports the sheet's width, so the app widens its content area for wide sheets. */
   onWidth: (px: number | null) => void
 }) {
   const [units, setUnits] = useState<PlanningUnit[] | null>(null)
-  const [unit, setUnit] = useState<string>('')
+  const unit = units ? pickUnit(units, chosen) : ''
   const [grid, setGrid] = useState<Grid | null>(null)
   const [accounts, setAccounts] = useState<Account[]>([])
   const [message, setMessage] = useState<Message | null>(null)
@@ -158,13 +166,7 @@ export default function PlanningPage({
   const showError = useCallback((e: unknown) => setMessage({ kind: 'error', text: errorText(e) }), [])
 
   const loadUnits = useCallback(() => {
-    api.costCenters(version).then((us) => {
-      setUnits(us)
-      // Start on the first cost center this user may edit, else the first one they may read.
-      setUnit((current) =>
-        us.some((u) => u.code === current) ? current : ((us.find((u) => u.can_write) ?? us[0])?.code ?? ''),
-      )
-    }, showError)
+    api.costCenters(version).then(setUnits, showError)
   }, [version, showError])
 
   useEffect(() => {
@@ -172,6 +174,11 @@ export default function PlanningPage({
     api.accounts(version).then(setAccounts, showError)
     api.profiles().then(setProfiles, showError)
   }, [version, loadUnits, showError])
+
+  // Nothing chosen yet (a first visit): the cost center this page starts on becomes the choice.
+  useEffect(() => {
+    if (!chosen && unit) onUnit(unit)
+  }, [chosen, unit, onUnit])
 
   const load = useCallback(() => {
     if (!unit) return
@@ -405,7 +412,7 @@ export default function PlanningPage({
             label="Cost center"
             value={unit}
             onChange={(code) => {
-              setUnit(code)
+              onUnit(code)
               setMessage(null)
               setUndoStack([])
               setRedoStack([])
@@ -573,8 +580,10 @@ function accountCell(h: H, row: Row | undefined, profiles: ProfileRef[]) {
   if (!row) return ''
   if (row.kind === 'group') return h('span', { class: 'pl-acc-name' }, row.name)
   const form = row.entry_form
-  const label = badgeLabel(row) + (row.fallback ? ' ⚠' : '')
-  const classes = `pv-form${form === 'monthly' ? ' monthly' : ''}${row.fallback ? ' fallback' : ''}${row.chosen_spread ? ' chosen' : ''}`
+  const label = badgeLabel(row) + (row.fallback && !row.capacity ? ' ⚠' : '')
+  const classes = row.capacity
+    ? 'pv-form capacity'
+    : `pv-form${form === 'monthly' ? ' monthly' : ''}${row.fallback ? ' fallback' : ''}${row.chosen_spread ? ' chosen' : ''}`
   const profile = row.spread === 'profile' ? profiles.find((p) => p.code === row.profile) : undefined
   const badge = !form
     ? ''

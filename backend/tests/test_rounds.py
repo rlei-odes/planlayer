@@ -264,7 +264,7 @@ def test_added_account_appears_and_hidden_ones_cannot_be_added(
     rounds.hide_account(engine, system(engine), R, "6010")
     assert client.post(f"{cc2}/accounts", json={"account_code": "6010"}).status_code == 422
     codes = [a["code"] for a in client.get(f"/api/versions/{R}/accounts").json()]
-    assert codes == ["6000", "7000"]
+    assert codes == ["4900", "6000", "7000"]
 
 
 def test_hidden_account(engine: Engine, client: TestClient) -> None:

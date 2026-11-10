@@ -25,7 +25,7 @@ from planlayer.store.schema import (
     member_override,
 )
 from planlayer.store.uow import unit_of_work
-from planlayer.sync import DIMENSIONS, rebuild_closure
+from planlayer.sync import DIMENSIONS, LABEL, REFERENCES, rebuild_closure
 
 
 class MasterDataError(ValueError):
@@ -60,6 +60,9 @@ class MemberRow:
     account_type: str | None
     valid_from: date | None
     valid_to: date | None
+    cost_center_code: str | None
+    account_code: str | None
+    variable_account_code: str | None
 
 
 def tree(engine: Engine, user: User, dataset: str) -> list[MemberRow]:
@@ -112,6 +115,9 @@ def tree(engine: Engine, user: User, dataset: str) -> list[MemberRow]:
             r.account_type,
             r.valid_from,
             r.valid_to,
+            r.cost_center_code,
+            r.account_code,
+            r.variable_account_code,
         )
 
     def visit(m: int, depth: int) -> None:
@@ -172,8 +178,10 @@ def add_member(
     entity_code: str | None = None,
     owner: str | None = None,
     account_type: str | None = None,
+    references: dict[str, str | None] | None = None,
 ) -> None:
-    """A manual member; the same page builds master data from scratch."""
+    """A manual member; the same page builds master data from scratch. ``references`` are
+    a work center's cost center and an activity type's accounts, by code."""
     require_editor(user)
     dim, hier_id = _dimension(dataset)
     code, name = code.strip(), name.strip()
@@ -186,6 +194,7 @@ def add_member(
         if exists is not None:
             raise MasterDataError(f"{code} exists")
         parent_id = _parent(conn, dim, hier_id, None, parent) if hier_id is not None else None
+        refs = _references(conn, dataset, references or {})
         member_id = conn.execute(
             insert(member)
             .values(
@@ -199,6 +208,7 @@ def add_member(
                 else None,
                 owner=owner,
                 account_type=account_type,
+                **refs,
             )
             .returning(member.c.member_id)
         ).scalar_one()
@@ -308,6 +318,7 @@ def set_attributes(
     entity_code: str | None = None,
     owner: str | None = None,
     account_type: str | None = None,
+    references: dict[str, str | None] | None = None,
 ) -> None:
     """Attributes of a manual member; a synced member's come from the source (its planner is
     set on the responsibilities page)."""
@@ -318,6 +329,7 @@ def set_attributes(
         r = conn.execute(select(member).where(member.c.member_id == member_id)).one()
         if r.origin != "manual":
             raise MasterDataError(f"{code} comes from the source; change it there")
+        refs = _references(conn, dataset, references or {})
         conn.execute(
             update(member)
             .where(member.c.member_id == member_id)
@@ -327,8 +339,27 @@ def set_attributes(
                 else None,
                 owner=owner,
                 account_type=account_type,
+                **refs,
             )
         )
+
+
+def _references(conn: Connection, dataset: str, given: dict[str, str | None]) -> dict[str, object]:
+    """The dataset's reference attributes from ``given``, each an existing leaf member's code
+    or empty."""
+    out: dict[str, object] = {}
+    for attr, dim in REFERENCES.get(dataset, ()):
+        code = (given.get(attr) or "").strip() or None
+        if code is not None:
+            found = conn.execute(
+                select(member.c.member_id).where(
+                    member.c.dim_id == dim, member.c.code == code, member.c.is_group.is_(False)
+                )
+            ).first()
+            if found is None:
+                raise MasterDataError(f"unknown {LABEL[dim]} {code}")
+        out[attr] = code
+    return out
 
 
 def delete_member(engine: Engine, user: User, dataset: str, code: str) -> None:

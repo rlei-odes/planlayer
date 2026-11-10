@@ -4,7 +4,7 @@ comparisons, hidden accounts, seasonality profiles; round status and approvers (
 The yearly setup page (E-03) edits a round through these functions.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
 from typing import Literal
@@ -20,10 +20,13 @@ from planlayer.domain.workflow import RoundStatus, round_transition
 from planlayer.store.schema import (
     ACCOUNT,
     COST_CENTER,
+    MODULE_CAPACITY,
     MODULE_COST_CENTER,
+    capacity_line,
     comparison,
     dataset_mapping,
     entry_form,
+    fact_capacity,
     fact_cost_center,
     hidden_account,
     installation,
@@ -132,9 +135,9 @@ def create_round(
     """A plan version and its round, in status ``setup``.
 
     The setup is copied from ``copy_from`` (modules, entry forms, comparisons, hidden accounts,
-    disabled cost centers), or starts from the module defaults: every account ``monthly``,
-    prior-year actuals as the only comparison. Every cost center valid in the fiscal year is
-    enabled, except those disabled in the copied round.
+    disabled and productive cost centers), or starts from the module defaults: every account
+    ``monthly``, prior-year actuals as the only comparison. Every cost center valid in the
+    fiscal year is enabled, except those disabled in the copied round.
     """
     actor.require_controller()
     with unit_of_work(engine, actor) as conn:
@@ -192,6 +195,29 @@ def create_round(
                     for m in members
                 ],
             )
+        if source is not None:
+            productive = set(
+                conn.execute(
+                    select(round_member.c.member_id).where(
+                        round_member.c.version_id == source.version_id,
+                        round_member.c.module == MODULE_CAPACITY,
+                        round_member.c.enabled.is_(True),
+                    )
+                ).scalars()
+            ) & set(members)
+            if productive:
+                conn.execute(
+                    insert(round_member),
+                    [
+                        {
+                            "version_id": vid,
+                            "module": MODULE_CAPACITY,
+                            "member_id": m,
+                            "enabled": True,
+                        }
+                        for m in sorted(productive)
+                    ],
+                )
         return vid
 
 
@@ -514,6 +540,8 @@ class Setup:
     comparisons: list[tuple[ComparisonKind, str | None]]
     hidden_accounts: list[str]
     deadline: date | None
+    # Cost centers planned with capacity planning (ADR 0013), by code.
+    productive_cost_centers: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -593,6 +621,19 @@ def setup_of(engine: Engine, user: User, code: str) -> SetupView:
                 .join(round_member, round_member.c.member_id == member.c.member_id)
                 .where(
                     round_member.c.version_id == r.version_id,
+                    round_member.c.module == MODULE_COST_CENTER,
+                    round_member.c.enabled.is_(True),
+                )
+                .order_by(member.c.code)
+            ).scalars()
+        )
+        productive = list(
+            conn.execute(
+                select(member.c.code)
+                .join(round_member, round_member.c.member_id == member.c.member_id)
+                .where(
+                    round_member.c.version_id == r.version_id,
+                    round_member.c.module == MODULE_CAPACITY,
                     round_member.c.enabled.is_(True),
                 )
                 .order_by(member.c.code)
@@ -601,7 +642,7 @@ def setup_of(engine: Engine, user: User, code: str) -> SetupView:
     return SetupView(
         r,
         copied,
-        Setup(default, rules, columns, hidden, r.deadline),
+        Setup(default, rules, columns, hidden, r.deadline, productive),
         actuals,
         len(enabled),
         enabled[0] if enabled else None,
@@ -648,10 +689,77 @@ def save_setup(engine: Engine, actor: User, code: str, setup: Setup) -> None:
             _unhide(conn, r, account)
         for account in sorted(set(setup.hidden_accounts) - now_hidden):
             _hide(conn, r, account)
+        _set_productive(conn, r, setup.productive_cost_centers)
         conn.execute(
             update(planning_round)
             .where(planning_round.c.version_id == r.version_id)
             .values(deadline=setup.deadline)
+        )
+
+
+def _set_productive(conn: Connection, r: RoundRef, codes: list[str]) -> None:
+    """The round's productive cost centers (ADR 0013). One that stops being productive must
+    have no capacity planned in the round."""
+    wanted = {_member_id(conn, COST_CENTER, code, leaf=True) for code in codes}
+    current = set(
+        conn.execute(
+            select(round_member.c.member_id).where(
+                round_member.c.version_id == r.version_id,
+                round_member.c.module == MODULE_CAPACITY,
+                round_member.c.enabled.is_(True),
+            )
+        ).scalars()
+    )
+    removed = current - wanted
+    if removed:
+        used = union(
+            select(capacity_line.c.cost_center_id).where(
+                capacity_line.c.version_id == r.version_id,
+                capacity_line.c.cost_center_id.in_(removed),
+            ),
+            select(fact_capacity.c.dim_cost_center).where(
+                fact_capacity.c.version_id == r.version_id,
+                fact_capacity.c.dim_cost_center.in_(removed),
+            ),
+        ).subquery()
+        names = (
+            conn.execute(
+                select(member.c.code)
+                .where(member.c.member_id.in_(select(used.c.cost_center_id)))
+                .order_by(member.c.code)
+            )
+            .scalars()
+            .all()
+        )
+        if names:
+            raise RoundError(
+                f"capacity is planned for {', '.join(names)} in this round; "
+                "clear it before making them non-productive"
+            )
+    if wanted:
+        conn.execute(
+            pg_insert(round_module)
+            .values(version_id=r.version_id, module=MODULE_CAPACITY)
+            .on_conflict_do_nothing()
+        )
+    conn.execute(
+        delete(round_member).where(
+            round_member.c.version_id == r.version_id,
+            round_member.c.module == MODULE_CAPACITY,
+        )
+    )
+    if wanted:
+        conn.execute(
+            insert(round_member),
+            [
+                {
+                    "version_id": r.version_id,
+                    "module": MODULE_CAPACITY,
+                    "member_id": m,
+                    "enabled": True,
+                }
+                for m in sorted(wanted)
+            ],
         )
 
 

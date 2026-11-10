@@ -20,6 +20,7 @@ def test_read_defaults(client: TestClient) -> None:
         "comparisons": [{"kind": "prior_year_actuals", "version_code": None}],
         "hidden_accounts": [],
         "deadline": None,
+        "productive_cost_centers": [],
     }
     assert v["actuals_available"] is True and v["enabled_cost_centers"] == 2
     assert v["sample_cost_center"] == "Machining"

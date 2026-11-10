@@ -356,6 +356,12 @@ revo-grid.pl-revo revogr-viewport-scroll.colPinStart revogr-data .rgCell {
   border-color: var(--accent-2);
 }
 
+/* Credited by capacity planning (ADR 0013): read only on the cost sheet. */
+.pv-form.capacity {
+  background: var(--ok-tint);
+  color: var(--ok);
+}
+
 /* Chosen for this cost center rather than by the round's setup. */
 .pv-form.chosen {
   box-shadow: inset 0 0 0 1px var(--accent-2);
@@ -444,6 +450,91 @@ revo-grid.pl-revo .rgCell.pl-plain {
 revo-grid.pl-revo .rgCell.pl-hidden {
   background: repeating-linear-gradient(-45deg, transparent 0 6px, rgb(24 32 44 / 4.5%) 6px 7px), #fafbfc;
   background-attachment: fixed;
+}
+
+/* --- Capacity (ADR 0013) -------------------------------------------------------------------- */
+
+/* The credit an activity type gives the cost center: read only, money, below its lines. */
+revo-grid.pl-revo .rgCell.cp-credit {
+  background: var(--ok-tint);
+  color: var(--ok);
+  font-weight: 600;
+}
+
+.cp-credit-label {
+  font-size: 12.5px;
+}
+
+.cp-credit-label.cp-missing {
+  color: var(--warn);
+  font-weight: 500;
+}
+
+.cp-added {
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: var(--accent-tint);
+  color: var(--accent-ink);
+  font-size: 10px;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.pv-key .k-credit {
+  background: var(--ok-tint);
+  border: 1px solid #c6e3cf;
+}
+
+.cp-add {
+  margin-bottom: 12px;
+  padding: 12px 16px;
+}
+
+.cp-add .su-row {
+  align-items: flex-end;
+}
+
+.cp-w-wc {
+  width: 240px;
+}
+
+.cp-w-type {
+  width: 220px;
+}
+
+.cp-w-rate {
+  width: 110px;
+  text-align: right;
+}
+
+.cp-grow {
+  flex: 1;
+}
+
+.cp-inactive {
+  margin-top: 14px;
+}
+
+.cp-inactive h3 {
+  font-size: 13px;
+  margin: 0 0 6px;
+}
+
+.cp-inactive ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 4px;
+}
+
+.cp-inactive li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink-2);
 }
 
 /* --- Status --------------------------------------------------------------------------------- */

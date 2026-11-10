@@ -52,8 +52,8 @@ def test_standard_sizes() -> None:
     master = build()
     assert len(master.entities) == 4
     assert 55 <= len(master.cost_centers) <= 65
-    assert len(master.accounts) == 150
-    assert len(master.account_groups) == 12
+    assert len(master.accounts) == 153
+    assert len(master.account_groups) == 13
     assert len(master.products) == 400
     assert len(master.product_groups) == 40
     assert len(master.countries) == 12
@@ -117,3 +117,22 @@ def test_ledger_signs() -> None:
 def test_gl_needs_billing_first() -> None:
     with pytest.raises(RuntimeError):
         next(Rows(build("small"), 42).gl_lines())
+
+
+def test_work_centers_of_production_cost_centers() -> None:
+    master = build()
+    by_code = {c.code: c for c in master.cost_centers}
+    assert len(master.work_centers) == 15
+    assert all(by_code[w.cost_center].function == "production" for w in master.work_centers)
+    machining = [w for w in master.work_centers if by_code[w.cost_center].name == "Machining"]
+    assert [w.name for w in machining] == ["Machining centre 1", "Machining centre 2", "Lathe"]
+    credited = {a.code for a in master.accounts if a.group == "CREDITS"}
+    assert {account for _, _, account in m.ACTIVITY_TYPES} == credited
+    # Credit accounts are never booked directly.
+    assert all(not a.functions for a in master.accounts if a.group == "CREDITS")
+
+    rows = Rows(master, 42)
+    hours = list(rows.capacity_hours())
+    outputs = sum(len(w.outputs) for w in master.work_centers)
+    assert len(hours) == outputs * len(master.calendar.periods)
+    assert hours == list(Rows(master, 42).capacity_hours())  # deterministic

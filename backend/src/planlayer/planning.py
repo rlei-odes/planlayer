@@ -37,10 +37,12 @@ from planlayer.store.schema import (
     COST_CENTER,
     ENTITY,
     H_ACCOUNT,
+    MODULE_CAPACITY,
     MODULE_COST_CENTER,
     change_log,
     closure,
     comparison,
+    credit_account,
     entry_form,
     fact_cost_center,
     hidden_account,
@@ -48,6 +50,7 @@ from planlayer.store.schema import (
     line_spread,
     member,
     planning_round,
+    round_member,
     round_module,
     seasonality_profile,
     sheet_account,
@@ -123,6 +126,7 @@ class Row:
     months_visible: bool = True
     months_editable: bool = False
     total_editable: bool = False
+    capacity: bool = False  # credited by capacity planning: read only (ADR 0013)
 
 
 @dataclass
@@ -438,6 +442,7 @@ def read_grid(engine: Engine, user: User, version_code: str, cc_code: str) -> Gr
         for values in compared:
             shown |= set(values)
         lines = _lines(conn, ctx, shown - _hidden(conn, ctx.version_id))
+        credited = _credited(conn, ctx)
 
     r = ctx.round
     grid = Grid(
@@ -468,6 +473,7 @@ def read_grid(engine: Engine, user: User, version_code: str, cc_code: str) -> Gr
             )
             grid.rows.append(group_row)
         w = weights(line.form.basis, MONTHS, line.profile, line.reference)
+        from_capacity = line.account_id in credited
         row = Row(
             "account",
             line.code,
@@ -482,9 +488,10 @@ def read_grid(engine: Engine, user: User, version_code: str, cc_code: str) -> Gr
             chosen_spread=line.chosen,
             reference_version=line.reference_code,
             profile=line.profile_code,
-            months_visible=line.form.months_visible,
-            months_editable=editable and line.form.months_editable,
-            total_editable=editable,
+            months_visible=line.form.months_visible or from_capacity,
+            months_editable=editable and line.form.months_editable and not from_capacity,
+            total_editable=editable and not from_capacity,
+            capacity=from_capacity,
         )
         grid.rows.append(row)
         for i, months in enumerate(row.comparisons):
@@ -493,6 +500,22 @@ def read_grid(engine: Engine, user: User, version_code: str, cc_code: str) -> Gr
         for m in range(MONTHS):
             group_row.plan[m] = Cell(_add(group_row.plan[m].value, row.plan[m].value), None)
     return grid
+
+
+def _credited(conn: Connection, ctx: _Context) -> set[int]:
+    """Accounts credited by activity types, if the cost center is productive in the round: its
+    capacity planning writes them (ADR 0013)."""
+    productive = conn.execute(
+        select(round_member.c.member_id).where(
+            round_member.c.version_id == ctx.version_id,
+            round_member.c.module == MODULE_CAPACITY,
+            round_member.c.member_id == ctx.cost_center_id,
+            round_member.c.enabled.is_(True),
+        )
+    ).first()
+    if productive is None:
+        return set()
+    return set(conn.execute(select(credit_account.c.account_id)).scalars())
 
 
 def _add(a: Decimal | None, b: Decimal | None) -> Decimal | None:
@@ -629,6 +652,9 @@ def _apply(
     hidden = sorted(c for c, a in accounts.items() if a in _hidden(conn, ctx.version_id))
     if hidden:
         raise EditError(f"hidden in this round: {', '.join(hidden)}")
+    credited = sorted(c for c, a in accounts.items() if a in _credited(conn, ctx))
+    if credited:
+        raise EditError(f"credited by capacity planning: {', '.join(credited)}")
     lines = {line.account_id: line for line in _lines(conn, ctx, accounts.values())}
 
     # Lock the cells this request may touch, then compare versions (D-19).

@@ -13,8 +13,18 @@ from planlayer.adapters.source import Query, SourceAdapter
 from planlayer.api.auth import CurrentUser, engine_of
 
 router = APIRouter(prefix="/api")
-Dataset = Literal["entities", "cost_centers", "accounts", "actuals"]
-MemberDataset = Literal["entities", "cost_centers", "accounts"]
+Dataset = Literal[
+    "entities",
+    "cost_centers",
+    "accounts",
+    "actuals",
+    "activity_types",
+    "work_centers",
+    "work_center_rates",
+    "capacity_actuals",
+]
+MemberDataset = Literal["entities", "cost_centers", "accounts", "activity_types", "work_centers"]
+REFERENCE_FIELDS = ("cost_center_code", "account_code", "variable_account_code")
 PREVIEW_ROWS = 20
 
 
@@ -248,6 +258,9 @@ class MemberOut(BaseModel):
     account_type: str | None
     valid_from: date | None
     valid_to: date | None
+    cost_center_code: str | None  # work centers
+    account_code: str | None  # activity types: the account credited
+    variable_account_code: str | None
 
 
 class MemberIn(BaseModel):
@@ -258,6 +271,9 @@ class MemberIn(BaseModel):
     entity_code: str | None = None
     owner: str | None = None
     account_type: str | None = None
+    cost_center_code: str | None = None
+    account_code: str | None = None
+    variable_account_code: str | None = None
 
 
 class MemberChange(BaseModel):
@@ -268,6 +284,9 @@ class MemberChange(BaseModel):
     entity_code: str | None = None
     owner: str | None = None
     account_type: str | None = None
+    cost_center_code: str | None = None
+    account_code: str | None = None
+    variable_account_code: str | None = None
 
 
 @router.get("/members/{dataset}", responses={403: {}})
@@ -293,6 +312,7 @@ def add_member(request: Request, user: CurrentUser, dataset: MemberDataset, body
             entity_code=body.entity_code,
             owner=body.owner,
             account_type=body.account_type,
+            references={f: getattr(body, f) for f in REFERENCE_FIELDS},
         )
     except HANDLED as e:
         raise _http(e) from None
@@ -308,7 +328,7 @@ def change_member(
             masterdata.rename(engine, user, dataset, code, body.name)
         if "parent" in given:
             masterdata.move(engine, user, dataset, code, body.parent)
-        if given & {"entity_code", "owner", "account_type"}:
+        if given & {"entity_code", "owner", "account_type", *REFERENCE_FIELDS}:
             masterdata.set_attributes(
                 engine,
                 user,
@@ -317,6 +337,7 @@ def change_member(
                 entity_code=body.entity_code,
                 owner=body.owner,
                 account_type=body.account_type,
+                references={f: getattr(body, f) for f in REFERENCE_FIELDS},
             )
     except HANDLED as e:
         raise _http(e) from None

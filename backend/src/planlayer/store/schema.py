@@ -42,9 +42,10 @@ metadata = MetaData(schema=APP_SCHEMA, naming_convention=NAMING_CONVENTION)
 # Fixed ids of the dimensions and hierarchies the cost center planning area uses. The dimension
 # registry (D-04, E-03) replaces these constants.
 ENTITY, COST_CENTER, ACCOUNT = 1, 2, 3
+WORK_CENTER, ACTIVITY_TYPE = 4, 5  # capacity planning (ADR 0013)
 H_COST_CENTER, H_ACCOUNT = 1, 2
 BASE_LAYER = 1  # T-23
-AMOUNT = 1  # measure, T-23
+AMOUNT, HOURS = 1, 2  # measures, T-23
 
 AMOUNT_TYPE = Numeric(18, 2)  # T-12
 
@@ -83,6 +84,10 @@ member = Table(
     Column("account_type", Text),  # accounts: revenue / cost (T-7)
     Column("valid_from", Date),
     Column("valid_to", Date),
+    # Work centers: their cost center. Activity types: the accounts they credit (ADR 0013).
+    Column("cost_center_code", Text),
+    Column("account_code", Text),
+    Column("variable_account_code", Text),
     # ADR 0012: synced from a source, or added by hand. ``name`` is effective (a local override
     # wins); ``source_name`` is what the source delivered.
     Column("origin", Text, nullable=False, server_default="source"),
@@ -135,6 +140,7 @@ version = Table(
 # --- Planning rounds (ADR 0007) -------------------------------------------------------------------
 
 MODULE_COST_CENTER = "cost_center"
+MODULE_CAPACITY = "capacity"  # its enabled members are the productive cost centers (ADR 0013)
 
 # A plan version for one fiscal year, one-to-one; the version's code and name are the round's.
 planning_round = Table(
@@ -480,3 +486,96 @@ publish_run = Table(
     Column("removed", Integer),
     Column("fingerprint", Text),
 )
+
+# --- Capacity planning (ADR 0013) -----------------------------------------------------------------
+
+RATE_TYPE = Numeric(18, 4)
+
+# The source's rate per work center and activity type; replaced by each sync.
+work_center_rate = Table(
+    "work_center_rate",
+    metadata,
+    Column("work_center_id", Integer, ForeignKey("member.member_id"), nullable=False),
+    Column("activity_type_id", Integer, ForeignKey("member.member_id"), nullable=False),
+    Column("rate", RATE_TYPE, nullable=False),
+    PrimaryKeyConstraint("work_center_id", "activity_type_id"),
+)
+
+# A work center x activity type line of a productive cost center in a round: its plan rate,
+# whether it is active, and how a year total of hours spreads. Scoped and locked like hours.
+capacity_line = Table(
+    "capacity_line",
+    metadata,
+    Column("version_id", SmallInteger, nullable=False),
+    Column("module", Text, nullable=False, server_default=MODULE_CAPACITY),
+    Column("cost_center_id", Integer, ForeignKey("member.member_id"), nullable=False),
+    Column("work_center_id", Integer, ForeignKey("member.member_id"), nullable=False),
+    Column("activity_type_id", Integer, ForeignKey("member.member_id"), nullable=False),
+    Column("rate", RATE_TYPE, nullable=False),
+    Column("variable_rate", RATE_TYPE),  # credited to the variable account; no UI yet
+    Column("active", Boolean, nullable=False, server_default="true"),
+    Column("basis", Text),  # NULL: like prior-year actual hours
+    Column("profile_id", SmallInteger, ForeignKey("seasonality_profile.profile_id")),
+    Column("changed_by", Text),
+    Column("changed_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    PrimaryKeyConstraint("version_id", "work_center_id", "activity_type_id"),
+    _module_fk(),
+)
+
+# Planned and actual hours (ADR 0001 shape): one column per dimension.
+fact_capacity = Table(
+    "fact_capacity",
+    metadata,
+    Column("version_id", SmallInteger, ForeignKey("version.version_id"), nullable=False),
+    Column("layer_id", SmallInteger, nullable=False),
+    Column("measure_id", SmallInteger, nullable=False),
+    Column("period", Date, nullable=False),
+    Column("dim_entity", Integer, ForeignKey("member.member_id"), nullable=False),
+    Column("dim_cost_center", Integer, ForeignKey("member.member_id"), nullable=False),
+    Column("dim_work_center", Integer, ForeignKey("member.member_id"), nullable=False),
+    Column("dim_activity_type", Integer, ForeignKey("member.member_id"), nullable=False),
+    Column("amount", AMOUNT_TYPE, nullable=False),
+    Column("row_version", BigInteger, nullable=False, server_default="1"),
+    PrimaryKeyConstraint(
+        "version_id", "layer_id", "measure_id", "period", "dim_entity", "dim_cost_center",
+        "dim_work_center", "dim_activity_type",
+    ),
+)  # fmt: skip
+
+capacity_change_log = Table(
+    "capacity_change_log",
+    metadata,
+    Column("id", BigInteger, primary_key=True),
+    Column("at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("actor", Text),
+    Column("batch_id", Text),
+    Column("op", Text, nullable=False),
+    Column("version_id", SmallInteger, nullable=False),
+    Column("period", Date, nullable=False),
+    Column("dim_cost_center", Integer, nullable=False),
+    Column("dim_work_center", Integer, nullable=False),
+    Column("dim_activity_type", Integer, nullable=False),
+    Column("old_amount", AMOUNT_TYPE),
+    Column("new_amount", AMOUNT_TYPE),
+)
+
+# Capacity planners: they write the capacity of a cost center, or of every one below a node.
+capacity_grant = Table(
+    "capacity_grant",
+    metadata,
+    Column("member_id", Integer, ForeignKey("member.member_id"), nullable=False),
+    Column("user_id", Integer, ForeignKey("app_user.user_id"), nullable=False),
+    Column("granted_by", Text),
+    Column("granted_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    PrimaryKeyConstraint("member_id", "user_id"),
+)
+
+# Views (migration 0008), declared for queries only.
+capacity_access = Table(
+    "capacity_access",
+    metadata,
+    Column("user_id", Integer),
+    Column("cost_center_id", Integer),
+    Column("can_write", Boolean),
+)
+credit_account = Table("credit_account", metadata, Column("account_id", Integer))

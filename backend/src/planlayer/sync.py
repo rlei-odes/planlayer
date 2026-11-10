@@ -27,16 +27,20 @@ from sqlalchemy.exc import DBAPIError
 from planlayer.adapters.source import Query, SourceAdapter
 from planlayer.store.schema import (
     ACCOUNT,
+    ACTIVITY_TYPE,
     AMOUNT,
     BASE_LAYER,
     COST_CENTER,
     ENTITY,
     H_ACCOUNT,
     H_COST_CENTER,
+    HOURS,
     NO_ENTITY,
+    WORK_CENTER,
     closure,
     dataset_mapping,
     edge_override,
+    fact_capacity,
     fact_cost_center,
     hier_edge,
     hierarchy,
@@ -45,6 +49,7 @@ from planlayer.store.schema import (
     member_shadow,
     sync_run,
     version,
+    work_center_rate,
 )
 from planlayer.store.uow import Actor, unit_of_work
 
@@ -79,21 +84,64 @@ FIELDS: dict[str, dict[str, pa.DataType]] = {
         "account_code": pa.string(),
         "amount": pa.decimal128(18, 2),
     },
+    # Capacity planning (ADR 0013).
+    "activity_types": {
+        "code": pa.string(),
+        "name": pa.string(),
+        "account_code": pa.string(),
+        "variable_account_code": pa.string(),
+    },
+    "work_centers": {"code": pa.string(), "name": pa.string(), "cost_center_code": pa.string()},
+    "work_center_rates": {
+        "work_center_code": pa.string(),
+        "activity_type_code": pa.string(),
+        "rate": pa.decimal128(18, 4),
+    },
+    "capacity_actuals": {
+        "period": pa.date32(),
+        "work_center_code": pa.string(),
+        "activity_type_code": pa.string(),
+        "hours": pa.decimal128(18, 2),
+    },
 }
 REQUIRED: dict[str, tuple[str, ...]] = {
     "entities": ("code", "name"),
     "cost_centers": ("code", "name"),
     "accounts": ("code", "name"),
     "actuals": ("period", "entity_code", "cost_center_code", "account_code", "amount"),
+    "activity_types": ("code", "name"),
+    "work_centers": ("code", "name"),
+    "work_center_rates": ("work_center_code", "activity_type_code", "rate"),
+    "capacity_actuals": ("period", "work_center_code", "activity_type_code", "hours"),
 }
 DATASETS = tuple(FIELDS)
-# Member datasets: dimension and hierarchy (None: no hierarchy).
+# Member datasets: dimension and hierarchy (None: no hierarchy). Work centers and activity types
+# come after the cost centers and accounts their codes refer to.
 DIMENSIONS: dict[str, tuple[int, int | None]] = {
     "entities": (ENTITY, None),
     "cost_centers": (COST_CENTER, H_COST_CENTER),
     "accounts": (ACCOUNT, H_ACCOUNT),
+    "activity_types": (ACTIVITY_TYPE, None),
+    "work_centers": (WORK_CENTER, None),
 }
-LABEL = {ENTITY: "entity", COST_CENTER: "cost center", ACCOUNT: "account"}
+LABEL = {
+    ENTITY: "entity",
+    COST_CENTER: "cost center",
+    ACCOUNT: "account",
+    ACTIVITY_TYPE: "activity type",
+    WORK_CENTER: "work center",
+}
+# Member attributes kept on ``member``, as codes.
+ATTRIBUTES = (
+    "entity_code",
+    "owner",
+    "account_type",
+    "valid_from",
+    "valid_to",
+    "cost_center_code",
+    "account_code",
+    "variable_account_code",
+)
 
 
 class SyncError(Exception):
@@ -250,6 +298,37 @@ def default_mappings(schema: str) -> list[Mapping]:
             f"FROM {s}.v_gl_actuals_natural",
             {f: f for f in REQUIRED["actuals"]},
         ),
+        Mapping(
+            "activity_types",
+            "SELECT activity_type_code, activity_type_name, account_code, variable_account_code "
+            f"FROM {s}.v_activity_types",
+            {
+                "code": "activity_type_code",
+                "name": "activity_type_name",
+                "account_code": "account_code",
+                "variable_account_code": "variable_account_code",
+            },
+        ),
+        Mapping(
+            "work_centers",
+            f"SELECT work_center_code, work_center_name, cost_center_code FROM {s}.v_work_centers",
+            {
+                "code": "work_center_code",
+                "name": "work_center_name",
+                "cost_center_code": "cost_center_code",
+            },
+        ),
+        Mapping(
+            "work_center_rates",
+            f"SELECT work_center_code, activity_type_code, rate FROM {s}.v_work_center_rates",
+            {f: f for f in REQUIRED["work_center_rates"]},
+        ),
+        Mapping(
+            "capacity_actuals",
+            "SELECT period, work_center_code, activity_type_code, hours "
+            f"FROM {s}.v_capacity_actuals",
+            {f: f for f in REQUIRED["capacity_actuals"]},
+        ),
     ]
 
 
@@ -289,6 +368,8 @@ class SyncPlan:
     # What a run writes:
     members: dict[int, list[SourceMember]] = field(default_factory=dict)
     actuals: dict[tuple[date, str, str, str], Decimal] = field(default_factory=dict)
+    rates: dict[tuple[str, str], Decimal] | None = None  # None: rates not mapped
+    capacity: dict[tuple[date, str, str], Decimal] | None = None  # None: hours not mapped
 
 
 def _members(
@@ -389,11 +470,7 @@ def plan(engine: Engine, adapter: SourceAdapter, entity: str | None = None) -> S
                     member.c.source_name,
                     member.c.name,
                     member.c.is_group,
-                    member.c.owner,
-                    member.c.entity_code,
-                    member.c.account_type,
-                    member.c.valid_from,
-                    member.c.valid_to,
+                    *(member.c[a] for a in ATTRIBUTES),
                 )
             )
         }
@@ -459,6 +536,12 @@ def plan(engine: Engine, adapter: SourceAdapter, entity: str | None = None) -> S
                 ent = sm.attrs.get("entity_code")
                 if not sm.is_group and ent not in (None, "") and ent not in known_entities:
                     p.problems.append(f"cost center {sm.code}: unknown entity {ent}")
+        for attr, dim_ref in REFERENCES.get(dataset, ()):
+            refs = _leaves(existing, p, dim_ref)
+            for sm in members:
+                ref = sm.attrs.get(attr)
+                if ref not in (None, "") and ref not in refs:
+                    p.problems.append(f"{label} {sm.code}: unknown {LABEL[dim_ref]} {ref}")
 
     if "actuals" in maps:
         try:
@@ -487,7 +570,63 @@ def plan(engine: Engine, adapter: SourceAdapter, entity: str | None = None) -> S
             cells[key] += cast(Decimal, r["amount"])
         p.actuals = dict(cells)
         p.actual_cells = len(cells)
+
+    work_centers = _leaves(existing, p, WORK_CENTER)
+    activity_types = _leaves(existing, p, ACTIVITY_TYPE)
+
+    def report_unknown(dataset: str, rows: list[dict[str, Any]]) -> None:
+        for fld, known, dim in (
+            ("work_center_code", work_centers, WORK_CENTER),
+            ("activity_type_code", activity_types, ACTIVITY_TYPE),
+        ):
+            p.problems += [
+                f"{dataset}: unknown {LABEL[dim]} {c}"
+                for c in sorted({str(r[fld]) for r in rows} - known)
+            ]
+
+    if "work_center_rates" in maps:
+        try:
+            rows = read(adapter, maps["work_center_rates"])
+        except SOURCE_ERRORS as e:
+            p.problems.append(_failed("work_center_rates", e))
+            rows = []
+        report_unknown("work_center_rates", rows)
+        p.rates = {}
+        for r in rows:
+            pair = (str(r["work_center_code"]), str(r["activity_type_code"]))
+            if pair in p.rates:
+                p.problems.append(f"work_center_rates: {pair[0]}/{pair[1]} has two rates")
+            if cast(Decimal, r["rate"]) < 0:
+                p.problems.append(f"work_center_rates: {pair[0]}/{pair[1]} has a negative rate")
+            p.rates[pair] = cast(Decimal, r["rate"])
+    if "capacity_actuals" in maps:
+        try:
+            rows = read(adapter, maps["capacity_actuals"])
+        except SOURCE_ERRORS as e:
+            p.problems.append(_failed("capacity_actuals", e))
+            rows = []
+        report_unknown("capacity_actuals", rows)
+        hours: dict[tuple[date, str, str], Decimal] = defaultdict(Decimal)
+        for r in rows:
+            hours[(r["period"], str(r["work_center_code"]), str(r["activity_type_code"]))] += cast(
+                Decimal, r["hours"]
+            )
+        p.capacity = dict(hours)
     return p
+
+
+# Attributes naming a member of another dimension: (attribute, dimension).
+REFERENCES: dict[str, tuple[tuple[str, int], ...]] = {
+    "work_centers": (("cost_center_code", COST_CENTER),),
+    "activity_types": (("account_code", ACCOUNT), ("variable_account_code", ACCOUNT)),
+}
+
+
+def _leaves(existing: dict[tuple[int, str], Any], p: SyncPlan, dim: int) -> set[str]:
+    """Leaf codes of a dimension as they will be after the run: stored and delivered ones."""
+    return {c for (d, c), r in existing.items() if d == dim and not r.is_group} | {
+        sm.code for sm in p.members.get(dim, []) if not sm.is_group
+    }
 
 
 # --- Run ------------------------------------------------------------------------------------------
@@ -535,6 +674,10 @@ def run(
                 _write_hierarchy(conn, hier_id, dim, p.members[dim], ids)
         rebuild_closure(conn)
         n = _write_actuals(conn, p.actuals, ids, entity) if p.actual_cells is not None else 0
+        if p.rates is not None:
+            _write_rates(conn, p.rates, ids)
+        if p.capacity is not None:
+            _write_capacity_actuals(conn, p.capacity, ids, entity)
         summary = {
             "datasets": p.datasets,
             "new": len(p.new),
@@ -614,10 +757,7 @@ def _write_members(conn: Connection, dim: int, members: list[SourceMember]) -> N
                 "entity_code": (a.get("entity_code") or NO_ENTITY)
                 if dim == COST_CENTER and not sm.is_group
                 else None,
-                "owner": a.get("owner"),
-                "account_type": a.get("account_type"),
-                "valid_from": a.get("valid_from"),
-                "valid_to": a.get("valid_to"),
+                **{attr: a.get(attr) for attr in ATTRIBUTES if attr != "entity_code"},
             }
         )
     stmt = pg_insert(member).values(rows)
@@ -626,17 +766,7 @@ def _write_members(conn: Connection, dim: int, members: list[SourceMember]) -> N
             index_elements=[member.c.dim_id, member.c.code],
             set_={
                 c: stmt.excluded[c]
-                for c in (
-                    "name",
-                    "source_name",
-                    "is_group",
-                    "origin",
-                    "entity_code",
-                    "owner",
-                    "account_type",
-                    "valid_from",
-                    "valid_to",
-                )
+                for c in ("name", "source_name", "is_group", "origin", *ATTRIBUTES)
             },
         )
     )
@@ -750,3 +880,76 @@ def _write_actuals(
             ],
         )
     return len(cells)
+
+
+def _write_rates(
+    conn: Connection, rates: dict[tuple[str, str], Decimal], ids: dict[tuple[int, str], int]
+) -> None:
+    """The source's rates replace the stored ones; rounds keep their own plan rates."""
+    conn.execute(delete(work_center_rate))
+    if rates:
+        conn.execute(
+            insert(work_center_rate),
+            [
+                {
+                    "work_center_id": ids[(WORK_CENTER, w)],
+                    "activity_type_id": ids[(ACTIVITY_TYPE, t)],
+                    "rate": rate,
+                }
+                for (w, t), rate in rates.items()
+            ],
+        )
+
+
+def _write_capacity_actuals(
+    conn: Connection,
+    cells: dict[tuple[date, str, str], Decimal],
+    ids: dict[tuple[int, str], int],
+    entity: str | None,
+) -> int:
+    """Actual hours, booked on each work center's cost center as it is now. A work center
+    without a cost center is skipped."""
+    vid = actuals_version_id(conn)
+    cost_centers = {
+        code: (ids.get((COST_CENTER, cc or "")), ids.get((ENTITY, ent or NO_ENTITY)))
+        for code, cc, ent in conn.execute(
+            select(member.c.code, member.c.cost_center_code, _entity_of_cost_center()).where(
+                member.c.dim_id == WORK_CENTER
+            )
+        )
+    }
+    stmt = delete(fact_capacity).where(fact_capacity.c.version_id == vid)
+    if entity is not None:
+        stmt = stmt.where(fact_capacity.c.dim_entity == ids[(ENTITY, entity)])
+    conn.execute(stmt)
+    rows = []
+    for (p, w, t), hours in cells.items():
+        cc, ent = cost_centers.get(w, (None, None))
+        if cc is None or ent is None or (entity is not None and ent != ids[(ENTITY, entity)]):
+            continue
+        rows.append(
+            {
+                "version_id": vid,
+                "layer_id": BASE_LAYER,
+                "measure_id": HOURS,
+                "period": p,
+                "dim_entity": ent,
+                "dim_cost_center": cc,
+                "dim_work_center": ids[(WORK_CENTER, w)],
+                "dim_activity_type": ids[(ACTIVITY_TYPE, t)],
+                "amount": hours,
+            }
+        )
+    if rows:
+        conn.execute(insert(fact_capacity), rows)
+    return len(rows)
+
+
+def _entity_of_cost_center() -> Any:
+    """The entity code of a work center's cost center, as a scalar subquery."""
+    cc = member.alias("cc")
+    return (
+        select(cc.c.entity_code)
+        .where(cc.c.dim_id == COST_CENTER, cc.c.code == member.c.cost_center_code)
+        .scalar_subquery()
+    )

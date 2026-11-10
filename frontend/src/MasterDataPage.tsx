@@ -26,12 +26,37 @@ const DATASET_LABEL: Record<Dataset, string> = {
   cost_centers: 'Cost centers',
   accounts: 'Accounts',
   actuals: 'Actuals',
+  activity_types: 'Activity types',
+  work_centers: 'Work centers',
+  work_center_rates: 'Work center rates',
+  capacity_actuals: 'Actual hours',
 }
 const DIMENSIONS: Option<MemberDataset>[] = [
   { value: 'cost_centers', label: 'Cost centers' },
   { value: 'accounts', label: 'Accounts' },
   { value: 'entities', label: 'Entities' },
+  { value: 'work_centers', label: 'Work centers' },
+  { value: 'activity_types', label: 'Activity types' },
 ]
+const ATTRIBUTE_HEAD: Partial<Record<MemberDataset, string>> = {
+  accounts: 'Type',
+  cost_centers: 'Entity · owner',
+  work_centers: 'Cost center',
+  activity_types: 'Credited account',
+}
+
+function attributes(dataset: MemberDataset, r: MemberRow): string {
+  switch (dataset) {
+    case 'accounts':
+      return r.account_type ?? ''
+    case 'work_centers':
+      return r.cost_center_code ?? ''
+    case 'activity_types':
+      return [r.account_code, r.variable_account_code && `variable: ${r.variable_account_code}`].filter(Boolean).join(' · ')
+    default:
+      return [r.entity_code, r.owner].filter(Boolean).join(' · ')
+  }
+}
 
 function errorText(e: unknown) {
   return e instanceof Error ? e.message : String(e)
@@ -463,7 +488,17 @@ function Changes({ label, items }: { label: string; items: string[] }) {
 
 // --- Members ------------------------------------------------------------------------------------
 
-const BLANK = { code: '', name: '', parent: '', is_group: false, entity_code: '', owner: '', account_type: '' }
+const BLANK = {
+  code: '',
+  name: '',
+  parent: '',
+  is_group: false,
+  entity_code: '',
+  owner: '',
+  account_type: '',
+  cost_center_code: '',
+  account_code: '',
+}
 
 function Members() {
   const [dataset, setDataset] = useState<MemberDataset>('cost_centers')
@@ -491,7 +526,7 @@ function Members() {
     }
   }
 
-  const tree = dataset !== 'entities'
+  const tree = dataset === 'cost_centers' || dataset === 'accounts'
   const groups = rows.filter((r) => r.is_group)
   const parentOptions = (except?: string): Option[] => [
     { value: '', label: '(top level)' },
@@ -551,6 +586,8 @@ function Members() {
                   entity_code: draft.entity_code || null,
                   owner: draft.owner || null,
                   account_type: draft.account_type || null,
+                  cost_center_code: draft.cost_center_code || null,
+                  account_code: draft.account_code || null,
                 }),
               `${draft.code} added.`,
             ).then((ok) => ok && setDraft({ ...draft, code: '', name: '' }))
@@ -583,6 +620,26 @@ function Members() {
                   <input className="su-input" value={draft.owner} onChange={(e) => setDraft({ ...draft, owner: e.target.value })} />
                 </label>
               </>
+            )}
+            {dataset === 'work_centers' && (
+              <label className="su-field">
+                Cost center
+                <input
+                  className="su-input md-w-code"
+                  value={draft.cost_center_code}
+                  onChange={(e) => setDraft({ ...draft, cost_center_code: e.target.value })}
+                />
+              </label>
+            )}
+            {dataset === 'activity_types' && (
+              <label className="su-field">
+                Credited account
+                <input
+                  className="su-input md-w-code"
+                  value={draft.account_code}
+                  onChange={(e) => setDraft({ ...draft, account_code: e.target.value })}
+                />
+              </label>
             )}
             {dataset === 'accounts' && (
               <div className="su-field md-w-parent">
@@ -628,7 +685,7 @@ function Members() {
                 <th>Member</th>
                 <th>Origin</th>
                 {tree && <th>Parent</th>}
-                <th>{dataset === 'accounts' ? 'Type' : dataset === 'cost_centers' ? 'Entity · owner' : ''}</th>
+                <th>{ATTRIBUTE_HEAD[dataset] ?? ''}</th>
                 <th />
               </tr>
             </thead>
@@ -691,9 +748,7 @@ function Members() {
                       {r.moved && <span className="md-was">source: {r.source_parent ?? 'top level'}</span>}
                     </td>
                   )}
-                  <td className="muted">
-                    {dataset === 'accounts' ? r.account_type : [r.entity_code, r.owner].filter(Boolean).join(' · ')}
-                  </td>
+                  <td className="muted">{attributes(dataset, r)}</td>
                   <td className="right">
                     <span className="btn-row">
                       <button type="button" className="su-btn ghost sm" onClick={() => setEditing({ code: r.code, name: r.name })}>

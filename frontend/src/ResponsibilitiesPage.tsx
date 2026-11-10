@@ -4,7 +4,7 @@ import Select, { type Option } from './Select'
 
 // Responsibilities (ADR 0009), for the controller: per cost center the owner matched from the
 // source and the planner it gives, which the controller can override; deputies on cost centers
-// and nodes; approvers on nodes.
+// and nodes; capacity planners (ADR 0013); approvers on nodes.
 
 const MATCHED = '__matched__'
 const NOBODY = '__nobody__'
@@ -51,7 +51,10 @@ export default function ResponsibilitiesPage() {
   const q = query.trim().toLowerCase()
   const shown = q
     ? data.rows.filter((r) =>
-        [r.code, r.name, r.owner, r.planner, ...r.deputies, ...r.approvers].join(' ').toLowerCase().includes(q),
+        [r.code, r.name, r.owner, r.planner, ...r.deputies, ...r.capacity_planners, ...r.approvers]
+          .join(' ')
+          .toLowerCase()
+          .includes(q),
       )
     : data.rows
   const overrides = data.rows.filter((r) => r.overridden).length
@@ -63,7 +66,8 @@ export default function ResponsibilitiesPage() {
           <div className="su-eyebrow">Responsibilities</div>
           <h2 className="su-title">Who plans and who approves</h2>
           <div className="pg-sub">
-            Owners come from the source and plan their cost centers. Overrides, deputies and approvers are kept here.
+            Owners come from the source and plan their cost centers. Overrides, deputies, capacity planners and approvers
+            are kept here.
           </div>
         </div>
       </div>
@@ -97,6 +101,7 @@ export default function ResponsibilitiesPage() {
                 <th>Cost center · owner in the source</th>
                 <th>Planner</th>
                 <th>Deputies</th>
+                <th title="Plan the hours and rates of productive cost centers, not their costs">Capacity planners</th>
                 <th>Approvers</th>
               </tr>
             </thead>
@@ -141,6 +146,22 @@ export default function ResponsibilitiesPage() {
                     />
                   </td>
                   <td>
+                    <People
+                      people={row.capacity_planners}
+                      users={data.users}
+                      label={`Add a capacity planner for ${row.code}`}
+                      onAdd={(u) =>
+                        void run(() => api.addCapacityPlanner(row.code, u), `${u} may now plan the capacity of ${row.code}.`)
+                      }
+                      onRemove={(u) =>
+                        void run(
+                          () => api.removeCapacityPlanner(row.code, u),
+                          `${u} no longer plans the capacity of ${row.code}.`,
+                        )
+                      }
+                    />
+                  </td>
+                  <td>
                     {row.kind === 'node' && (
                       <People
                         people={row.approvers}
@@ -155,7 +176,7 @@ export default function ResponsibilitiesPage() {
               ))}
               {shown.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="st-empty">
+                  <td colSpan={5} className="st-empty">
                     Nothing matches “{query}”.
                   </td>
                 </tr>

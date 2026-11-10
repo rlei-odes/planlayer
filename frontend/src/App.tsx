@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import { api, type Me, type Version } from './api'
+import CapacityPage from './CapacityPage'
 import {
+  CapacityIcon,
   CollapseIcon,
   LogoMark,
   LogoutIcon,
@@ -27,9 +29,10 @@ import UsersPage from './UsersPage'
 // One current round applies to every page that works on a round.
 
 type Health = { status: 'ok' | 'unavailable'; version: string; schema_revision: string | null }
-type Page = 'planning' | 'status' | 'setup' | 'publish' | 'masterdata' | 'responsibilities' | 'users'
+type Page = 'capacity' | 'planning' | 'status' | 'setup' | 'publish' | 'masterdata' | 'responsibilities' | 'users'
 
 const NAV: Record<Page, { label: string; icon: () => ReactNode }> = {
+  capacity: { label: 'Capacity', icon: CapacityIcon },
   planning: { label: 'Planning', icon: PlanningIcon },
   status: { label: 'Status', icon: StatusIcon },
   setup: { label: 'Setup', icon: SetupIcon },
@@ -38,16 +41,18 @@ const NAV: Record<Page, { label: string; icon: () => ReactNode }> = {
   responsibilities: { label: 'Responsibilities', icon: ResponsibilitiesIcon },
   users: { label: 'Users', icon: UsersIcon },
 }
-const ROUND_PAGES: Page[] = ['planning', 'status', 'setup', 'publish']
+const ROUND_PAGES: Page[] = ['capacity', 'planning', 'status', 'setup', 'publish']
 
 function groupsFor(me: Me): { label: string; pages: Page[] }[] {
   const round: Page[] = me.is_controller ? ['setup', 'publish', 'responsibilities'] : []
   const admin: Page[] = []
   if (me.is_controller || me.is_admin) admin.push('masterdata')
   if (me.is_admin) admin.push('users')
-  // Planning and status need cost centers to read: a role, ownership, a deputy grant or an
-  // approver assignment. The admin role alone gives none (ADR 0009).
-  const plan: Page[] = me.is_controller || me.is_viewer || me.reads_cost_centers ? ['planning', 'status'] : []
+  // Planning and status need cost centers to read: a role, ownership, a deputy grant, a capacity
+  // planner grant or an approver assignment. The admin role alone gives none (ADR 0009). Capacity
+  // comes first, the usual order of work (ADR 0013).
+  const plan: Page[] =
+    me.is_controller || me.is_viewer || me.reads_cost_centers ? ['capacity', 'planning', 'status'] : []
   const groups: { label: string; pages: Page[] }[] = [
     { label: 'Plan', pages: plan },
     { label: 'Round', pages: round },
@@ -87,6 +92,8 @@ export default function App() {
     return stored ? stored === 'collapsed' : window.innerWidth < 1360
   })
   const [error, setError] = useState<string | null>(null)
+  // The cost center shown on the capacity and planning pages: switching pages keeps it.
+  const [costCenter, setCostCenter] = useState(() => remembered('planlayer.costCenter') ?? '')
 
   const checkHealth = useCallback(() => {
     fetch('/api/health')
@@ -123,6 +130,10 @@ export default function App() {
   useEffect(() => {
     if (version) remember('planlayer.round', version)
   }, [version])
+
+  useEffect(() => {
+    if (costCenter) remember('planlayer.costCenter', costCenter)
+  }, [costCenter])
 
   function go(next: Page) {
     setPage(next)
@@ -286,7 +297,25 @@ export default function App() {
               )}
             </div>
           )}
-          {version && current === 'planning' && <PlanningPage key={`${me.login}/${version}`} version={version} onWidth={setSheetWidth} />}
+          {version && current === 'capacity' && (
+            <CapacityPage
+              key={`${me.login}/${version}`}
+              version={version}
+              unit={costCenter}
+              onUnit={setCostCenter}
+              controller={me.is_controller}
+              onWidth={setSheetWidth}
+            />
+          )}
+          {version && current === 'planning' && (
+            <PlanningPage
+              key={`${me.login}/${version}`}
+              version={version}
+              unit={costCenter}
+              onUnit={setCostCenter}
+              onWidth={setSheetWidth}
+            />
+          )}
           {version && current === 'status' && (
             <StatusPage key={`${me.login}/${version}`} version={version} me={me} onRoundChanged={loadVersions} />
           )}

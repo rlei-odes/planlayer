@@ -12,7 +12,7 @@ import psycopg
 from psycopg import sql
 
 from gen_testdata.actuals import Rows
-from gen_testdata.master import FUNCTION_ROOT, FUNCTIONS, REGIONS, Master
+from gen_testdata.master import ACTIVITY_TYPES, FUNCTION_ROOT, FUNCTIONS, REGIONS, Master
 
 BRONZE_TABLES = {
     "generator_run": "variant text, seed int, date_mode text, anchor date, fiscal_start_month int",
@@ -48,6 +48,15 @@ BRONZE_TABLES = {
     "gl_lines": (
         "belnr text, buzei int, bukrs text, budat date, kostl text, saknr text, "
         "betrag_lc numeric(18,2), waers text"
+    ),
+    # Capacity planning (ADR 0013): activity types (Leistungsarten), work centers
+    # (Arbeitsplätze), their rates (Tarife) and actual hours (Ist-Leistung).
+    "leistungsart": "lstar text PRIMARY KEY, ltext text, saknr text",
+    "arbeitsplatz": "arbpl text PRIMARY KEY, ktext text, kostl text",
+    "tarif": "arbpl text, lstar text, tarif_eur numeric(18,4), PRIMARY KEY (arbpl, lstar)",
+    "leistung_ist": (
+        "periode date, arbpl text, lstar text, menge numeric(18,2), "
+        "PRIMARY KEY (periode, arbpl, lstar)"
     ),
 }
 
@@ -163,6 +172,20 @@ GOLD_VIEWS = {
         FROM monthly
         CROSS JOIN LATERAL (VALUES ('quantity', quantity), ('revenue', revenue))
             AS m(measure, value)""",
+    "v_activity_types": """
+        SELECT lstar AS activity_type_code, ltext AS activity_type_name, saknr AS account_code,
+               NULL::text AS variable_account_code
+        FROM {b}.leistungsart""",
+    "v_work_centers": """
+        SELECT arbpl AS work_center_code, ktext AS work_center_name, kostl AS cost_center_code
+        FROM {b}.arbeitsplatz""",
+    "v_work_center_rates": """
+        SELECT arbpl AS work_center_code, lstar AS activity_type_code, tarif_eur AS rate
+        FROM {b}.tarif""",
+    "v_capacity_actuals": """
+        SELECT periode AS period, arbpl AS work_center_code, lstar AS activity_type_code,
+               menge AS hours
+        FROM {b}.leistung_ist""",
 }
 
 # Views exported to files, with the order that makes files reproducible.
@@ -180,6 +203,10 @@ EXPORT_ORDER = {
     "v_gl_actuals_ledger": "period, entity_code, cost_center_code, account_code",
     "v_gl_actuals_natural": "period, entity_code, cost_center_code, account_code",
     "v_sales_actuals": "period, entity_code, country_code, product_code, measure",
+    "v_activity_types": "activity_type_code",
+    "v_work_centers": "work_center_code",
+    "v_work_center_rates": "work_center_code, activity_type_code",
+    "v_capacity_actuals": "period, work_center_code, activity_type_code",
 }
 
 
@@ -244,6 +271,14 @@ def load(
             # Billing first: it collects the revenue that gl_lines books.
             "billing_lines": rows.billing_lines(),
             "gl_lines": rows.gl_lines(),
+            "leistungsart": [(code, name, account) for code, name, account in ACTIVITY_TYPES],
+            "arbeitsplatz": [(w.code, w.name, w.cost_center) for w in master.work_centers],
+            "tarif": [
+                (w.code, activity, rate)
+                for w in master.work_centers
+                for activity, rate, _hours in w.outputs
+            ],
+            "leistung_ist": rows.capacity_hours(),
         }
         counts: dict[str, int] = {}
         for table, table_rows in data.items():

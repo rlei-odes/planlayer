@@ -35,6 +35,15 @@ export const PlanningIcon = () => (
   </Icon>
 )
 
+// A gauge: how much a work center runs.
+export const CapacityIcon = () => (
+  <Icon>
+    <path d="M3.5 14.5a6.5 6.5 0 1 1 13 0" />
+    <path d="m10 14.5 3-4.5" />
+    <path d="M3.5 14.5h13" />
+  </Icon>
+)
+
 export const StatusIcon = () => (
   <Icon>
     <circle cx="10" cy="10" r="7" />

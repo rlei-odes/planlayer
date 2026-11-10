@@ -98,13 +98,15 @@ INSERT INTO {s}.v_cost_center_hierarchy VALUES
     ('CC1', 'Machining', 'DEP', false, 1), ('CC2', 'Assembly', 'DEP', false, 2);
 CREATE TABLE {s}.v_accounts (account_code text, account_name text, account_type text);
 INSERT INTO {s}.v_accounts VALUES
-    ('6000', 'Wages', 'cost'), ('6010', 'Bonus', 'cost'), ('7000', 'Rent', 'cost');
+    ('6000', 'Wages', 'cost'), ('6010', 'Bonus', 'cost'), ('7000', 'Rent', 'cost'),
+    ('4900', 'Machine hour credits', 'cost');
 CREATE TABLE {s}.v_account_hierarchy (member_code text, member_name text, parent_code text,
     is_group bool, sort_order int);
 INSERT INTO {s}.v_account_hierarchy VALUES
     ('PL', 'P&L', NULL, true, 0), ('A', 'Personnel', 'PL', true, 1),
     ('B', 'Facilities', 'PL', true, 2), ('6000', 'Wages', 'A', false, 1),
-    ('6010', 'Bonus', 'A', false, 2), ('7000', 'Rent', 'B', false, 1);
+    ('6010', 'Bonus', 'A', false, 2), ('7000', 'Rent', 'B', false, 1),
+    ('C', 'Credits', 'PL', true, 3), ('4900', 'Machine hour credits', 'C', false, 1);
 CREATE TABLE {s}.v_gl_actuals_natural (period date, entity_code text, cost_center_code text,
     account_code text, amount numeric);
 INSERT INTO {s}.v_gl_actuals_natural
@@ -113,6 +115,25 @@ INSERT INTO {s}.v_gl_actuals_natural VALUES
     ('2025-01-01', 'DE', 'CC1', '6010', 50.00),
     ('2025-02-01', 'DE', 'CC1', '7000', -10.00), ('2025-03-01', 'DE', 'CC1', '7000', 30.00),
     ('2025-01-01', 'DE', 'CC2', '6000', 999.00);
+-- Capacity planning (ADR 0013): CC1 has a lathe and a mill, CC2 a press.
+CREATE TABLE {s}.v_activity_types (activity_type_code text, activity_type_name text,
+    account_code text, variable_account_code text);
+INSERT INTO {s}.v_activity_types VALUES
+    ('MH', 'Machine hours', '4900', NULL), ('RW', 'Repair work', NULL, NULL);
+CREATE TABLE {s}.v_work_centers (work_center_code text, work_center_name text,
+    cost_center_code text);
+INSERT INTO {s}.v_work_centers VALUES
+    ('WC1', 'Lathe', 'CC1'), ('WC2', 'Mill', 'CC1'), ('WC9', 'Press', 'CC2');
+CREATE TABLE {s}.v_work_center_rates (work_center_code text, activity_type_code text,
+    rate numeric);
+INSERT INTO {s}.v_work_center_rates VALUES
+    ('WC1', 'MH', 80), ('WC2', 'MH', 100.5), ('WC2', 'RW', 60), ('WC9', 'MH', 50);
+CREATE TABLE {s}.v_capacity_actuals (period date, work_center_code text,
+    activity_type_code text, hours numeric);
+-- The lathe ran 100 hours a month in 2025, 20 in the August shutdown.
+INSERT INTO {s}.v_capacity_actuals
+    SELECT make_date(2025, m, 1), 'WC1', 'MH', CASE WHEN m = 8 THEN 20 ELSE 100 END
+    FROM generate_series(1, 12) m;
 """
 
 BLANK = [None] * 12

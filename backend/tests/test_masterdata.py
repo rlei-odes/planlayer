@@ -65,7 +65,7 @@ def test_preview_raw_mapped_and_errors(
     login(client, ADMIN)
     query = f"SELECT account_code, account_name, 'cost' AS t FROM {source_schema}.v_accounts"
     raw = client.post("/api/datasets/accounts/preview", json={"query": query, "fields": {}}).json()
-    assert raw["columns"] == ["account_code", "account_name", "t"] and len(raw["rows"]) == 3
+    assert raw["columns"] == ["account_code", "account_name", "t"] and len(raw["rows"]) == 4
     body = {
         "query": query,
         "fields": {"code": "account_code", "name": "account_name", "account_type": "t"},

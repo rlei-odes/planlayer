@@ -357,6 +357,7 @@ class Master:
     product_lines: dict[str, str]
     product_groups: dict[str, tuple[str, str]]  # group -> (name, line)
     products: list[Product]
+    work_centers: list["WorkCenter"] = field(default_factory=list)
     users: tuple[str, ...] = field(default=USERS)
 
     def cc_by_name(self, name: str) -> CostCenter:
@@ -370,6 +371,7 @@ ACCOUNT_SECTIONS = {
     "COGS": "Cost of goods sold",
     "OPEX": "Operating expenses",
     "DA": "Depreciation and amortisation",
+    "ALLOC": "Internal activity allocation",
 }
 
 ALL = ("production", "sales", "admin")
@@ -387,7 +389,14 @@ ACCOUNT_GROUPS = (
     ("FACILITIES", "Facilities", "OPEX", 7000, 15, "cost", ALL, 700),
     ("OTHER_OPEX", "Other operating expenses", "OPEX", 7300, 15, "cost", ("admin",), 1400),
     ("DEPRECIATION", "Depreciation", "DA", 7800, 10, "cost", ("production", "admin"), 1200),
+    # Credited by capacity planning (ADR 0013), never booked directly: no functions.
+    ("CREDITS", "Activity credits", "ALLOC", 8900, 3, "cost", (), 0),
 )
+CREDIT_ACCOUNT_NAMES = {
+    "8900": "Credits machine hours",
+    "8910": "Credits measurement and quality control",
+    "8920": "Credits repair work",
+}
 
 # Revenue accounts per product line: sales revenue is booked by line (TD-07).
 LINE_REVENUE_ACCOUNT = {
@@ -422,6 +431,7 @@ def build(variant: Variant, calendar: Calendar, seed: int) -> Master:
     accounts = _accounts(variant)
     product_lines = {code: name for code, name, *_ in PRODUCT_LINES}
     product_groups, products = _products(variant, [c.code for c in countries], rng)
+    work_centers = _work_centers(cost_centers, variant)
 
     return Master(
         variant=variant,
@@ -437,6 +447,7 @@ def build(variant: Variant, calendar: Calendar, seed: int) -> Master:
         product_lines=product_lines,
         product_groups=product_groups,
         products=products,
+        work_centers=work_centers,
     )
 
 
@@ -521,7 +532,7 @@ def _accounts(variant: Variant) -> list[Account]:
     accounts: list[Account] = []
     for group, name, _section, first, count, kind, functions, monthly in ACCOUNT_GROUPS:
         n = count
-        if variant.max_accounts_per_group is not None and group != "SALES_REV":
+        if variant.max_accounts_per_group is not None and group not in ("SALES_REV", "CREDITS"):
             n = min(count, variant.max_accounts_per_group)
         for i in range(n):
             code = str(first + 10 * i)
@@ -529,6 +540,8 @@ def _accounts(variant: Variant) -> list[Account]:
             if group == "SALES_REV":
                 line = next(k for k, v in LINE_REVENUE_ACCOUNT.items() if v == code)
                 label = f"Revenue {dict((c, n) for c, n, *_ in PRODUCT_LINES)[line]}"
+            if group == "CREDITS":
+                label = CREDIT_ACCOUNT_NAMES[code]
             accounts.append(Account(code, label, group, kind, functions, monthly))
     return accounts
 
@@ -559,3 +572,55 @@ def _products(
                     )
                 )
     return groups, products
+
+
+# --- Capacity planning (ADR 0013) ----------------------------------------------------------------
+
+# code, name, credited account
+ACTIVITY_TYPES = (
+    ("MACHINE_HOURS", "Machine hours", "8900"),
+    ("QUALITY_MEASUREMENT", "Measurement and quality control", "8910"),
+    ("REPAIR_WORK", "Repair work", "8920"),
+)
+
+# Work centers of production cost centers, by cost center name: (name, activity type, rate in
+# EUR per hour, typical hours a month). A work center may output several activity types.
+WORK_CENTERS: dict[str, tuple[tuple[str, tuple[tuple[str, int, int], ...]], ...]] = {
+    "Machining": (
+        ("Machining centre 1", (("MACHINE_HOURS", 95, 420), ("REPAIR_WORK", 70, 20))),
+        ("Machining centre 2", (("MACHINE_HOURS", 95, 400),)),
+        ("Lathe", (("MACHINE_HOURS", 80, 350),)),
+    ),
+    "Quality Assurance": (("Coordinate measuring machine", (("QUALITY_MEASUREMENT", 120, 250),)),),
+    "Assembly Line 1": (("Assembly line 1", (("MACHINE_HOURS", 60, 380),)),),
+    "Assembly Line 2": (("Assembly line 2", (("MACHINE_HOURS", 60, 360),)),),
+    "Test Bench": (("Test bench", (("QUALITY_MEASUREMENT", 110, 300),)),),
+    "Maintenance": (("Maintenance crew", (("REPAIR_WORK", 70, 600),)),),
+    "Casting": (("Casting line", (("MACHINE_HOURS", 85, 400),)),),
+    "Machining PL": (("Machining centre PL", (("MACHINE_HOURS", 55, 420),)),),
+    "Forging": (
+        ("Forging press 1", (("MACHINE_HOURS", 140, 380),)),
+        ("Forging press 2", (("MACHINE_HOURS", 140, 340),)),
+    ),
+    "Valve Machining": (("Valve machining centre", (("MACHINE_HOURS", 105, 400),)),),
+    "Pressure Testing": (("Pressure test rig", (("QUALITY_MEASUREMENT", 125, 280),)),),
+    "Valve Maintenance": (("Valve maintenance crew", (("REPAIR_WORK", 85, 500),)),),
+}
+
+
+@dataclass(frozen=True)
+class WorkCenter:
+    code: str
+    name: str
+    cost_center: str
+    # (activity type, rate in EUR per hour, typical hours a month)
+    outputs: tuple[tuple[str, int, int], ...]
+
+
+def _work_centers(cost_centers: list[CostCenter], variant: Variant) -> list[WorkCenter]:
+    out: list[WorkCenter] = []
+    for cc in cost_centers:
+        base = cc.name if variant.scale == 1 else cc.name.rsplit(" ", 1)[0]
+        for i, (name, outputs) in enumerate(WORK_CENTERS.get(base, ()), 1):
+            out.append(WorkCenter(f"WC_{cc.code}_{i}", name, cc.code, outputs))
+    return out

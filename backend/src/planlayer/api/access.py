@@ -61,6 +61,7 @@ class ResponsibilityOut(BaseModel):
     planner: str | None
     overridden: bool
     deputies: list[str]
+    capacity_planners: list[str]
     approvers: list[str]
 
 
@@ -158,6 +159,22 @@ def add_deputy(request: Request, user: CurrentUser, code: str, body: LoginIn) ->
 def remove_deputy(request: Request, user: CurrentUser, code: str, login: str) -> None:
     try:
         access.remove_deputy(engine_of(request), user, code, login)
+    except HANDLED as e:
+        raise _http(e) from None
+
+
+@router.post("/responsibilities/{code}/capacity-planners", responses={403: {}, 422: {}})
+def add_capacity_planner(request: Request, user: CurrentUser, code: str, body: LoginIn) -> None:
+    try:
+        access.add_capacity_planner(engine_of(request), user, code, body.login)
+    except HANDLED as e:
+        raise _http(e) from None
+
+
+@router.delete("/responsibilities/{code}/capacity-planners/{login}", responses={403: {}, 422: {}})
+def remove_capacity_planner(request: Request, user: CurrentUser, code: str, login: str) -> None:
+    try:
+        access.remove_capacity_planner(engine_of(request), user, code, login)
     except HANDLED as e:
         raise _http(e) from None
 

@@ -40,11 +40,12 @@ def test_sync_writes_members_hierarchies_and_actuals(
     assert (again.members, again.actual_rows) == (first.members, first.actual_rows)
     engine = create_app_engine(migrated)
     with engine.connect() as conn:
-        # NW, DEP, CC1, CC2 / PL, A, B, 6000, 6010, 7000 / DE, and the built-in entity "-"
-        assert conn.execute(select(func.count()).select_from(member)).scalar() == 12
+        # NW, DEP, CC1, CC2 / PL, A, B, C, 6000, 6010, 7000, 4900 / DE, the built-in entity "-"
+        # / work centers WC1, WC2, WC9 / activity types MH, RW
+        assert conn.execute(select(func.count()).select_from(member)).scalar() == 19
         # Leaf CC1 has ancestors CC1, DEP, NW; leaf 6000 has 6000, A, PL.
         n = conn.execute(select(func.count()).select_from(closure)).scalar()
-        assert n == (1 + 2 + 3 + 3) + (1 + 2 + 2 + 3 + 3 + 3)
+        assert n == (1 + 2 + 3 + 3) + (1 + 2 + 2 + 2 + 3 + 3 + 3 + 3)
     engine.dispose()
 
 

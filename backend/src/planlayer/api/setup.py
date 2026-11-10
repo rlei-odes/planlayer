@@ -50,6 +50,7 @@ class SetupIO(BaseModel):
     comparisons: list[ComparisonIO]
     hidden_accounts: list[str]
     deadline: date | None
+    productive_cost_centers: list[str] = []  # capacity planning (ADR 0013)
 
 
 class SetupOut(BaseModel):
@@ -131,6 +132,7 @@ def setup(request: Request, user: CurrentUser, code: str) -> SetupOut:
             comparisons=[ComparisonIO(kind=k, version_code=c) for k, c in s.comparisons],
             hidden_accounts=s.hidden_accounts,
             deadline=s.deadline,
+            productive_cost_centers=s.productive_cost_centers,
         ),
         actuals_available=v.actuals_available,
         enabled_cost_centers=v.enabled_cost_centers,
@@ -158,6 +160,7 @@ def save_setup(request: Request, user: CurrentUser, code: str, body: SetupIO) ->
                 comparisons=[(c.kind, c.version_code) for c in body.comparisons],
                 hidden_accounts=body.hidden_accounts,
                 deadline=body.deadline,
+                productive_cost_centers=body.productive_cost_centers,
             ),
         )
     except HANDLED as e:

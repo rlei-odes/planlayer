@@ -36,6 +36,10 @@ export type DatasetInfo = Omit<S.DatasetOut, 'mapping'> & { mapping: Mapping | n
 export type Preview = S.QueryPreviewOut
 export type SyncPlan = S.PlanOut
 export type MemberRow = S.MemberOut
+export type CapacityUnit = S.CapacityUnitOut
+export type CapacitySheet = S.CapacitySheetOut
+export type CapacityRow = S.CapacityRowOut
+export type HoursEdit = S.HoursEditIn
 export type NewMember = S.MemberIn
 
 /** The session is missing or has ended. */
@@ -73,6 +77,7 @@ const r = (code: string) => `/api/responsibilities/${encodeURIComponent(code)}`
 
 const v = (version: string) => `/api/versions/${encodeURIComponent(version)}`
 const cc = (version: string, code: string) => `${v(version)}/cost-centers/${encodeURIComponent(code)}`
+const cap = (version: string, code: string) => `${v(version)}/capacity/${encodeURIComponent(code)}`
 
 export const api = {
   me: () => fetch('/api/me').then((res) => json<Me>(res)),
@@ -90,6 +95,10 @@ export const api = {
   addDeputy: (code: string, login: string) => post(`${r(code)}/deputies`, { login }).then((res) => json<null>(res)),
   removeDeputy: (code: string, login: string) =>
     send('DELETE', `${r(code)}/deputies/${encodeURIComponent(login)}`).then((res) => json<null>(res)),
+  addCapacityPlanner: (code: string, login: string) =>
+    post(`${r(code)}/capacity-planners`, { login }).then((res) => json<null>(res)),
+  removeCapacityPlanner: (code: string, login: string) =>
+    send('DELETE', `${r(code)}/capacity-planners/${encodeURIComponent(login)}`).then((res) => json<null>(res)),
   addApprover: (code: string, login: string) => post(`${r(code)}/approvers`, { login }).then((res) => json<null>(res)),
   removeApprover: (code: string, login: string) =>
     send('DELETE', `${r(code)}/approvers/${encodeURIComponent(login)}`).then((res) => json<null>(res)),
@@ -114,6 +123,21 @@ export const api = {
   versions: () => fetch('/api/versions').then((r) => json<Version[]>(r)),
   setRoundStatus: (version: string, status: RoundStatus) =>
     post(`${v(version)}/status`, { status }).then((r) => json<Version>(r)),
+  capacityUnits: (version: string) => fetch(`${v(version)}/capacity`).then((r) => json<CapacityUnit[]>(r)),
+  capacitySheet: (version: string, code: string) => fetch(cap(version, code)).then((r) => json<CapacitySheet>(r)),
+  async capacityEdit(version: string, code: string, edits: HoursEdit[]): Promise<CapacitySheet> {
+    const response = await post(`${cap(version, code)}/edits`, { edits })
+    if (response.status === 409) throw new ConflictError((await response.json()) as Conflict[])
+    return json<CapacitySheet>(response)
+  },
+  changeLine: (version: string, code: string, workCenter: string, activityType: string, change: S.LineChangeIn) =>
+    send(
+      'PATCH',
+      `${cap(version, code)}/lines/${encodeURIComponent(workCenter)}/${encodeURIComponent(activityType)}`,
+      change,
+    ).then((r) => json<CapacitySheet>(r)),
+  addLine: (version: string, code: string, line: S.LineIn) =>
+    post(`${cap(version, code)}/lines`, line).then((r) => json<CapacitySheet>(r)),
   costCenters: (version: string) => fetch(`${v(version)}/cost-centers`).then((r) => json<PlanningUnit[]>(r)),
   setEnabled: (version: string, code: string, enabled: boolean) =>
     post(`${cc(version, code)}/enabled`, { enabled }).then((r) => json<null>(r)),
