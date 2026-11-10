@@ -81,6 +81,7 @@ Each item lists the options and how to decide. Items marked ⚙ are decided by a
   - **Derived from history:** a profile can be created from a reference ("prior-year actuals of cost center X", "average of the last 3 years") and saved as a fixed, named profile, so it no longer moves when actuals are restated.
   - **Decided in ADR 0007:** profiles are installation-wide; entry forms choose them per account group; spreading fallbacks (negative reference = 0, empty reference = even spread, marked in the grid).
   - **Built (setup page):** create, edit and delete. An edit applies to the next spread and stored months stay; delete is refused while a round uses the profile. A new profile can start from the working days (Monday to Friday) or calendar days of a fiscal year, then be adjusted by hand (ADR 0007).
+  - **Built (planning sheet):** a line's own spread. Planners and the controller click a line's badge to choose evenly, prior-year actuals or a profile for that cost center × account; it applies to the year totals typed from then on (ADR 0007).
   - **Open questions:**
     - **Scope:** settled (installation-wide).
     - **Defaults:** can a default profile be attached to an account group or a dimension member (e.g. revenue lines use "Sales seasonality")?
@@ -206,7 +207,10 @@ Mid-size manufacturer of industrial pumps and valves, ~400 employees.
 - [ ] **E-04** Versions: create, copy with shift + uplift, compare.
 - [ ] **E-05** Planning grid (RevoGrid, ADR 0006) for one planning unit at a time (T-25), with a unit switcher: edit, paste, fill-drag, subtotals, keyboard flow, percentage mode, and cells editable as the entry form allows. Built: editing, paste from Excel and LibreOffice (the trailing newline they copy is dropped, so it never blanks the cell below), one copied value pasted over a selection fills it, fill-drag, subtotals, keyboard flow (E-13).
     - [x] Undo and redo of change batches, several steps per visit to a sheet, refused when someone else changed a cell since ([ADR 0010](docs/adr/0010-grid-api-and-concurrency.md)).
+    - [x] A line's own spread, chosen from the line's badge (ADR 0007).
     - [ ] Copy with row and column headers.
+    - [ ] Reach the spread menu from the keyboard: the badge sits inside the grid, which keeps Tab to itself.
+    - [ ] Decide whether a new round copies line spreads from the round it is set up like (today it starts without them, like sheet accounts).
 - [ ] **E-06** Top-down spreading from totals (proportional / equal / profile) and spread profiles.
 - [ ] **E-07** Workflow: submit → approve → lock per version × cost center, with database-enforced locks, and the status page rolled up by department and hierarchy node (T-20). The controller's publish action (T-21).
 - [ ] **E-08** Change log and cell comments.

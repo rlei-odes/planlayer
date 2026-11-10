@@ -117,6 +117,11 @@ export type Health = {
   schema_revision: string | null
 }
 
+export type LineSpreadIO = {
+  basis: "even" | "profile" | "reference"
+  profile_code?: string | null
+}
+
 export type LoginIn = {
   login: string
 }
@@ -318,6 +323,8 @@ export type RowOut = {
   entry_form: "monthly" | "annual" | "annual_even" | "annual_profile" | "annual_reference" | null
   basis: string | null
   fallback: boolean
+  spread: "even" | "profile" | "reference" | null
+  chosen_spread: LineSpreadIO | null
   months_visible: boolean
   months_editable: boolean
   total_editable: boolean
@@ -346,6 +353,10 @@ export type SetupOut = {
   enabled_cost_centers: number
   sample_cost_center: string | null
   periods: string[]
+}
+
+export type SpreadIn = {
+  spread: LineSpreadIO | null
 }
 
 export type StatusRowOut = {

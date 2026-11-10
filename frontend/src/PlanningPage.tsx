@@ -10,16 +10,19 @@ import {
   type Edit,
   type EntryForm,
   type Grid,
+  type LineSpread,
   type PlanningUnit,
+  type ProfileRef,
   type Row,
 } from './api'
 import { RedoIcon, UndoIcon } from './icons'
-import Select from './Select'
+import Select, { type Option } from './Select'
 
 // The planning sheet of one cost center (T-25, ADR 0007, ADR 0010), in the look of the setup
 // page's preview: typed-in cells look like inputs, months calculated from the year total are
 // tinted, months of full-year-only lines are hatched, comparisons are muted, and every line carries
 // its entry form (⚠ when its spread fell back to even). The server decides what is editable.
+// Clicking a line's badge chooses how that line spreads its year totals (ADR 0007).
 
 const COL_ACCOUNT = 'account'
 const COL_FY = 'fy'
@@ -57,23 +60,63 @@ function cellKind(row: Row | undefined, prop: string, locked: boolean): string {
   return locked ? 'pl-plain' : 'pl-calc'
 }
 
-function basisText(row: Row): string {
-  switch (row.entry_form) {
-    case 'monthly':
-      return 'Months are typed in; a year total spreads by last year’s actuals.'
-    case 'annual':
-      return 'Only the year total is entered; it is stored as 12 equal months.'
-    case 'annual_even':
-      return 'The year total spreads evenly over the months.'
-    case 'annual_profile':
-      return `The year total spreads by the profile ${row.basis ?? ''}.`
-    case 'annual_reference':
-      return row.fallback
-        ? 'No reference values: the year total spreads evenly.'
-        : `The year total spreads like ${row.basis ?? 'last year’s actuals'}.`
+const SPREAD_LABEL = { even: 'Year · even', profile: 'Year · season', reference: 'Year · reference' } as const
+
+/** A year-only line's months aren't shown, so how it spreads isn't chosen on the sheet. */
+function spreadChoosable(row: Row): boolean {
+  return row.kind === 'account' && row.entry_form !== 'annual' && row.total_editable
+}
+
+function badgeLabel(row: Row): string {
+  if (!row.entry_form) return ''
+  if (row.entry_form === 'monthly' || row.entry_form === 'annual' || !row.spread) return FORM_LABEL[row.entry_form]
+  return SPREAD_LABEL[row.spread]
+}
+
+function spreadText(row: Row): string {
+  switch (row.spread) {
+    case 'even':
+      return 'spreads evenly over the months'
+    case 'profile':
+      return `spreads by the ${row.basis ?? 'profile'}`
+    case 'reference':
+      return row.fallback ? 'spreads evenly: there are no reference values' : `spreads like ${row.basis ?? 'last year’s actuals'}`
     default:
       return ''
   }
+}
+
+function basisText(row: Row): string {
+  const text =
+    row.entry_form === 'monthly'
+      ? `Months are typed in; a year total ${spreadText(row)}.`
+      : row.entry_form === 'annual'
+        ? 'Only the year total is entered; it is stored as 12 equal months.'
+        : `The year total ${spreadText(row)}.`
+  const chosen = row.chosen_spread ? ' Chosen for this cost center.' : ''
+  return text + chosen + (spreadChoosable(row) ? ' Click to change.' : '')
+}
+
+const DEFAULT_SPREAD = 'default'
+
+function spreadKey(s: LineSpread | null): string {
+  if (!s) return DEFAULT_SPREAD
+  return s.basis === 'profile' ? `profile:${s.profile_code ?? ''}` : s.basis
+}
+
+function spreadOf(key: string): LineSpread | null {
+  if (key === DEFAULT_SPREAD) return null
+  if (key.startsWith('profile:')) return { basis: 'profile', profile_code: key.slice('profile:'.length) }
+  return { basis: key === 'even' ? 'even' : 'reference', profile_code: null }
+}
+
+function spreadOptions(profiles: ProfileRef[]): Option[] {
+  return [
+    { value: DEFAULT_SPREAD, label: 'As the round is set up', hint: 'entry form' },
+    { value: 'even', label: 'Evenly' },
+    { value: 'reference', label: 'Like last year’s actuals' },
+    ...profiles.map((p) => ({ value: `profile:${p.code}`, label: p.name, hint: 'profile' })),
+  ]
 }
 
 function errorText(e: unknown): string {
@@ -101,6 +144,9 @@ export default function PlanningPage({
   // writes a new one, which goes on the other stack, so redo is undoing the undo.
   const [undoStack, setUndoStack] = useState<string[]>([])
   const [redoStack, setRedoStack] = useState<string[]>([])
+  const [profiles, setProfiles] = useState<ProfileRef[]>([])
+  // The open spread menu: the line and the badge it opens at.
+  const [spreadMenu, setSpreadMenu] = useState<{ code: string; anchor: DOMRect } | null>(null)
 
   const showError = useCallback((e: unknown) => setMessage({ kind: 'error', text: errorText(e) }), [])
 
@@ -117,6 +163,7 @@ export default function PlanningPage({
   useEffect(() => {
     loadUnits()
     api.accounts(version).then(setAccounts, showError)
+    api.profiles().then(setProfiles, showError)
   }, [version, loadUnits, showError])
 
   const load = useCallback(() => {
@@ -276,6 +323,30 @@ export default function PlanningPage({
     }
   }
 
+  async function chooseSpread(code: string, key: string) {
+    if (!grid) return
+    const chosen = spreadOf(key)
+    try {
+      const updated = await api.setSpread(version, grid.cost_center_code, code, chosen)
+      setGrid(updated)
+      const row = updated.rows.find((r) => r.kind === 'account' && r.code === code)
+      setMessage({
+        kind: 'ok',
+        text: `${code}: a year total typed from now on ${row ? spreadText(row) : 'spreads as chosen'}. Months already planned keep their values.`,
+      })
+    } catch (e) {
+      showError(e)
+    }
+  }
+
+  /** A click on a line's badge opens its spread menu (the badge is rendered by the grid). */
+  function openSpreadMenu(e: React.MouseEvent) {
+    const badge = (e.target as HTMLElement).closest<HTMLElement>('[data-spread]')
+    if (!badge?.dataset.spread) return
+    e.stopPropagation()
+    setSpreadMenu({ code: badge.dataset.spread, anchor: badge.getBoundingClientRect() })
+  }
+
   async function addAccount(code: string) {
     if (!grid) return
     try {
@@ -400,7 +471,7 @@ export default function PlanningPage({
         </div>
       ) : (
         grid && (
-          <div className="pl-sheet" ref={trimPastes}>
+          <div className="pl-sheet" ref={trimPastes} onClick={openSpreadMenu}>
             <RevoGrid
               className="pl-revo"
               columns={columns}
@@ -440,13 +511,23 @@ export default function PlanningPage({
               </span>
               {open && (
                 <span className="pl-help">
-                  Type in a cell and press Enter. A year total in “Plan” spreads as the entry form says. Paste from
-                  Excel works; Ctrl+Z undoes. Empty is not 0.
+                  Type in a cell and press Enter. A year total in “Plan” spreads as the line’s badge says; click the
+                  badge to change it. Paste from Excel works; Ctrl+Z undoes. Empty is not 0.
                 </span>
               )}
             </div>
           </div>
         )
+      )}
+      {spreadMenu && grid && (
+        <Select
+          label={`How ${spreadMenu.code} spreads its year total`}
+          anchor={spreadMenu.anchor}
+          onClose={() => setSpreadMenu(null)}
+          value={spreadKey(grid.rows.find((r) => r.kind === 'account' && r.code === spreadMenu.code)?.chosen_spread ?? null)}
+          options={spreadOptions(profiles)}
+          onChange={(key) => void chooseSpread(spreadMenu.code, key)}
+        />
       )}
     </div>
   )
@@ -467,19 +548,24 @@ function trimPastes(el: HTMLDivElement | null) {
 // RevoGrid's hyperscript function, called with plain props and mixed children.
 type H = (tag: string, props: Record<string, unknown> | null, children?: unknown) => unknown
 
-/** The account cell: code, name and the line's entry form; group rows show their name only. */
+/** The account cell: code, name and the line's entry form, which opens the spread menu where
+ * the line's spread can be chosen; group rows show their name only. */
 function accountCell(h: H, row: Row | undefined) {
   if (!row) return ''
   if (row.kind === 'group') return h('span', { class: 'pl-acc-name' }, row.name)
   const form = row.entry_form
-  return h('span', { class: 'pl-acc-in', title: form ? `${FORM_LABEL[form]}: ${basisText(row)}` : undefined }, [
+  const label = badgeLabel(row) + (row.fallback ? ' ⚠' : '')
+  const classes = `pv-form${form === 'monthly' ? ' monthly' : ''}${row.fallback ? ' fallback' : ''}${row.chosen_spread ? ' chosen' : ''}`
+  return h('span', { class: 'pl-acc-in', title: form ? `${label}: ${basisText(row)}` : undefined }, [
     h('span', { class: 'pl-acc-name' }, [h('span', { class: 'pl-code' }, row.code), row.name]),
-    form
-      ? h(
-          'span',
-          { class: `pv-form${form === 'monthly' ? ' monthly' : ''}${row.fallback ? ' fallback' : ''}` },
-          FORM_LABEL[form] + (row.fallback ? ' ⚠' : ''),
-        )
-      : '',
+    !form
+      ? ''
+      : spreadChoosable(row)
+        ? h(
+            'button',
+            { type: 'button', class: `${classes} pl-spread`, 'data-spread': row.code, 'aria-label': `How ${row.code} spreads: ${label}` },
+            label,
+          )
+        : h('span', { class: classes }, label),
   ])
 }

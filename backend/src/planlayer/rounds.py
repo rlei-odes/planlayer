@@ -9,7 +9,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Literal
 
-from sqlalchemy import Connection, Engine, delete, insert, literal, select, update
+from sqlalchemy import Connection, Engine, delete, insert, literal, select, union, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from planlayer.access import User
@@ -27,6 +27,7 @@ from planlayer.store.schema import (
     fact_cost_center,
     hidden_account,
     installation,
+    line_spread,
     member,
     planning_round,
     round_member,
@@ -279,7 +280,7 @@ def update_profile(engine: Engine, actor: User, code: str, name: str, profile: P
 
 
 def delete_profile(engine: Engine, actor: User, code: str) -> None:
-    """Refused while an entry form in any round uses the profile."""
+    """Refused while an entry form or a line in any round uses the profile."""
     actor.require_controller()
     with unit_of_work(engine, actor) as conn:
         profile_id = conn.execute(
@@ -289,12 +290,14 @@ def delete_profile(engine: Engine, actor: User, code: str) -> None:
         ).scalar()
         if profile_id is None:
             raise NotFoundError(f"seasonality profile {code} not found")
+        users = union(
+            select(entry_form.c.version_id).where(entry_form.c.profile_id == profile_id),
+            select(line_spread.c.version_id).where(line_spread.c.profile_id == profile_id),
+        ).subquery()
         used_by = (
             conn.execute(
                 select(version.c.code)
-                .join(entry_form, entry_form.c.version_id == version.c.version_id)
-                .where(entry_form.c.profile_id == profile_id)
-                .group_by(version.c.code)
+                .where(version.c.version_id.in_(select(users.c.version_id)))
                 .order_by(version.c.code)
             )
             .scalars()

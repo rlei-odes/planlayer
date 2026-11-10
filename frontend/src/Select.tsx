@@ -1,4 +1,4 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { useEffect, useEffectEvent, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 
 // The app's dropdown (E-13): a button that opens a styled list, instead of the browser's native
@@ -35,11 +35,29 @@ type Props<T extends string> = {
   icon?: ReactNode
   /** Shown instead of the selected label, e.g. "+ Add account". */
   display?: string
+  /** Opens the list at once at this box, without a trigger button: a menu for something that
+   * isn't a React element, such as a grid cell. The caller unmounts it on onClose. */
+  anchor?: DOMRect
+  onClose?: () => void
 }
 
 type Place = { left: number; top: number; width: number; maxHeight: number; above: boolean }
 
 const SEARCH_FROM = 12
+
+function placeAt(r: DOMRect): Place {
+  const below = window.innerHeight - r.bottom - 12
+  const above = r.top - 12
+  const flip = below < 220 && above > below
+  const width = Math.min(Math.max(r.width, 300), window.innerWidth - 16)
+  return {
+    left: Math.max(8, Math.min(r.left, window.innerWidth - width - 8)),
+    top: flip ? r.top - 4 : r.bottom + 4,
+    width,
+    maxHeight: Math.min(360, flip ? above : below),
+    above: flip,
+  }
+}
 
 export default function Select<T extends string>(p: Props<T>) {
   const id = useId()
@@ -47,10 +65,12 @@ export default function Select<T extends string>(p: Props<T>) {
   const popup = useRef<HTMLDivElement>(null)
   const list = useRef<HTMLDivElement>(null)
   const typed = useRef({ text: '', at: 0 })
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(p.anchor !== undefined)
   const [query, setQuery] = useState('')
-  const [active, setActive] = useState(-1)
-  const [place, setPlace] = useState<Place | null>(null)
+  const [active, setActive] = useState(() =>
+    p.anchor ? Math.max(0, p.options.findIndex((o) => o.value === p.value)) : -1,
+  )
+  const [place, setPlace] = useState<Place | null>(() => (p.anchor ? placeAt(p.anchor) : null))
 
   const searchable = p.searchable ?? p.options.length > SEARCH_FROM
   const q = query.trim().toLowerCase()
@@ -61,18 +81,7 @@ export default function Select<T extends string>(p: Props<T>) {
 
   function measure() {
     const r = trigger.current?.getBoundingClientRect()
-    if (!r) return
-    const below = window.innerHeight - r.bottom - 12
-    const above = r.top - 12
-    const flip = below < 220 && above > below
-    const width = Math.min(Math.max(r.width, 300), window.innerWidth - 16)
-    setPlace({
-      left: Math.max(8, Math.min(r.left, window.innerWidth - width - 8)),
-      top: flip ? r.top - 4 : r.bottom + 4,
-      width,
-      maxHeight: Math.min(360, flip ? above : below),
-      above: flip,
-    })
+    if (r) setPlace(placeAt(r))
   }
 
   function show() {
@@ -86,6 +95,7 @@ export default function Select<T extends string>(p: Props<T>) {
   function close(refocus: boolean) {
     setOpen(false)
     if (refocus) trigger.current?.focus()
+    p.onClose?.()
   }
 
   function choose(o: Option<T> | undefined) {
@@ -95,22 +105,28 @@ export default function Select<T extends string>(p: Props<T>) {
   }
 
   // Close on a click outside; follow the trigger when the page scrolls or resizes.
+  const anchored = p.anchor !== undefined
+  const down = useEffectEvent((e: MouseEvent) => {
+    const t = e.target as Node
+    if (!popup.current?.contains(t) && !trigger.current?.contains(t)) close(false)
+  })
+  // An anchored list can't follow its box, so it closes instead.
+  const move = useEffectEvent((e: Event) => {
+    if (popup.current?.contains(e.target as Node)) return
+    if (anchored) close(false)
+    else measure()
+  })
   useEffect(() => {
     if (!open) return
-    const down = (e: MouseEvent) => {
-      const t = e.target as Node
-      if (!popup.current?.contains(t) && !trigger.current?.contains(t)) setOpen(false)
-    }
-    const move = (e: Event) => {
-      if (!popup.current?.contains(e.target as Node)) measure()
-    }
-    document.addEventListener('mousedown', down)
-    window.addEventListener('scroll', move, true)
-    window.addEventListener('resize', move)
+    const onDown = (e: MouseEvent) => down(e)
+    const onMove = (e: Event) => move(e)
+    document.addEventListener('mousedown', onDown)
+    window.addEventListener('scroll', onMove, true)
+    window.addEventListener('resize', onMove)
     return () => {
-      document.removeEventListener('mousedown', down)
-      window.removeEventListener('scroll', move, true)
-      window.removeEventListener('resize', move)
+      document.removeEventListener('mousedown', onDown)
+      window.removeEventListener('scroll', onMove, true)
+      window.removeEventListener('resize', onMove)
     }
   }, [open])
 
@@ -182,26 +198,28 @@ export default function Select<T extends string>(p: Props<T>) {
   const text = p.display ?? selected?.label ?? p.placeholder ?? ''
   return (
     <>
-      <button
-        ref={trigger}
-        type="button"
-        className={`sel sel-${variant}${open ? ' open' : ''}${selected || p.display ? '' : ' empty'} ${p.className ?? ''}`}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        aria-controls={open ? `${id}-list` : undefined}
-        aria-label={p.label}
-        disabled={p.disabled}
-        onClick={() => (open ? close(false) : show())}
-        onKeyDown={onTriggerKey}
-      >
-        {p.icon}
-        {!p.display && selected?.dot && <i className={`su-dot ${selected.dot}`} />}
-        <span className="sel-text">{text}</span>
-        {!p.display && selected?.hint && variant !== 'pill' && <span className="sel-hint">{selected.hint}</span>}
-        <svg className="sel-chev" width="10" height="6" viewBox="0 0 10 6" aria-hidden="true">
-          <path d="m1 1 4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-        </svg>
-      </button>
+      {!anchored && (
+        <button
+          ref={trigger}
+          type="button"
+          className={`sel sel-${variant}${open ? ' open' : ''}${selected || p.display ? '' : ' empty'} ${p.className ?? ''}`}
+          aria-haspopup="listbox"
+          aria-expanded={open}
+          aria-controls={open ? `${id}-list` : undefined}
+          aria-label={p.label}
+          disabled={p.disabled}
+          onClick={() => (open ? close(false) : show())}
+          onKeyDown={onTriggerKey}
+        >
+          {p.icon}
+          {!p.display && selected?.dot && <i className={`su-dot ${selected.dot}`} />}
+          <span className="sel-text">{text}</span>
+          {!p.display && selected?.hint && variant !== 'pill' && <span className="sel-hint">{selected.hint}</span>}
+          <svg className="sel-chev" width="10" height="6" viewBox="0 0 10 6" aria-hidden="true">
+            <path d="m1 1 4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          </svg>
+        </button>
+      )}
       {open &&
         place &&
         createPortal(

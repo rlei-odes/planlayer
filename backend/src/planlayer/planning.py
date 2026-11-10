@@ -21,12 +21,12 @@ from datetime import date
 from decimal import Decimal, InvalidOperation
 from typing import Literal, cast
 
-from sqlalchemy import Connection, Engine, and_, delete, select, tuple_
+from sqlalchemy import Connection, Engine, and_, delete, func, select, tuple_
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import DBAPIError
 
 from planlayer.access import User, cost_center_rights
-from planlayer.domain.entry_forms import EntryForm, Form, resolve, weights
+from planlayer.domain.entry_forms import Basis, EntryForm, Form, resolve, weights
 from planlayer.domain.spreading import Profile, spread
 from planlayer.domain.workflow import EDITABLE, RoundStatus, Status
 from planlayer.rounds import NotFoundError, RoundRef, fiscal_periods, get_round
@@ -45,6 +45,7 @@ from planlayer.store.schema import (
     fact_cost_center,
     hidden_account,
     hier_edge,
+    line_spread,
     member,
     planning_round,
     round_module,
@@ -94,6 +95,15 @@ class ComparisonColumn:
     label: str
 
 
+@dataclass(frozen=True)
+class LineSpread:
+    """How one line spreads, chosen on the sheet: even, prior-year actuals (``reference``) or a
+    profile."""
+
+    basis: Basis
+    profile_code: str | None = None
+
+
 @dataclass
 class Row:
     kind: Literal["group", "account"]
@@ -106,6 +116,8 @@ class Row:
     entry_form: Form | None = None
     basis: str | None = None  # what a year total spreads by, e.g. "prior-year actuals"
     fallback: bool = False  # the reference is empty, so the year total spreads evenly
+    spread: Basis | None = None  # the kind of basis, chosen on the sheet or by the entry form
+    chosen_spread: LineSpread | None = None  # chosen on the sheet for this line
     months_visible: bool = True
     months_editable: bool = False
     total_editable: bool = False
@@ -163,6 +175,7 @@ class _Line:
     basis: str
     profile: Profile | None
     reference: list[Decimal | None]
+    chosen: LineSpread | None
 
 
 def _context(conn: Connection, user: User, version_code: str, cc_code: str) -> _Context:
@@ -334,6 +347,28 @@ def _lines(conn: Connection, ctx: _Context, account_ids: Iterable[int]) -> list[
     forms = {
         a: resolve([f for _, f in sorted(chains[a], key=lambda x: x[0])], default) for a in ids
     }
+    # A spread chosen on the sheet replaces the form's basis; year-only lines keep theirs.
+    chosen: dict[int, LineSpread] = {}
+    for account_id, basis, profile_id, profile_code in conn.execute(
+        select(
+            line_spread.c.account_id,
+            line_spread.c.basis,
+            line_spread.c.profile_id,
+            seasonality_profile.c.code,
+        )
+        .outerjoin(
+            seasonality_profile, seasonality_profile.c.profile_id == line_spread.c.profile_id
+        )
+        .where(
+            line_spread.c.version_id == ctx.version_id,
+            line_spread.c.module == MODULE_COST_CENTER,
+            line_spread.c.cost_center_id == ctx.cost_center_id,
+            line_spread.c.account_id.in_(ids),
+        )
+    ):
+        if forms[account_id].spreads:
+            chosen[account_id] = LineSpread(basis, profile_code)
+            forms[account_id] = forms[account_id].with_spread(basis, profile_id)
 
     profile_ids = {f.profile_id for f in forms.values() if f.profile_id is not None}
     profiles = {
@@ -369,7 +404,20 @@ def _lines(conn: Connection, ctx: _Context, account_ids: Iterable[int]) -> list[
             case "reference":
                 basis = names[form.reference_version_id]
                 reference = references[form.reference_version_id].get(account_id, [None] * MONTHS)
-        lines.append(_Line(account_id, code, name, gcode, gname, form, basis, profile, reference))
+        lines.append(
+            _Line(
+                account_id,
+                code,
+                name,
+                gcode,
+                gname,
+                form,
+                basis,
+                profile,
+                reference,
+                chosen.get(account_id),
+            )
+        )
     return lines
 
 
@@ -422,6 +470,8 @@ def read_grid(engine: Engine, user: User, version_code: str, cc_code: str) -> Gr
             entry_form=line.form.form,
             basis=line.basis,
             fallback=w.fallback,
+            spread=line.form.basis,
+            chosen_spread=line.chosen,
             months_visible=line.form.months_visible,
             months_editable=editable and line.form.months_editable,
             total_editable=editable,
@@ -677,6 +727,64 @@ def add_account(
             )
             .on_conflict_do_nothing()
         )
+
+
+def set_line_spread(
+    engine: Engine,
+    actor: User,
+    version_code: str,
+    cc_code: str,
+    account_code: str,
+    chosen: LineSpread | None,
+) -> None:
+    """Choose how one line of a cost center spreads its year totals from now on, or (None) go
+    back to the entry form's basis. Months already stored keep their values (ADR 0007)."""
+    try:
+        with unit_of_work(engine, actor) as conn:
+            ctx = _context(conn, actor, version_code, cc_code)
+            if ctx.lock_reason is not None:
+                raise LockedError(ctx.lock_reason)
+            account_id = _leaf_accounts(conn, {account_code})[account_code]
+            if account_id in _hidden(conn, ctx.version_id):
+                raise EditError(f"{account_code} is hidden in this round")
+            (line,) = _lines(conn, ctx, [account_id])
+            if not line.form.spreads:
+                raise EditError(f"{account_code} is entered as a year total only")
+            key = {
+                "version_id": ctx.version_id,
+                "module": MODULE_COST_CENTER,
+                "cost_center_id": ctx.cost_center_id,
+                "account_id": account_id,
+            }
+            if chosen is None:
+                conn.execute(
+                    delete(line_spread).where(*(line_spread.c[k] == v for k, v in key.items()))
+                )
+                return
+            profile_id = None
+            if chosen.basis == "profile":
+                profile_id = conn.execute(
+                    select(seasonality_profile.c.profile_id).where(
+                        seasonality_profile.c.code == chosen.profile_code
+                    )
+                ).scalar()
+                if profile_id is None:
+                    raise NotFoundError(f"seasonality profile {chosen.profile_code} not found")
+            elif chosen.profile_code is not None:
+                raise EditError("only a profile basis names a profile")
+            values = {"basis": chosen.basis, "profile_id": profile_id, "changed_by": actor.login}
+            stmt = pg_insert(line_spread).values(**key, **values)
+            conn.execute(
+                stmt.on_conflict_do_update(
+                    index_elements=list(line_spread.primary_key.columns),
+                    set_={**values, "changed_at": func.now()},
+                )
+            )
+    except DBAPIError as e:
+        locked = _locked(e)
+        if locked is None:
+            raise
+        raise locked from None
 
 
 def addable_accounts(engine: Engine, version_code: str) -> list[dict[str, object]]:

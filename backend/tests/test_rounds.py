@@ -20,6 +20,7 @@ from planlayer.store import migrate
 from planlayer.store.db import create_app_engine
 from planlayer.store.schema import (
     fact_cost_center,
+    line_spread,
     member,
     planning_round,
     round_member,
@@ -32,6 +33,7 @@ from .conftest import (
     APPROVER,
     BLANK,
     CONTROLLER,
+    OWNER,
     TEST_DATABASE_URL,
     URL,
     plan,
@@ -39,6 +41,7 @@ from .conftest import (
     run_sync,
     versions_of,
 )
+from .conftest import login as log_in
 
 R = "B2026"
 
@@ -374,3 +377,68 @@ def test_existing_plan_versions_become_open_rounds(db_settings: Settings) -> Non
         ).all()
     admin.dispose()
     assert [tuple(f) for f in found] == [("B2026", 2026, "open", "CC1")]
+
+
+# --- A line's own spread ------------------------------------------------------------------------
+
+
+def spread(client: TestClient, account: str, body: dict | None, cc: str = "CC1") -> object:  # type: ignore[type-arg]
+    return client.put(
+        f"/api/versions/{R}/cost-centers/{cc}/lines/{account}/spread", json={"spread": body}
+    )
+
+
+def test_line_spread(engine: Engine, client: TestClient) -> None:
+    rounds.add_profile(
+        engine, system(engine), "SHUT", "August shutdown", Profile.relative([1] * 7 + [0] + [1] * 4)
+    )
+    log_in(client, OWNER)
+    response = spread(client, "6000", {"basis": "profile", "profile_code": "SHUT"})
+    row = rows(response.json())["6000"]  # type: ignore[attr-defined]
+    assert row["chosen_spread"] == {"basis": "profile", "profile_code": "SHUT"}
+    assert (row["spread"], row["basis"]) == ("profile", "profile August shutdown")
+    grid = post(client, year("6000", "1100")).json()  # type: ignore[attr-defined]
+    assert plan(grid, "6000") == ["100.00"] * 7 + ["0.00"] + ["100.00"] * 4
+
+    # Only this cost center's line; back to the entry form's basis.
+    log_in(client, CONTROLLER)
+    other = rows(client.get(f"/api/versions/{R}/cost-centers/CC2/grid").json())["6000"]
+    assert (other["spread"], other["chosen_spread"]) == ("reference", None)
+    row = rows(spread(client, "6000", None).json())["6000"]  # type: ignore[attr-defined]
+    assert (row["spread"], row["chosen_spread"]) == ("reference", None)
+    assert plan(client.get(f"{URL}/grid").json(), "6000")[7] == "0.00"  # stored months stay
+
+    assert spread(client, "6000", {"basis": "even", "profile_code": "SHUT"}).status_code == 422  # type: ignore[attr-defined]
+    assert spread(client, "6000", {"basis": "profile", "profile_code": "NO"}).status_code == 404  # type: ignore[attr-defined]
+    rounds.set_entry_form(engine, system(engine), R, "7000", "annual")
+    assert spread(client, "7000", {"basis": "even"}).status_code == 422  # type: ignore[attr-defined]
+
+    spread(client, "6010", {"basis": "profile", "profile_code": "SHUT"})
+    refused = client.delete("/api/profiles/SHUT")
+    assert refused.status_code == 422 and R in refused.json()["detail"]
+
+    act(client, "submit")
+    assert spread(client, "6010", None).status_code == 423  # type: ignore[attr-defined]
+
+
+def test_line_spread_is_enforced_in_the_database(engine: Engine, client: TestClient) -> None:
+    def write(user: access.User, cc: str) -> None:
+        with unit_of_work(engine, user) as conn:
+            ids = dict(conn.execute(select(member.c.code, member.c.member_id)).all())
+            vid = conn.execute(select(version.c.version_id).where(version.c.code == R)).scalar_one()
+            conn.execute(
+                insert(line_spread).values(
+                    version_id=vid,
+                    module="cost_center",
+                    cost_center_id=ids[cc],
+                    account_id=ids["6000"],
+                    basis="even",
+                )
+            )
+
+    with pytest.raises(DBAPIError, match="row-level security"):
+        write(as_user(engine, OWNER), "CC2")
+    act(client, "submit")
+    with pytest.raises(DBAPIError, match="the cost center is submitted"):
+        write(system(engine), "CC1")
+    write(system(engine), "CC2")

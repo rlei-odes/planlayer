@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 
 from planlayer import access, planning, rounds, workflow
 from planlayer.api.auth import CurrentUser, engine_of
-from planlayer.domain.entry_forms import Form
+from planlayer.domain.entry_forms import Basis, Form
 from planlayer.domain.workflow import Action, RoundStatus, Status, WorkflowError
 
 router = APIRouter(prefix="/api")
@@ -54,6 +54,17 @@ class ComparisonOut(BaseModel):
     label: str
 
 
+class LineSpreadIO(BaseModel):
+    """How one line spreads: ``reference`` is prior-year actuals; ``profile`` names a profile."""
+
+    basis: Basis
+    profile_code: str | None = None
+
+
+class SpreadIn(BaseModel):
+    spread: LineSpreadIO | None  # None: back to the entry form's basis
+
+
 class RowOut(BaseModel):
     kind: Literal["group", "account"]
     code: str
@@ -64,6 +75,8 @@ class RowOut(BaseModel):
     entry_form: Form | None
     basis: str | None
     fallback: bool
+    spread: Basis | None
+    chosen_spread: LineSpreadIO | None
     months_visible: bool
     months_editable: bool
     total_editable: bool
@@ -193,6 +206,14 @@ def _grid_out(grid: planning.Grid, batch_id: str | None = None) -> GridOut:
                 entry_form=r.entry_form,
                 basis=r.basis,
                 fallback=r.fallback,
+                spread=r.spread,
+                chosen_spread=(
+                    None
+                    if r.chosen_spread is None
+                    else LineSpreadIO(
+                        basis=r.chosen_spread.basis, profile_code=r.chosen_spread.profile_code
+                    )
+                ),
                 months_visible=r.months_visible,
                 months_editable=r.months_editable,
                 total_editable=r.total_editable,
@@ -335,6 +356,32 @@ def add_account(
     engine = _engine(request)
     try:
         planning.add_account(engine, user, version_code, cc_code, body.account_code)
+        return _grid_out(planning.read_grid(engine, user, version_code, cc_code))
+    except HANDLED as e:
+        raise _errors(e) from None
+
+
+@router.put(
+    "/versions/{version_code}/cost-centers/{cc_code}/lines/{account_code}/spread",
+    responses={404: {}, 422: {}, 423: {}},
+)
+def set_line_spread(
+    request: Request,
+    user: CurrentUser,
+    version_code: str,
+    cc_code: str,
+    account_code: str,
+    body: SpreadIn,
+) -> GridOut:
+    """How one line spreads the year totals typed from now on; stored months stay."""
+    engine = _engine(request)
+    chosen = (
+        None
+        if body.spread is None
+        else planning.LineSpread(body.spread.basis, body.spread.profile_code)
+    )
+    try:
+        planning.set_line_spread(engine, user, version_code, cc_code, account_code, chosen)
         return _grid_out(planning.read_grid(engine, user, version_code, cc_code))
     except HANDLED as e:
         raise _errors(e) from None

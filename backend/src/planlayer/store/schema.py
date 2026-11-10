@@ -230,6 +230,25 @@ sheet_account = Table(
     _module_fk(),
 )
 
+# How one cost center's line spreads its year total, chosen on the sheet instead of the entry
+# form's basis; "reference" is prior-year actuals. Scoped and locked like plan values.
+line_spread = Table(
+    "line_spread",
+    metadata,
+    Column("version_id", SmallInteger, nullable=False),
+    Column("module", Text, nullable=False),
+    Column("cost_center_id", Integer, ForeignKey("member.member_id"), nullable=False),
+    Column("account_id", Integer, ForeignKey("member.member_id"), nullable=False),
+    Column("basis", Text, nullable=False),
+    Column("profile_id", SmallInteger, ForeignKey("seasonality_profile.profile_id")),
+    Column("changed_by", Text),
+    Column("changed_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    PrimaryKeyConstraint("version_id", "module", "cost_center_id", "account_id"),
+    _module_fk(),
+    CheckConstraint("basis IN ('even', 'reference', 'profile')", name="basis"),
+    CheckConstraint("(basis = 'profile') = (profile_id IS NOT NULL)", name="profile"),
+)
+
 # Accounts excluded from a module in a round; the lock trigger refuses plan values on them.
 hidden_account = Table(
     "hidden_account",

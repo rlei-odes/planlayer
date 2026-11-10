@@ -16,6 +16,8 @@ export type Grid = S.GridOut
 export type Edit = S.EditIn
 export type Conflict = S.ConflictOut
 export type Account = S.AccountOut
+export type LineSpread = S.LineSpreadIO
+export type ProfileRef = S.ProfileIOOutput
 export type StatusRow = S.StatusRowOut
 export type Overview = S.OverviewOut
 export type ActionRequest = S.ActionIn
@@ -131,6 +133,12 @@ export const api = {
   accounts: (version: string) => fetch(`${v(version)}/accounts`).then((r) => json<Account[]>(r)),
   addAccount: (version: string, code: string, account: string) =>
     post(`${cc(version, code)}/accounts`, { account_code: account }).then((r) => json<Grid>(r)),
+  /** How one line spreads the year totals typed from now on; null: as the round is set up. */
+  setSpread: (version: string, code: string, account: string, spread: LineSpread | null) =>
+    send('PUT', `${cc(version, code)}/lines/${encodeURIComponent(account)}/spread`, { spread }).then((r) =>
+      json<Grid>(r),
+    ),
+  profiles: () => fetch('/api/profiles').then((r) => json<ProfileRef[]>(r)),
   act: (version: string, request: ActionRequest) => post(`${v(version)}/workflow`, request).then((r) => json<string[]>(r)),
   overview: (version: string) => fetch(`${v(version)}/overview`).then((r) => json<Overview>(r)),
 }

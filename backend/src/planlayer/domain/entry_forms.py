@@ -5,7 +5,7 @@ basis turns a year total into months.
 """
 
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal
 from typing import Literal, get_args
 
@@ -22,6 +22,8 @@ class EntryForm:
     profile_id: int | None = None
     # None: prior-year actuals.
     reference_version_id: int | None = None
+    # A basis chosen for one line on the sheet, instead of the one the form implies.
+    spread: Basis | None = None
 
     @property
     def months_visible(self) -> bool:
@@ -32,7 +34,23 @@ class EntryForm:
         return self.form == "monthly"
 
     @property
+    def spreads(self) -> bool:
+        """Whether a line's spread can be chosen: not for year-only lines, whose months aren't
+        shown and are stored evenly."""
+        return self.form != "annual"
+
+    def with_spread(self, basis: Basis, profile_id: int | None) -> "EntryForm":
+        """The form with a line's own basis; a reference is prior-year actuals."""
+        if not self.spreads:
+            return self
+        if (basis == "profile") != (profile_id is not None):
+            raise ValueError("a profile basis needs a profile, and only it")
+        return replace(self, spread=basis, profile_id=profile_id, reference_version_id=None)
+
+    @property
     def basis(self) -> Basis:
+        if self.spread is not None:
+            return self.spread
         match self.form:
             case "monthly":
                 return "profile" if self.profile_id is not None else "reference"
