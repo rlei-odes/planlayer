@@ -77,6 +77,8 @@ class RowOut(BaseModel):
     fallback: bool
     spread: Basis | None
     chosen_spread: LineSpreadIO | None
+    # The version a reference basis spreads like; None: prior-year actuals.
+    reference_version: str | None
     months_visible: bool
     months_editable: bool
     total_editable: bool
@@ -207,6 +209,7 @@ def _grid_out(grid: planning.Grid, batch_id: str | None = None) -> GridOut:
                 basis=r.basis,
                 fallback=r.fallback,
                 spread=r.spread,
+                reference_version=r.reference_version,
                 chosen_spread=(
                     None
                     if r.chosen_spread is None

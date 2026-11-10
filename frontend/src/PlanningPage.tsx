@@ -8,7 +8,6 @@ import {
   STATUS_LABEL,
   type Account,
   type Edit,
-  type EntryForm,
   type Grid,
   type LineSpread,
   type PlanningUnit,
@@ -31,14 +30,6 @@ const monthProp = (m: number) => `m${m}`
 const isMonth = (prop: string) => /^m\d+$/.test(prop)
 const MONTH_LABEL = new Intl.DateTimeFormat('en', { month: 'short', timeZone: 'UTC' })
 
-const FORM_LABEL: Record<EntryForm, string> = {
-  monthly: 'Monthly',
-  annual: 'Year only',
-  annual_even: 'Year · even',
-  annual_profile: 'Year · season',
-  annual_reference: 'Year · reference',
-}
-
 type GridRow = Record<string, string>
 type Message = { kind: 'error' | 'info' | 'ok'; text: string }
 
@@ -60,17 +51,31 @@ function cellKind(row: Row | undefined, prop: string, locked: boolean): string {
   return locked ? 'pl-plain' : 'pl-calc'
 }
 
-const SPREAD_LABEL = { even: 'Year · even', profile: 'Year · season', reference: 'Year · reference' } as const
 
 /** A year-only line's months aren't shown, so how it spreads isn't chosen on the sheet. */
 function spreadChoosable(row: Row): boolean {
   return row.kind === 'account' && row.entry_form !== 'annual' && row.total_editable
 }
 
+/** How the line is entered, then what a year total typed there does: "Monthly · actuals". A
+ * line whose reference has no values spreads evenly, and the badge says so (with ⚠). */
 function badgeLabel(row: Row): string {
   if (!row.entry_form) return ''
-  if (row.entry_form === 'monthly' || row.entry_form === 'annual' || !row.spread) return FORM_LABEL[row.entry_form]
-  return SPREAD_LABEL[row.spread]
+  if (row.entry_form === 'annual') return 'Year only'
+  const entry = row.entry_form === 'monthly' ? 'Monthly' : 'Year'
+  return `${entry} · ${spreadWord(row)}`
+}
+
+function spreadWord(row: Row): string {
+  if (row.fallback) return 'even'
+  switch (row.spread) {
+    case 'profile':
+      return 'season'
+    case 'reference':
+      return row.reference_version ?? 'actuals'
+    default:
+      return 'even'
+  }
 }
 
 function spreadText(row: Row): string {
@@ -80,7 +85,9 @@ function spreadText(row: Row): string {
     case 'profile':
       return `spreads by the ${row.basis ?? 'profile'}`
     case 'reference':
-      return row.fallback ? 'spreads evenly: there are no reference values' : `spreads like ${row.basis ?? 'last year’s actuals'}`
+      return row.fallback
+        ? `spreads evenly: ${row.reference_version ? `${row.basis ?? row.reference_version} has no values` : 'there are no prior-year actuals'} for this line`
+        : `spreads like ${row.basis ?? 'last year’s actuals'}`
     default:
       return ''
   }
@@ -196,7 +203,7 @@ export default function PlanningPage({
     })
     return [
       {
-        ...column(COL_ACCOUNT, 'Account', 340, 'pl-head-acc'),
+        ...column(COL_ACCOUNT, 'Account', 390, 'pl-head-acc'),
         pin: 'colPinStart' as const,
         cellTemplate: (h: HyperFunc<VNode>, { rowIndex }: { rowIndex: number }) =>
           accountCell(h as unknown as H, grid?.rows[rowIndex]),
@@ -481,6 +488,7 @@ export default function PlanningPage({
               applyOnClose
               theme="default"
               rowSize={32}
+              hideAttribution
               // One copied value pasted over a selection fills every selected cell, as in Excel.
               useClipboard={{ rangeFill: true }}
               onBeforeedit={(e) => {

@@ -214,6 +214,7 @@ Mid-size manufacturer of industrial pumps and valves, ~400 employees.
 - [ ] **E-06** Top-down spreading from totals (proportional / equal / profile) and spread profiles.
 - [ ] **E-07** Workflow: submit → approve → lock per version × cost center, with database-enforced locks, and the status page rolled up by department and hierarchy node (T-20). The controller's publish action (T-21).
 - [ ] **E-08** Change log and cell comments.
+    - [ ] Mark cells with comments by a corner triangle, as spreadsheets do (a CSS class per cell through `cellProperties`); the same mark can flag cells someone else changed since the sheet was loaded.
 - [ ] **E-09** OIDC and LDAPS login (T-22), mapping an identity to a user by login or e-mail, and roles from directory groups. Users, roles, scopes, responsibilities and the development login are built (ADR 0009).
 - [ ] **E-10** Publishing ([ADR 0011](docs/adr/0011-publishing.md)). Built: downloads, preview, run, run history, republish, [docs/output.md](docs/output.md). Still open:
     - [ ] Export sign rules (E-12): until then values are published natural-positive.

@@ -118,6 +118,7 @@ class Row:
     fallback: bool = False  # the reference is empty, so the year total spreads evenly
     spread: Basis | None = None  # the kind of basis, chosen on the sheet or by the entry form
     chosen_spread: LineSpread | None = None  # chosen on the sheet for this line
+    reference_version: str | None = None  # a reference basis other than prior-year actuals
     months_visible: bool = True
     months_editable: bool = False
     total_editable: bool = False
@@ -176,6 +177,7 @@ class _Line:
     profile: Profile | None
     reference: list[Decimal | None]
     chosen: LineSpread | None
+    reference_code: str | None  # the version a reference basis spreads like; None: actuals
 
 
 def _context(conn: Connection, user: User, version_code: str, cc_code: str) -> _Context:
@@ -380,13 +382,14 @@ def _lines(conn: Connection, ctx: _Context, account_ids: Iterable[int]) -> list[
     prior_actuals = _amounts(_values(conn, ctx.actuals_id, ctx.cost_center_id, ctx.prior_periods))
     references: dict[int | None, dict[int, list[Decimal | None]]] = {None: prior_actuals}
     names: dict[int | None, str] = {None: "prior-year actuals"}
+    codes: dict[int | None, str | None] = {None: None}
     for ref_id in {f.reference_version_id for f in forms.values()} - {None}:
         assert ref_id is not None
         periods = _round_periods(conn, ref_id, ctx.periods)
         references[ref_id] = _amounts(_values(conn, ref_id, ctx.cost_center_id, periods))
-        names[ref_id] = conn.execute(
-            select(version.c.name).where(version.c.version_id == ref_id)
-        ).scalar_one()
+        names[ref_id], codes[ref_id] = conn.execute(
+            select(version.c.name, version.c.code).where(version.c.version_id == ref_id)
+        ).one()
 
     lines = []
     for account_id, code, name, gcode, gname in meta:
@@ -416,6 +419,7 @@ def _lines(conn: Connection, ctx: _Context, account_ids: Iterable[int]) -> list[
                 profile,
                 reference,
                 chosen.get(account_id),
+                codes[form.reference_version_id] if form.basis == "reference" else None,
             )
         )
     return lines
@@ -472,6 +476,7 @@ def read_grid(engine: Engine, user: User, version_code: str, cc_code: str) -> Gr
             fallback=w.fallback,
             spread=line.form.basis,
             chosen_spread=line.chosen,
+            reference_version=line.reference_code,
             months_visible=line.form.months_visible,
             months_editable=editable and line.form.months_editable,
             total_editable=editable,

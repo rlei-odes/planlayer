@@ -350,7 +350,11 @@ function EntryForms({
               <Select
                 label="Account or group"
                 value={r.account_code}
-                options={accountOptions(accounts, true)}
+                options={accountOptions(accounts, true).map((o) =>
+                  o.value !== r.account_code && draft.entry_forms.some((other) => other.account_code === o.value)
+                    ? { ...o, disabled: true, hint: 'has an exception' }
+                    : o,
+                )}
                 searchable
                 onChange={(code) => update(i, { ...r, account_code: code })}
               />

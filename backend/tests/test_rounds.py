@@ -327,6 +327,10 @@ def test_reference_version_and_fallback(engine: Engine, client: TestClient) -> N
     grid = client.get(f"{URL}/grid").json()
     # Budget 2025 has no values for 7000: the line spreads evenly, and says so.
     assert (rows(grid)["7000"]["basis"], rows(grid)["7000"]["fallback"]) == ("Budget 2025", True)
+    assert (rows(grid)["7000"]["reference_version"], rows(grid)["6000"]["reference_version"]) == (
+        "B2025",
+        None,
+    )
     assert rows(grid)["6000"]["fallback"] is False
     grid = post(client, year("7000", "12")).json()  # type: ignore[attr-defined]
     assert plan(grid, "7000") == ["1.00"] * 12

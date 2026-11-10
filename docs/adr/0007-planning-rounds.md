@@ -40,7 +40,7 @@ The spread basis of a `monthly` line is the module's default reference (prior-ye
 
 The entry form sets a line's spread for every cost center in the round. On the sheet, anyone who may edit the cost center (its planner or the controller) can choose a different spread for one line by clicking the line's badge: evenly, like prior-year actuals, or by any seasonality profile, or back to the round's setup.
 - The choice is kept per round × cost center × account and applies to every year total typed on that line from then on. Months already stored keep their values, as when an entry form changes.
-- The badge shows the effective spread and marks a line whose spread was chosen on the sheet.
+- Every line's badge reads how it is entered, then what a year total typed there does: `Monthly · actuals`, `Monthly · season`, `Year · even`, `Year · B2025`, `Year only`. A line whose reference has no values reads `· even ⚠`, so the controller notices a line meant to follow actuals that has none. A dot marks a spread chosen on the sheet.
 - The form still decides which cells are editable; only the basis changes. Year-only lines (`annual`) have no choice: their months aren't shown and are stored evenly.
 - It is locked and scoped like plan values: the database refuses the change outside an open round, for a disabled, submitted or approved cost center, and for a user who may not write the cost center.
 

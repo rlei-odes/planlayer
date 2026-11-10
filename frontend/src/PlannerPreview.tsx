@@ -6,20 +6,6 @@ import type { Profile, SetupDraft } from './setupTypes'
 // which cells are typed in, which are calculated and which months are hidden; the comparison
 // columns come first. Values are examples, derived from the account code, not real data.
 
-const FORM_LABEL: Record<EntryForm, string> = {
-  monthly: 'Monthly',
-  annual: 'Year only',
-  annual_even: 'Year · even',
-  annual_profile: 'Year · season',
-  annual_reference: 'Year · reference',
-}
-const SHORT_LABEL: Record<EntryForm, string> = {
-  monthly: 'Monthly',
-  annual: 'Year',
-  annual_even: 'Even',
-  annual_profile: 'Season',
-  annual_reference: 'Ref.',
-}
 // Example values in thousands, so the account column, comparisons, plan and all twelve months fit
 // beside the settings.
 const K = new Intl.NumberFormat('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
@@ -39,6 +25,20 @@ type Props = {
 }
 
 type Resolved = { form: EntryForm; profile: string | null; reference: string | null }
+
+/** The planning sheet's badge: how a line is entered, then what a year total does there. */
+function badge(r: Resolved, fallback: boolean): { full: string; short: string } {
+  if (r.form === 'annual') return { full: 'Year only', short: 'Year' }
+  const spread =
+    fallback || r.form === 'annual_even'
+      ? 'even'
+      : r.form === 'annual_profile' || (r.form === 'monthly' && r.profile)
+        ? 'season'
+        : (r.reference ?? 'actuals')
+  const warn = fallback ? ' ⚠' : ''
+  const entry = r.form === 'monthly' ? ['Monthly', 'M'] : ['Year', 'Y']
+  return { full: `${entry[0]} · ${spread}${warn}`, short: `${entry[1]} · ${spread}${warn}` }
+}
 
 function hash(text: string): number {
   let h = 2166136261
@@ -254,9 +254,14 @@ export default function PlannerPreview(p: Props) {
 
   function renderRow(l: Line) {
     const prof = l.r.form === 'annual_profile' ? profileOf(l.r.profile) : undefined
+    const ref = l.r.reference ? (p.versionNames[l.r.reference] ?? l.r.reference) : 'last year’s actuals'
+    const { full, short } = badge(l.r, l.fallback)
+    const monthlyBasis = l.r.profile
+      ? `spreads by the profile ${profileOf(l.r.profile)?.name ?? l.r.profile}`
+      : `spreads like ${ref}`
     const basis =
       l.r.form === 'monthly'
-        ? 'Months are typed in; a year total spreads by last year’s actuals.'
+        ? `Months are typed in; a year total ${monthlyBasis}.`
         : l.r.form === 'annual'
           ? 'Only the year total is entered; it is stored as 12 equal months.'
           : l.r.form === 'annual_even'
@@ -265,9 +270,9 @@ export default function PlannerPreview(p: Props) {
               ? `The year total spreads by the profile ${prof?.name ?? '(none chosen)'}.`
               : l.fallback
                 ? 'No reference values yet: the year total spreads evenly.'
-                : `The year total spreads like ${l.r.reference ? (p.versionNames[l.r.reference] ?? l.r.reference) : 'last year’s actuals'}.`
+                : `The year total spreads like ${ref}.`
     return (
-      <tr key={l.code} title={`${FORM_LABEL[l.r.form]}: ${basis}`}>
+      <tr key={l.code} title={`${full}: ${basis}`}>
         <td className="acc">
           <span className="pv-acc">
             <span className="name">
@@ -276,8 +281,8 @@ export default function PlannerPreview(p: Props) {
             </span>
             {prof && <Bars values={prof.values.map(Number)} />}
             <span className={`pv-form ${l.r.form === 'monthly' ? 'monthly' : ''} ${l.fallback ? 'fallback' : ''}`}>
-              <span className="full">{FORM_LABEL[l.r.form]}</span>
-              <span className="short">{SHORT_LABEL[l.r.form]}</span>
+              <span className="full">{full}</span>
+              <span className="short">{short}</span>
             </span>
           </span>
         </td>
