@@ -49,10 +49,10 @@ def test_natural_signs_flip_revenue_only(loaded: tuple[psycopg.Connection, str])
     ledger, natural = one(
         conn,
         f"""
-        SELECT sum(l.amount), sum(n.amount)
+        SELECT sum(l.amount_eur), sum(n.amount_eur)
         FROM {g}.v_gl_actuals_ledger l
-        JOIN {g}.v_gl_actuals_natural n USING (period, entity_code, cost_center_code, account_code)
-        JOIN {g}.v_accounts a USING (account_code)
+        JOIN {g}.v_gl_actuals_natural n USING (posting_month, company_code, cost_center, gl_account)
+        JOIN {g}.v_accounts a ON a.account_code = l.gl_account
         WHERE a.account_type = 'revenue'""",
     )
     assert isinstance(ledger, Decimal) and isinstance(natural, Decimal)
@@ -61,9 +61,9 @@ def test_natural_signs_flip_revenue_only(loaded: tuple[psycopg.Connection, str])
         conn,
         f"""
         SELECT count(*) FROM {g}.v_gl_actuals_ledger l
-        JOIN {g}.v_gl_actuals_natural n USING (period, entity_code, cost_center_code, account_code)
-        JOIN {g}.v_accounts a USING (account_code)
-        WHERE a.account_type = 'cost' AND l.amount <> n.amount""",
+        JOIN {g}.v_gl_actuals_natural n USING (posting_month, company_code, cost_center, gl_account)
+        JOIN {g}.v_accounts a ON a.account_code = l.gl_account
+        WHERE a.account_type = 'cost' AND l.amount_eur <> n.amount_eur""",
     )
     assert cost_differs == 0
 
@@ -73,7 +73,7 @@ def test_zero_and_missing_are_distinct(loaded: tuple[psycopg.Connection, str]) -
     zero, negative = one(
         conn,
         f"""
-        SELECT count(*) FILTER (WHERE amount = 0), count(*) FILTER (WHERE amount < 0)
+        SELECT count(*) FILTER (WHERE amount_eur = 0), count(*) FILTER (WHERE amount_eur < 0)
         FROM {g}.v_gl_actuals_natural""",
     )
     assert isinstance(zero, int) and isinstance(negative, int)
@@ -83,9 +83,9 @@ def test_zero_and_missing_are_distinct(loaded: tuple[psycopg.Connection, str]) -
         conn,
         f"""
         SELECT count(*) FROM (
-            SELECT cost_center_code, account_code, count(*) AS months
+            SELECT cost_center, gl_account, count(*) AS months
             FROM {g}.v_gl_actuals_natural GROUP BY 1, 2) s
-        JOIN {g}.v_cost_centers c USING (cost_center_code)
+        JOIN {g}.v_cost_centers c ON c.cost_center_code = s.cost_center
         WHERE c.valid_from < '2023-01-01' AND c.valid_to > '2026-06-30' AND s.months < 42""",
     )
     assert isinstance(gaps, int) and gaps > 0
@@ -97,8 +97,9 @@ def test_gl_revenue_reconciles_with_sales(loaded: tuple[psycopg.Connection, str]
         conn,
         f"""
         SELECT max(abs(gl - sales)) FROM (
-            SELECT period, entity_code, sum(amount) AS gl FROM {g}.v_gl_actuals_natural
-            WHERE account_code IN ('4000', '4010', '4020', '4030', '4040') GROUP BY 1, 2) a
+            SELECT posting_month AS period, company_code AS entity_code, sum(amount_eur) AS gl
+            FROM {g}.v_gl_actuals_natural
+            WHERE gl_account IN ('4000', '4010', '4020', '4030', '4040') GROUP BY 1, 2) a
         JOIN (
             SELECT period, entity_code, sum(value) AS sales FROM {g}.v_sales_actuals
             WHERE measure = 'revenue' GROUP BY 1, 2) b USING (period, entity_code)""",
@@ -138,9 +139,10 @@ def test_new_and_closed_cost_centers_have_actuals_only_while_valid(
     first_new, last_closed = one(
         conn,
         f"""
-        SELECT min(a.period) FILTER (WHERE c.cost_center_name = 'Digital Service'),
-               max(a.period) FILTER (WHERE c.cost_center_name = 'Legacy Assembly')
-        FROM {g}.v_gl_actuals_natural a JOIN {g}.v_cost_centers c USING (cost_center_code)""",
+        SELECT min(a.posting_month) FILTER (WHERE c.cost_center_name = 'Digital Service'),
+               max(a.posting_month) FILTER (WHERE c.cost_center_name = 'Legacy Assembly')
+        FROM {g}.v_gl_actuals_natural a
+        JOIN {g}.v_cost_centers c ON c.cost_center_code = a.cost_center""",
     )
     assert str(first_new) == "2025-07-01"
     assert str(last_closed) == "2025-12-01"
@@ -149,7 +151,7 @@ def test_new_and_closed_cost_centers_have_actuals_only_while_valid(
         conn,
         f"""
         SELECT h.parent_code, (SELECT count(*) FROM {g}.v_gl_actuals_natural a
-                               WHERE a.cost_center_code = h.member_code)
+                               WHERE a.cost_center = h.member_code)
         FROM {g}.v_cost_center_hierarchy h WHERE h.member_name = 'Additive Manufacturing'""",
     )
     assert (parent, actuals) == ("DEP_PUMP_PROD", 0)
@@ -175,7 +177,7 @@ def test_export_keeps_decimals(loaded: tuple[psycopg.Connection, str], tmp_path:
     conn, g = loaded
     warehouse.export(conn, tmp_path, g)
     table = pq.read_table(tmp_path / "v_gl_actuals_natural.parquet")
-    assert str(table.schema.field("amount").type) == "decimal128(18, 2)"
-    assert str(table.schema.field("period").type) == "date32[day]"
+    assert str(table.schema.field("amount_eur").type) == "decimal128(18, 2)"
+    assert str(table.schema.field("posting_month").type) == "date32[day]"
     (count,) = one(conn, f"SELECT count(*) FROM {g}.v_gl_actuals_natural")
     assert table.num_rows == count

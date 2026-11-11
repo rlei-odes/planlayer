@@ -310,6 +310,13 @@ revo-grid.pl-revo revogr-header .rgHeaderCell.pl-head-cmp {
   font-weight: 500;
 }
 
+/* A comparison column with a note or partial actuals: its tooltip says so. */
+revo-grid.pl-revo revogr-header .rgHeaderCell.pl-head-noted .header-content {
+  text-decoration: underline dotted var(--ink-3);
+  text-underline-offset: 3px;
+  cursor: help;
+}
+
 revo-grid.pl-revo revogr-header .rgHeaderCell.pl-head-plan {
   color: var(--accent-ink);
 }
@@ -819,6 +826,17 @@ revo-grid.pl-revo .rgCell.cp-credit {
   color: var(--ink-3);
 }
 
+.md-field-name {
+  flex-wrap: wrap;
+}
+
+.md-field-hint {
+  flex-basis: 100%;
+  font-family: var(--sans);
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
 .md-levels {
   display: flex;
   flex-direction: column;
@@ -1163,6 +1181,19 @@ revo-grid.pl-revo .rgCell.cp-credit {
 
 .md-period-hint {
   margin: 0;
+  line-height: 1.5;
+}
+
+.md-filter {
+  margin: 6px 0;
+  padding: 8px 10px;
+  background: var(--calc);
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-s);
+  font-family: var(--mono);
+  font-size: 12px;
+  white-space: pre-wrap;
+  color: var(--ink-2);
 }
 
 .md-years {

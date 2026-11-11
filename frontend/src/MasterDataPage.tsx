@@ -10,6 +10,7 @@ import {
   type MemberRow,
   type Preview,
   type SyncPlan,
+  type SyncYears,
 } from './api'
 import Select, { type Option } from './Select'
 
@@ -149,9 +150,30 @@ function Sources() {
 
 const EMPTY: Mapping = { query: '', fields: {}, hierarchy: null }
 
+/** A mapping as saved: unmapped fields dropped, fields in a fixed order, so an edit and its undo
+ * compare equal. */
+function normal(m: Mapping): string {
+  const fields = Object.fromEntries(
+    Object.entries(m.fields)
+      .filter(([, c]) => c)
+      .sort(([a], [b]) => a.localeCompare(b)),
+  )
+  return JSON.stringify({ query: m.query.trim(), fields, hierarchy: m.hierarchy })
+}
+
+// What a field must hold, where the type alone doesn't say.
+const FIELD_HINT: Record<string, string> = {
+  period: 'any day counts as its month',
+  valid_from: 'a date, a timestamp or text like 2026-01-01',
+  valid_to: 'a date, a timestamp or text like 2026-12-31',
+}
+
+const DAY = new Intl.DateTimeFormat('en-CA', { timeZone: 'UTC' }) // 2026-01-01
+
 function DatasetEditor({ info, onSaved }: { info: DatasetInfo; onSaved: () => void }) {
   const [open, setOpen] = useState(!info.mapping)
   const [m, setM] = useState<Mapping>(info.mapping ?? EMPTY)
+  const dirty = normal(m) !== normal(info.mapping ?? EMPTY)
   const [columns, setColumns] = useState<string[]>(() => columnsOf(info.mapping))
   const [preview, setPreview] = useState<Preview | null>(null)
   const [note, setNote] = useState<Note | null>(null)
@@ -193,6 +215,7 @@ function DatasetEditor({ info, onSaved }: { info: DatasetInfo; onSaved: () => vo
       <button type="button" className="md-dataset-head" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
         <strong>{DATASET_LABEL[info.dataset]}</strong>
         <span className={`su-pill ${info.mapping ? 'approved' : 'neutral'}`}>{info.mapping ? 'Mapped' : 'Not mapped'}</span>
+        {dirty && <span className="su-pill in_progress">Unsaved changes</span>}
         <span className="ink-3">
           {mappedCount} of {info.fields.length} fields
         </span>
@@ -214,13 +237,7 @@ function DatasetEditor({ info, onSaved }: { info: DatasetInfo; onSaved: () => vo
               onChange={(e) => setM({ ...m, query: e.target.value })}
             />
           </label>
-          {PERIOD_DATASETS.includes(info.dataset) && (
-            <p className="su-hint md-period-hint">
-              Synced for a window of fiscal years, chosen on Sync; years outside it stay as they are. To filter in the
-              warehouse, the query may use <code>:period_from</code> and <code>:period_to</code>, e.g.{' '}
-              <code>WHERE period BETWEEN :period_from AND :period_to</code>. Don’t name a fixed year here.
-            </p>
-          )}
+          {PERIOD_DATASETS.includes(info.dataset) && <PeriodFilter info={info} column={m.fields.period ?? ''} />}
           <div className="su-row">
             <button type="button" className="su-btn" disabled={!m.query.trim()} onClick={() => void run(false)}>
               Show columns
@@ -236,7 +253,10 @@ function DatasetEditor({ info, onSaved }: { info: DatasetInfo; onSaved: () => vo
                 <span className="md-field-name">
                   {f.name}
                   {f.required && <span className="md-req" title="required">*</span>}
-                  <span className="md-type">{f.type}</span>
+                  <span className="md-type" title={FIELD_HINT[f.name]}>
+                    {f.type}
+                  </span>
+                  {FIELD_HINT[f.name] && <span className="md-field-hint">{FIELD_HINT[f.name]}</span>}
                 </span>
                 {choose(
                   m.fields[f.name] ?? '',
@@ -310,9 +330,10 @@ function DatasetEditor({ info, onSaved }: { info: DatasetInfo; onSaved: () => vo
             <button type="button" className="su-btn" disabled={!m.query.trim()} onClick={() => void run(true)}>
               Preview as synced
             </button>
-            <button type="button" className="su-btn primary" onClick={() => void save()}>
+            <button type="button" className="su-btn primary" disabled={!dirty} onClick={() => void save()}>
               Save mapping
             </button>
+            <span className="ink-3">{dirty ? 'Unsaved changes: the sync reads the saved mapping.' : info.mapping ? 'Saved.' : ''}</span>
             {info.mapping && (
               <button
                 type="button"
@@ -354,6 +375,30 @@ function DatasetEditor({ info, onSaved }: { info: DatasetInfo; onSaved: () => vo
   )
 }
 
+/** The filter the sync adds to a query of values per period, on the column mapped to period. */
+function PeriodFilter({ info, column }: { info: DatasetInfo; column: string }) {
+  const w = info.window
+  const col = column || '‹period column›'
+  return (
+    <div className="su-hint md-period-hint">
+      Synced for a window of fiscal years; the years outside it stay as stored. Leave the years out of the query: the
+      sync adds the filter on the column mapped to <strong>period</strong>, and the warehouse applies it.
+      {w ? (
+        <>
+          {' '}
+          With the default window, fiscal years {w.first} to {w.last}:
+          <pre className="md-filter">
+            {`SELECT … FROM (your query) q\nWHERE ${col} >= '${DAY.format(new Date(w.period_from))}' AND ${col} < '${DAY.format(new Date(w.before))}'`}
+          </pre>
+          Other years are chosen on Sync.
+        </>
+      ) : (
+        ' No round is in setup or open, so a sync replaces every year the query delivers.'
+      )}
+    </div>
+  )
+}
+
 function columnsOf(m: Mapping | null): string[] {
   if (!m) return []
   const h = m.hierarchy
@@ -379,12 +424,11 @@ function Working({ text, since }: { text: string; since: number }) {
   )
 }
 
-/** The years typed in, or null for the default window; an error text when they don't parse. */
+/** The years chosen, or null for the default window; one chosen alone is a window of one year. */
 function yearsOf(first: string, last: string): { years: { first: number; last: number } | null; error?: string } {
-  if (!first.trim() && !last.trim()) return { years: null }
+  if (!first && !last) return { years: null }
   const a = Number(first || last)
   const b = Number(last || first)
-  if (!Number.isInteger(a) || !Number.isInteger(b) || a < 1900 || b < 1900) return { years: null, error: 'Enter fiscal years, e.g. 2025 to 2027.' }
   return a <= b ? { years: { first: a, last: b } } : { years: null, error: 'The first year comes after the last one.' }
 }
 
@@ -398,6 +442,22 @@ function Sync() {
   const [busy, setBusy] = useState(false)
   // What is running and since when, for the working panel.
   const [working, setWorking] = useState<{ text: string; since: number } | null>(null)
+  const [years, setYears] = useState<SyncYears | null>(null)
+  useEffect(() => {
+    api.syncYears().then(setYears, (e: unknown) => setNote({ kind: 'error', text: errorText(e) }))
+  }, [])
+  const def = years?.default ?? null
+  const yearOptions = (which: 'from' | 'to'): Option[] => [
+    {
+      value: '',
+      label: def ? `${which === 'from' ? def.first : def.last} · default` : 'every year',
+    },
+    ...(years?.years ?? []).map((y) => ({
+      value: String(y.fiscal_year),
+      label: String(y.fiscal_year),
+      hint: y.stored ? `${y.stored.toLocaleString('en-US')} cells stored` : 'none stored',
+    })),
+  ]
 
   async function preview() {
     const asked = yearsOf(first, last)
@@ -454,12 +514,15 @@ function Sync() {
     <div className="su-col">
       <section className="su-card">
         <h3>
-          <span className="su-step">1</span> Preview
+          <span className="su-step">1</span> Sync filter
         </h3>
         <p className="su-hint">
-          Reads every mapped dataset and shows what would change. Nothing is written. Actuals and work center hours
-          are replaced for the fiscal years given, and stay as they are for every other year. Left empty, the years
-          are those the rounds in setup or open compare with: their own year and the year before.
+          Members (cost centers, accounts, …) are always read in full. Actuals and work center hours are replaced only
+          for the fiscal years chosen here and stay as they are for every other year.{' '}
+          {def
+            ? `By default these are ${def.first} to ${def.last}: the years the rounds in setup or open compare with, their own year and the year before.`
+            : 'No round is in setup or open, so by default every year is replaced.'}{' '}
+          The preview reads the source and writes nothing.
         </p>
         <div className="su-body su-row">
           <label className="su-field">
@@ -471,34 +534,30 @@ function Sync() {
               placeholder="all entities"
             />
           </label>
-          <label className="su-field">
+          <div className="su-field">
             Actuals of fiscal years
             <span className="md-years">
-              <input
-                className="su-input md-year"
-                inputMode="numeric"
-                aria-label="First fiscal year"
+              <Select
+                label="First fiscal year"
                 value={first}
-                onChange={(e) => {
-                  setFirst(e.target.value)
+                options={yearOptions('from')}
+                onChange={(v) => {
+                  setFirst(v)
                   setPlan(null)
                 }}
-                placeholder="from"
               />
               <span className="ink-3">to</span>
-              <input
-                className="su-input md-year"
-                inputMode="numeric"
-                aria-label="Last fiscal year"
+              <Select
+                label="Last fiscal year"
                 value={last}
-                onChange={(e) => {
-                  setLast(e.target.value)
+                options={yearOptions('to')}
+                onChange={(v) => {
+                  setLast(v)
                   setPlan(null)
                 }}
-                placeholder="to"
               />
             </span>
-          </label>
+          </div>
           <button type="button" className="su-btn md-push" disabled={busy} onClick={() => void preview()}>
             {busy && !plan ? 'Reading the source…' : plan ? 'Preview again' : 'Preview sync'}
           </button>
@@ -511,7 +570,7 @@ function Sync() {
       {plan && (
         <section className="su-card">
           <h3>
-            <span className="su-step">2</span> What the sync would do
+            <span className="su-step">2</span> Sync preview
           </h3>
           <p className="su-hint">Datasets: {plan.datasets.join(', ') || 'none mapped'}</p>
           <div className="su-body">
@@ -563,7 +622,7 @@ function Sync() {
               </div>
             )}
             <Changes label="New" items={plan.new} />
-            <Changes label="Changed" items={plan.changed} />
+            <Changes label="Changed · was → becomes" items={plan.changed} open />
             <Changes label="No longer delivered (kept with their values)" items={plan.gone} />
             <div className="su-row md-actions">
               <button
@@ -638,10 +697,10 @@ function Tile({ label, value, tone }: { label: string; value: number; tone: stri
   )
 }
 
-function Changes({ label, items }: { label: string; items: string[] }) {
+function Changes({ label, items, open = false }: { label: string; items: string[]; open?: boolean }) {
   if (items.length === 0) return null
   return (
-    <details className="md-changes">
+    <details className="md-changes" open={open && items.length <= 20}>
       <summary>
         {label} <span className="ink-3">{items.length}</span>
       </summary>

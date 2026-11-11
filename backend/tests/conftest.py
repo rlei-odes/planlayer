@@ -107,8 +107,8 @@ INSERT INTO {s}.v_account_hierarchy VALUES
     ('B', 'Facilities', 'PL', true, 2), ('6000', 'Wages', 'A', false, 1),
     ('6010', 'Bonus', 'A', false, 2), ('7000', 'Rent', 'B', false, 1),
     ('C', 'Credits', 'PL', true, 3), ('4900', 'Machine hour credits', 'C', false, 1);
-CREATE TABLE {s}.v_gl_actuals_natural (period date, entity_code text, cost_center_code text,
-    account_code text, amount numeric);
+CREATE TABLE {s}.v_gl_actuals_natural (posting_month date, company_code text,
+    cost_center text, gl_account text, amount_eur numeric);
 INSERT INTO {s}.v_gl_actuals_natural
     SELECT make_date(2025, m, 1), 'DE', 'CC1', '6000', 100.00 FROM generate_series(1, 12) m;
 INSERT INTO {s}.v_gl_actuals_natural VALUES
@@ -128,8 +128,8 @@ CREATE TABLE {s}.v_work_center_rates (work_center_code text, activity_type_code 
     rate numeric);
 INSERT INTO {s}.v_work_center_rates VALUES
     ('WC1', 'MH', 80), ('WC2', 'MH', 100.5), ('WC2', 'RW', 60), ('WC9', 'MH', 50);
-CREATE TABLE {s}.v_capacity_actuals (period date, work_center_code text,
-    activity_type_code text, hours numeric);
+CREATE TABLE {s}.v_capacity_actuals (posting_month date, work_center text,
+    activity_type text, actual_hours numeric);
 -- The lathe ran 100 hours a month in 2025, 20 in the August shutdown.
 INSERT INTO {s}.v_capacity_actuals
     SELECT make_date(2025, m, 1), 'WC1', 'MH', CASE WHEN m = 8 THEN 20 ELSE 100 END

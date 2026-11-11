@@ -154,6 +154,10 @@ planning_round = Table(
     Column("deadline", Date),
     Column("status", Text, nullable=False, server_default="setup"),  # ADR 0008
     Column("copied_from", SmallInteger, ForeignKey("planning_round.version_id")),
+    # How the round was created (ADR 0014): who, when, and what it carried over.
+    Column("created_by", Text),
+    Column("created_at", DateTime(timezone=True)),
+    Column("carried", JSONB),
 )
 
 round_module = Table(
@@ -221,6 +225,7 @@ comparison = Table(
     Column("position", SmallInteger, nullable=False),
     Column("kind", Text, nullable=False),  # prior_year_actuals / actuals / version
     Column("compare_version_id", SmallInteger, ForeignKey("version.version_id")),
+    Column("note", Text),  # the controller's note to planners, e.g. "January to June only"
     PrimaryKeyConstraint("version_id", "module", "position"),
     _module_fk(),
 )

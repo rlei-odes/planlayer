@@ -81,6 +81,28 @@ function spreadWord(row: Row): string {
   }
 }
 
+const MONTH_YEAR = new Intl.DateTimeFormat('en', { month: 'long', year: 'numeric', timeZone: 'UTC' })
+
+/** A comparison column's tooltip: the controller's note, and for actuals how far they go. */
+function comparisonTitle(c: Grid['comparisons'][number]): string | undefined {
+  const actuals = c.kind === 'prior_year_actuals' || c.kind === 'actuals'
+  const coverage = !actuals
+    ? null
+    : c.actuals_until === null
+      ? 'No actuals for this year yet.'
+      : c.partial
+        ? `Actuals up to ${MONTH_YEAR.format(new Date(c.actuals_until))}: the months after are blank, not zero, and the year is partial.`
+        : null
+  return [c.note, coverage].filter(Boolean).join(' · ') || undefined
+}
+
+/** A line spreading evenly for want of a reference is flagged only where it holds values: on an
+ * empty line, such as a new account or a new cost center's sheet, even is simply where it starts. */
+function warnsFallback(row: Row): boolean {
+  if (!row.fallback || row.capacity) return false
+  return row.plan.some((c) => c.value !== null) || row.comparisons.some((months) => months.some((v) => v !== null))
+}
+
 function spreadText(row: Row): string {
   switch (row.spread) {
     case 'even':
@@ -209,11 +231,11 @@ export default function PlanningPage({
         if (prop === comparisonProp(nComp - 1)) classes.push('pl-cmp-last')
         return { class: classes.join(' ') }
       }
-    const column = (prop: string, name: string, size: number, headerClass = '') => ({
+    const column = (prop: string, name: string, size: number, headerClass = '', title?: string) => ({
       prop,
       name,
       size,
-      columnProperties: () => ({ class: `pl-head ${headerClass}` }),
+      columnProperties: () => ({ class: `pl-head ${headerClass}${title ? ' pl-head-noted' : ''}`, title }),
       readonly: ({ rowIndex }: { rowIndex: number }) => !editable(grid?.rows[rowIndex], prop),
       cellProperties: cellProperties(prop),
     })
@@ -224,7 +246,9 @@ export default function PlanningPage({
         cellTemplate: (h: HyperFunc<VNode>, { rowIndex }: { rowIndex: number }) =>
           accountCell(h as unknown as H, grid?.rows[rowIndex], profiles),
       },
-      ...(grid?.comparisons ?? []).map((c, i) => column(comparisonProp(i), c.label, 112, 'pl-head-cmp')),
+      ...(grid?.comparisons ?? []).map((c, i) =>
+        column(comparisonProp(i), c.label, 112, 'pl-head-cmp', comparisonTitle(c)),
+      ),
       column(COL_FY, `Plan ${grid?.fiscal_year ?? ''}`, 116, 'pl-head-plan'),
       ...periods.map((p, m) => column(monthProp(m), MONTH_LABEL.format(new Date(p)), 92)),
     ]
@@ -589,12 +613,13 @@ function accountCell(h: H, row: Row | undefined, profiles: ProfileRef[]) {
   if (!row) return ''
   if (row.kind === 'group') return h('span', { class: 'pl-acc-name' }, row.name)
   const form = row.entry_form
-  const label = badgeLabel(row) + (row.fallback && !row.capacity ? ' ⚠' : '')
+  const warn = warnsFallback(row)
+  const label = badgeLabel(row) + (warn ? ' ⚠' : '')
   const classes = row.not_planned
     ? 'pv-form off'
     : row.capacity
     ? 'pv-form capacity'
-    : `pv-form${form === 'monthly' ? ' monthly' : ''}${row.fallback ? ' fallback' : ''}${row.chosen_spread ? ' chosen' : ''}`
+    : `pv-form${form === 'monthly' ? ' monthly' : ''}${warn ? ' fallback' : ''}${row.chosen_spread ? ' chosen' : ''}`
   const profile = row.spread === 'profile' ? profiles.find((p) => p.code === row.profile) : undefined
   const badge = !form
     ? ''

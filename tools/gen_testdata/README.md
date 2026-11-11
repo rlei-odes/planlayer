@@ -74,6 +74,12 @@ The `small` variant keeps the moved and the new cost center.
 | `v_products` | product_code, product_name, group_code, line_code |
 | `v_countries` | country_code, country_name, region_code, entity_code |
 | `v_*_hierarchy` | member_code, member_name, parent_code, is_group, sort_order, for `cost_center`, `cost_center_function`, `account`, `product` and `country` |
-| `v_gl_actuals_ledger` | period, entity_code, cost_center_code, account_code, amount (EUR, ledger signs) |
+| `v_gl_actuals_ledger` | posting_month, company_code, cost_center, gl_account, amount_eur (ledger signs) |
 | `v_gl_actuals_natural` | the same in natural signs (revenue positive) |
 | `v_sales_actuals` | period, entity_code, country_code, product_code, measure (`quantity`, `revenue`), value |
+| `v_activity_types` | activity_type_code, activity_type_name, account_code, variable_account_code |
+| `v_work_centers` | work_center_code, work_center_name, cost_center_code |
+| `v_work_center_rates` | work_center_code, activity_type_code, rate |
+| `v_capacity_actuals` | posting_month, work_center, activity_type, actual_hours |
+
+The fact views name their columns as a warehouse would, not as Planlayer's fields, so mapping them is part of setting up a source.

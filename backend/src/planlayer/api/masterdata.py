@@ -4,6 +4,7 @@
 from datetime import date
 from typing import Annotated, Any, Literal
 
+import pyarrow as pa
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
@@ -61,8 +62,21 @@ def _syncer(user: User) -> None:
 
 class FieldOut(BaseModel):
     name: str
-    type: str
+    type: str  # what the source column must hold, e.g. "date", "text", "decimal"
     required: bool
+
+
+def _type_text(t: pa.DataType) -> str:
+    """A contract type as the admin reads it."""
+    if pa.types.is_date(t):
+        return "date"
+    if pa.types.is_decimal(t):
+        return "decimal"
+    if pa.types.is_integer(t):
+        return "whole number"
+    if pa.types.is_boolean(t):
+        return "true/false"
+    return "text"
 
 
 class MappingIO(BaseModel):
@@ -71,11 +85,29 @@ class MappingIO(BaseModel):
     hierarchy: dict[str, Any] | None = None
 
 
+class WindowOut(BaseModel):
+    """Fiscal years and the periods they span: from ``period_from`` up to, not including,
+    ``before``."""
+
+    first: int
+    last: int
+    period_from: date
+    before: date
+
+
+def _window(w: sync.Window | None) -> WindowOut | None:
+    if w is None:
+        return None
+    return WindowOut(first=w.first, last=w.last, period_from=w.period_from, before=w.after)
+
+
 class DatasetOut(BaseModel):
     dataset: Dataset
     fields: list[FieldOut]
     has_hierarchy: bool
     mapping: MappingIO | None
+    # Values per period: the window a sync reads by default, filtered on the period column.
+    window: WindowOut | None = None
 
 
 class QueryPreviewIn(MappingIO):
@@ -96,11 +128,12 @@ def datasets(request: Request, user: CurrentUser) -> list[DatasetOut]:
         raise _http(e) from None
     with engine_of(request).connect() as conn:
         maps = sync.mappings(conn)
+        default = _window(sync.window_of(conn, None))
     return [
         DatasetOut(
             dataset=d,  # type: ignore[arg-type]
             fields=[
-                FieldOut(name=f, type=str(t), required=f in sync.REQUIRED[d])
+                FieldOut(name=f, type=_type_text(t), required=f in sync.REQUIRED[d])
                 for f, t in sync.FIELDS[d].items()
             ],
             has_hierarchy=sync.DIMENSIONS.get(d, (0, None))[1] is not None,
@@ -109,6 +142,7 @@ def datasets(request: Request, user: CurrentUser) -> list[DatasetOut]:
             )
             if d in maps
             else None,
+            window=default if d in sync.PERIOD_DATASETS else None,
         )
         for d in sync.DATASETS
     ]
@@ -157,7 +191,10 @@ def preview(
             dataset, body.query, {f: c for f, c in body.fields.items() if c}, body.hierarchy
         )
         m.validate()
-        read = sync.read(source, m, PREVIEW_ROWS)
+        # Values per period read the default window, as a sync would.
+        with engine_of(request).connect() as conn:
+            window = sync.window_of(conn, None)
+        read = sync.read(source, m, PREVIEW_ROWS, window)
         columns = list(m.columns())
         return QueryPreviewOut(columns=columns, rows=[[_text(r[c]) for c in columns] for r in read])
     except sync.MappingError as e:
@@ -182,6 +219,30 @@ class YearsIO(BaseModel):
 
     first: int
     last: int
+
+
+class YearOut(BaseModel):
+    fiscal_year: int
+    stored: int  # actual cells stored now
+
+
+class SyncYearsOut(BaseModel):
+    default: WindowOut | None  # None: no round in setup or open, so every year
+    years: list[YearOut]
+
+
+@router.get("/sync/years", responses={403: {}})
+def sync_years(request: Request, user: CurrentUser) -> SyncYearsOut:
+    """The default window of a sync, and the fiscal years to choose from, with their actuals."""
+    try:
+        _syncer(user)
+    except HANDLED as e:
+        raise _http(e) from None
+    y = sync.years(engine_of(request))
+    return SyncYearsOut(
+        default=_window(y.default),
+        years=[YearOut(fiscal_year=k, stored=n) for k, n in sorted(y.stored.items())],
+    )
 
 
 class SyncIn(BaseModel):

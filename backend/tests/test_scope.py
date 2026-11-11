@@ -20,7 +20,7 @@ from planlayer.store.db import create_app_engine
 from planlayer.store.schema import change_log, fact_cost_center, member, version
 from planlayer.store.uow import unit_of_work
 
-from .conftest import BLANK, OWNER, URL, login, plan, rows
+from .conftest import BLANK, CONTROLLER, OWNER, URL, login, plan, rows
 
 R = "B2026"
 
@@ -127,7 +127,11 @@ def test_new_round_carries_over_with_uplift(engine: Engine, client: TestClient) 
     assert client.post("/api/rounds", json=new).status_code == 200
     s = setup_of(client, "B2027")
     assert s["account_sets"] == [personnel] and s["planned_cost_centers"] == ["CC1"]
-    assert s["comparisons"][-1] == {"kind": "version", "version_code": R}
+    assert s["comparisons"][-1] == {"kind": "version", "version_code": R, "note": None}
+    # The round keeps how it was created: what it carried, and how many plan values.
+    created = client.get("/api/rounds/B2027/setup").json()["created"]
+    assert created["carried"]["values"] is True and created["carried"]["uplift"] == "10"
+    assert created["cells"] == 13 and created["by"] == CONTROLLER
     grid = client.get("/api/versions/B2027/cost-centers/CC1/grid").json()
     assert grid["status"] == "not_started"  # prepared by the controller, not started
     # B2026's plan in 2026's months, plus 10 %, in 2027's months.
@@ -156,10 +160,12 @@ def test_new_round_without_values_or_settings(client: TestClient) -> None:
     )
     s = setup_of(client, "B2027")
     assert s["not_planned_accounts"] == [] and s["comparisons"] == [
-        {"kind": "prior_year_actuals", "version_code": None}
+        {"kind": "prior_year_actuals", "version_code": None, "note": None}
     ]
     grid = client.get("/api/versions/B2027/cost-centers/CC1/grid").json()
     assert "6000" not in rows(grid)  # no values carried, no 2026 actuals
+    created = client.get("/api/rounds/B2027/setup").json()["created"]
+    assert created["carried"]["setup"] is False and created["cells"] is None
 
 
 def test_not_planned_in_setup_clears_carried_values(client: TestClient) -> None:

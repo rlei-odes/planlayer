@@ -52,6 +52,9 @@ class CellOut(BaseModel):
 class ComparisonOut(BaseModel):
     kind: str
     label: str
+    note: str | None  # the controller's note to planners
+    actuals_until: date | None  # actuals columns: the last month holding actuals
+    partial: bool  # actuals end before the year does
 
 
 class LineSpreadIO(BaseModel):
@@ -201,7 +204,16 @@ def _grid_out(grid: planning.Grid, batch_id: str | None = None) -> GridOut:
         status=grid.status,
         lock_reason=grid.lock_reason,
         periods=grid.periods,
-        comparisons=[ComparisonOut(kind=c.kind, label=c.label) for c in grid.comparisons],
+        comparisons=[
+            ComparisonOut(
+                kind=c.kind,
+                label=c.label,
+                note=c.note,
+                actuals_until=c.actuals_until,
+                partial=c.partial,
+            )
+            for c in grid.comparisons
+        ],
         rows=[
             RowOut(
                 kind=r.kind,

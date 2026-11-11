@@ -284,9 +284,10 @@ class Window:
     def period_to(self) -> date:
         return fiscal_year_periods(self.last, self.start_month)[-1]
 
-    def params(self) -> dict[str, date]:
-        """The values of the parameters a query may use to read only the window."""
-        return {"period_from": self.period_from, "period_to": self.period_to}
+    @property
+    def after(self) -> date:
+        """The first day after the window."""
+        return fiscal_year_periods(self.last + 1, self.start_month)[0]
 
 
 def start_month(conn: Connection) -> int:
@@ -316,20 +317,46 @@ def window_of(conn: Connection, years: tuple[int, int] | None) -> Window | None:
     return Window(first, last, start_month(conn))
 
 
+@dataclass
+class Years:
+    """What the Sync page offers: the default window, and per fiscal year the actual cells
+    stored, for the years stored or planned (and the one after the last round)."""
+
+    default: Window | None
+    stored: dict[int, int]
+
+
+def years(engine: Engine) -> Years:
+    # Counted as the system user, the sync's writer (row-level security, ADR 0009).
+    with unit_of_work(engine, system_user(engine)) as conn:
+        default = default_window(conn)
+        stored = _stored_actuals(conn, None, start_month(conn), None)
+        rounds = set(conn.execute(select(planning_round.c.fiscal_year)).scalars())
+    known = set(stored) | rounds | ({default.first, default.last} if default else set())
+    if not known:
+        return Years(default, {})
+    span = range(min(known), max(known) + 2)
+    return Years(default, {y: stored.get(y, 0) for y in span})
+
+
 def read(
     adapter: SourceAdapter, m: Mapping, limit: int | None = None, window: Window | None = None
 ) -> list[dict[str, Any]]:
     """The mapped dataset's rows, cast to its contract. A dataset of values per period reads only
-    the window's periods; its query may use ``:period_from`` and ``:period_to`` to filter early."""
-    sql = m.query if limit is None else f"SELECT * FROM ({m.query}) q LIMIT {int(limit)}"
-    query = Query(sql)
+    the window's periods: the read adds a filter on the column mapped to ``period`` to the
+    admin's query, which the source applies before sending rows. A period is any day of its
+    month (a date, a timestamp or ISO text); it counts as the month, so daily rows add up."""
+    within = None
     if m.dataset in PERIOD_DATASETS and window is not None:
-        query = Query(sql, window.params(), ("period", window.period_from, window.period_to))
-    elif m.dataset in PERIOD_DATASETS:
-        query = Query(sql, {"period_from": date.min, "period_to": date.max})
+        within = ("period", window.period_from, window.after)
+    query = Query(m.query, within, limit)
     contract = m.contract()
     batches = list(adapter.read(query, contract, m.columns()))
     rows: list[dict[str, Any]] = pa.Table.from_batches(batches, schema=contract).to_pylist()
+    if m.dataset in PERIOD_DATASETS:
+        for r in rows:
+            if r["period"] is not None:
+                r["period"] = r["period"].replace(day=1)
     return rows
 
 
@@ -375,9 +402,15 @@ def default_mappings(schema: str) -> list[Mapping]:
         ),
         Mapping(
             "actuals",
-            "SELECT period, entity_code, cost_center_code, account_code, amount "
+            "SELECT posting_month, company_code, cost_center, gl_account, amount_eur "
             f"FROM {s}.v_gl_actuals_natural",
-            {f: f for f in REQUIRED["actuals"]},
+            {
+                "period": "posting_month",
+                "entity_code": "company_code",
+                "cost_center_code": "cost_center",
+                "account_code": "gl_account",
+                "amount": "amount_eur",
+            },
         ),
         Mapping(
             "activity_types",
@@ -406,9 +439,14 @@ def default_mappings(schema: str) -> list[Mapping]:
         ),
         Mapping(
             "capacity_actuals",
-            "SELECT period, work_center_code, activity_type_code, hours "
+            "SELECT posting_month, work_center, activity_type, actual_hours "
             f"FROM {s}.v_capacity_actuals",
-            {f: f for f in REQUIRED["capacity_actuals"]},
+            {
+                "period": "posting_month",
+                "work_center_code": "work_center",
+                "activity_type_code": "activity_type",
+                "hours": "actual_hours",
+            },
         ),
     ]
 
@@ -601,24 +639,35 @@ def plan(
         for sm in members:
             known = existing.get((dim, sm.code))
             if known is None:
-                p.new.append(f"{label} {sm.code}")
+                p.new.append(f"{label} {sm.code} {sm.name}")
             elif known.origin == "manual":
                 p.matches.append(Match(label, sm.code, sm.name))
             else:
-                attrs = {a: getattr(known, a) for a in sm.attrs}
                 parent_now = None
                 if hier_id is not None and (hier_id, sm.code) in edges:
                     pid = edges[(hier_id, sm.code)].source_parent_id
                     parent_now = ids.get(pid) if pid else None
-                if (
-                    known.source_name != sm.name
-                    or known.is_group != sm.is_group
-                    or parent_now != sm.parent
-                    or any(attrs[a] != sm.attrs[a] for a in attrs)
-                ):
-                    p.changed.append(f"{label} {sm.code}")
+                was: dict[str, Any] = {
+                    "name": known.source_name,
+                    "group": known.is_group,
+                    "parent": parent_now,
+                    **{a: getattr(known, a) for a in sm.attrs},
+                }
+                now: dict[str, Any] = {
+                    "name": sm.name,
+                    "group": sm.is_group,
+                    "parent": sm.parent,
+                    **sm.attrs,
+                }
+                diffs = [
+                    f"{_FIELD_TEXT.get(k, k)} {_shown(was[k])} → {_shown(now[k])}"
+                    for k in was
+                    if was[k] != now[k]
+                ]
+                if diffs:
+                    p.changed.append(f"{label} {sm.code} {sm.name}: {'; '.join(diffs)}")
         p.gone += [
-            f"{label} {code}"
+            f"{label} {code} {r.name}"
             for (d, code), r in existing.items()
             if d == dim and r.origin == "source" and code not in delivered
         ]
@@ -724,6 +773,28 @@ def plan(
             )
         p.capacity = dict(hours)
     return p
+
+
+# How a changed member's fields read in the sync preview.
+_FIELD_TEXT = {
+    "entity_code": "entity",
+    "account_type": "type",
+    "valid_from": "valid from",
+    "valid_to": "valid to",
+    "cost_center_code": "cost center",
+    "account_code": "account",
+    "variable_account_code": "variable account",
+}
+
+
+def _shown(value: Any) -> str:
+    match value:
+        case None | "":
+            return "none"
+        case bool():
+            return "yes" if value else "no"
+        case _:
+            return str(value)
 
 
 # Attributes naming a member of another dimension: (attribute, dimension).

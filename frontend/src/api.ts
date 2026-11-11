@@ -35,6 +35,7 @@ export type Mapping = Omit<S.MappingIO, 'hierarchy'> & { hierarchy: Hierarchy | 
 export type DatasetInfo = Omit<S.DatasetOut, 'mapping'> & { mapping: Mapping | null }
 export type Preview = S.QueryPreviewOut
 export type SyncPlan = S.PlanOut
+export type SyncYears = S.SyncYearsOut
 export type MemberRow = S.MemberOut
 export type CapacityUnit = S.CapacityUnitOut
 export type CapacitySheet = S.CapacitySheetOut
@@ -107,6 +108,7 @@ export const api = {
   deleteMapping: (d: Dataset) => send('DELETE', `/api/datasets/${d}/mapping`).then((res) => json<null>(res)),
   preview: (d: Dataset, m: Mapping, mapped: boolean) =>
     post(`/api/datasets/${d}/preview`, { ...m, mapped }).then((res) => json<Preview>(res)),
+  syncYears: () => fetch('/api/sync/years').then((res) => json<SyncYears>(res)),
   syncPlan: (entity: string | null, years: S.YearsIO | null) =>
     post('/api/sync/plan', { entity, years }).then((res) => json<SyncPlan>(res)),
   syncRun: (entity: string | null, confirm: string[], years: S.YearsIO | null) =>

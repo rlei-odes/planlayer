@@ -23,12 +23,26 @@ function Switch({ on, label, onChange }: { on: boolean; label: string; onChange:
   )
 }
 
-function Name({ row }: { row: ScopeRow }) {
+function Name({ row, sourceName }: { row: ScopeRow; sourceName: string | null }) {
+  // Leaves lead with their code, as on the sheets; nodes lead with their name and show the code
+  // after it, since inherited account sets name the node by its code.
   return (
     <span className="sc-name" style={{ paddingLeft: row.depth * 18 }}>
       {!row.is_group && <span className="pl-code">{row.code}</span>}
       <span className={row.is_group ? 'sc-group' : undefined}>{row.name}</span>
-      {row.new && <span className="sc-flag new">new</span>}
+      {row.is_group && <span className="sc-node-code">{row.code}</span>}
+      {row.new && (
+        <span
+          className="sc-flag new"
+          title={
+            sourceName
+              ? `Not in ${sourceName}: first time in a planning round, without plan values to start from.`
+              : 'First time in a planning round, without plan values to start from.'
+          }
+        >
+          new
+        </span>
+      )}
       {row.missing && (
         <span className="sc-flag gone" title="The source no longer delivers it; its values are kept.">
           no longer delivered
@@ -118,7 +132,7 @@ export function CostCentersTab({ draft, setDraft, rows, fiscalYear, sourceName }
               return (
                 <tr key={r.code} className={`${r.is_group ? 'node' : ''}${off ? ' sc-off' : ''}`}>
                   <td>
-                    <Name row={r} />
+                    <Name row={r} sourceName={sourceName} />
                   </td>
                   <td className="sc-switch-col">
                     {!r.is_group && <Switch on={!off} label={`${r.code} planned`} onChange={(on) => setPlanned(r.code, on)} />}
@@ -129,7 +143,10 @@ export function CostCentersTab({ draft, setDraft, rows, fiscalYear, sourceName }
                       label={`Account set of ${r.code}`}
                       value={own ?? ''}
                       options={[
-                        { value: '', label: inherited ? `${inherited.set} · from ${inherited.from}` : 'All accounts' },
+                        {
+                          value: '',
+                          label: inherited ? `Inherited: ${inherited.set} (${inherited.from})` : 'All accounts',
+                        },
                         ...sets.map((s) => ({ value: s.name, label: s.name })),
                       ]}
                       onChange={(name) => setDraft({ ...draft, account_sets: assign(sets, r.code, name || null) })}
@@ -246,7 +263,7 @@ export function AccountsTab({ draft, setDraft, rows, fiscalYear, sourceName }: P
               return (
                 <tr key={r.code} className={`${r.is_group ? 'node' : ''}${off ? ' sc-off' : ''}`}>
                   <td>
-                    <Name row={r} />
+                    <Name row={r} sourceName={sourceName} />
                   </td>
                   <td className="sc-switch-col">
                     {!r.is_group && <Switch on={!off} label={`${r.code} planned`} onChange={(on) => setPlanned(r.code, on)} />}

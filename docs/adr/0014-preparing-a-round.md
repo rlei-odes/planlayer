@@ -15,8 +15,9 @@ Rounds read actuals from the one actuals version (ADR 0001) by period: prior-yea
 ### Actuals are synced for a window of fiscal years
 
 - A sync replaces actuals and work center actual hours **only for a window of fiscal years**; every other period stays as stored. The window is chosen on the Sync page (or `planlayer sync --years 2025-2027`). By default it covers the years the rounds in setup or open compare with: each such round's fiscal year and the year before. Without such rounds, every year is replaced.
-- The admin's query stays independent of the year. The sync keeps only the window's rows. A query may use the parameters `:period_from` and `:period_to` (the first and last month of the window) to filter in the warehouse.
-- The sync preview lists the actual cells per fiscal year in the window, stored now and delivered by the source. It warns when a year that holds actuals would be emptied: the sign of a query that names a fixed year.
+- The admin's query stays independent of the year. The sync wraps it and adds the window as a filter on the column mapped to `period` (`period_col >= first day AND period_col < first day after the window`), which the warehouse applies before sending rows. The Sources page shows that filter for the default window.
+- A period is any day of its month: a date, a timestamp or ISO text. The sync counts it as the month, so daily rows add up to the monthly cell.
+- The sync preview lists the actual cells per fiscal year in the window, stored now and delivered by the source. It warns when a year that holds actuals would be emptied: the sign of a query that names a fixed year. Changed members list what changed, as was → becomes.
 - Rounds don't own actuals. A round reads the periods it needs from the actuals version, so two rounds of the same year compare with the same actuals.
 - Syncs are written by the system user, the actor of jobs (ADR 0009). The run records who asked for it. An admin who reads no cost centers can therefore run a sync, and its preview counts stored actuals.
 
@@ -56,6 +57,12 @@ A new round is set up like a chosen earlier round, by default the latest round o
 
 - Cost centers valid in the new fiscal year and not in the source round start planned. The scope tab marks them as new.
 - Plan values are copied only for cost centers planned in the new round, and only for accounts the new round plans for them (not marked not planned, inside their account set, not credited by capacity planning). The copy is one change batch of the controller (ADR 0010), so it is audited and can be undone.
+- Creating a round is a step of its own, before its setup: the page shows only the source round and the checklist. The round keeps how it was created (who, when, the checklist, the uplift and the number of plan values copied) and its setup page shows it. Carried values are the round's plan values from then on; changing the setup later doesn't copy again.
+- Every entry form stores months, so changing a form in a round with carried values keeps them: a line switched to a year form shows their total, and only a year total typed afterwards is spread the new way.
+
+### Comparison columns say what they hold
+
+A comparison column has an optional note from the controller, shown to planners as the column's tooltip (e.g. "January to June only"). Actuals columns also state how far their actuals go: a budget prepared mid-year compares with the current year's actuals up to the last synced month, and the months after are blank, not zero.
 
 ### The controller prepares a round in setup
 
@@ -63,7 +70,7 @@ While a round is in `setup`, controllers may write its plan values, line spreads
 
 ## Reasons
 
-- **A window, not the query, decides the years:** the admin writes the query once. Replacing only the window means a narrowed query or a short source extract can't wipe history, and closed years stop changing silently (D-27). Filtering in the sync, with optional parameters for the warehouse, keeps a simple query correct and a large one fast.
+- **A window, not the query, decides the years:** the admin writes the query once. Replacing only the window means a narrowed query or a short source extract can't wipe history, and closed years stop changing silently (D-27). Adding the filter around the query, on the mapped column, keeps the query simple and still lets the warehouse filter early, whatever its columns are called.
 - **The system user writes syncs:** the admin role reads no plan values or actuals by design (ADR 0009). A sync is a job, not a planning action, and ADR 0009 already names the system user as the actor of jobs.
 - **Members only grow:** sources forget members that still carry history. Dropping them, or their place in the tree, would make totals and comparisons disagree with the past.
 - **Not planned, but visible:** a total that leaves out an account's prior-year actuals no longer reconciles with the ledger, and a planner who doesn't see an account phased out keeps asking for it.
@@ -73,8 +80,8 @@ While a round is in `setup`, controllers may write its plan values, line spreads
 
 ## Consequences
 
-- New: `account_set`, `account_set_account`, `account_set_assignment`; `hidden_account` becomes `not_planned_account`. The locks on plan values, line spreads and capacity lines get the setup rule, and the lock on plan values the account set rule.
+- New: `account_set`, `account_set_account`, `account_set_assignment`; `hidden_account` becomes `not_planned_account`; `planning_round` keeps `created_by`, `created_at` and `carried`; `comparison` has a `note`. The locks on plan values, line spreads and capacity lines get the setup rule, and the lock on plan values the account set rule.
 - The grid marks rows read only when their account is not planned or outside the set, and lists the set's accounts. "Add account" offers the set's accounts.
-- The sync API and CLI take a window of fiscal years; the preview returns the window and the cells per year.
+- The sync API and CLI take a window of fiscal years; the preview returns the window and the cells per year. `GET /api/sync/years` lists the default window and the cells stored per year.
 - The setup page's Cost centers tab replaces enabling cost centers on the status page as the place to prepare a round; the status page keeps its quick toggle for a running round.
 - Open: an uplift per account group, copying planned hours, and a sync that runs per source round year automatically.

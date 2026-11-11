@@ -26,27 +26,28 @@ The other cases are decisions the controller makes in the UI, on existing data.
 Log in as `admin@`, open *Master data → Sources*.
 
 1. The cards are grouped by what needs them: *Master data*, *Cost center planning* (actuals), *Capacity planning* (activity types, work centers, rates, *work center actual hours*).
-2. Open *Actuals*. The query is year-independent. Change it to filter in the warehouse:
-   `SELECT period, entity_code, cost_center_code, account_code, amount FROM gold.v_gl_actuals_natural WHERE period BETWEEN :period_from AND :period_to`
-   *Preview as synced* shows rows (the preview reads every year). Save.
-3. Do the same for *Work center actual hours* (`gold.v_capacity_actuals`).
-4. Optional, to see the safety net: change the actuals query to `… WHERE extract(year FROM period) = 2026`, open *Sync*, set the years to 2025–2026 and preview. The table shows 2025 as stored but not delivered, with a warning that the sync would remove those cells. Restore the query.
+2. Open *Actuals*. The warehouse names its columns its own way (`posting_month`, `company_code`, `cost_center`, `gl_account`, `amount_eur`); the fields map them, e.g. *period* → `posting_month`. The query names no year. Below it, the page shows the filter the sync adds on the mapped column for the default window: `WHERE posting_month >= '2025-01-01' AND posting_month < '20xx-01-01'`.
+3. Change the query (e.g. add a trailing comment): the card shows *Unsaved changes* and *Save mapping* becomes active. Undo the change: it is saved again, and the button is inactive.
+4. *Preview as synced* shows rows of the default window only. The *period* field is a *date*; any day of a month counts as that month.
+5. Optional, to see the safety net: change the actuals query to `… WHERE extract(year FROM posting_month) = 2026` and save. Open *Sync*, choose 2025 to 2026 and preview. The table shows 2025 as stored but not delivered, with a warning that the sync would remove those cells. Restore the query.
 
 ## 2. Admin or controller: sync
 
-*Master data → Sync*, leave the years empty, *Preview sync*.
+*Master data → Sync*. Under *Sync filter*, the years default to what the open rounds compare with: 2025 to 2026 while only B2026 is open. The year lists show the cells stored per year. *Preview sync*.
 
-- The window is 2025–2026 (the open round B2026 and the year before), with stored and delivered cells per year equal.
-- New: cost center DE1290, account 6950. Changed: cost center DE1100 (its end date).
+- *Sync preview*: stored and delivered cells per year are equal.
+- New: cost center DE1290 *Additive Manufacturing*, account 6950 *Cloud subscriptions*. Changed: DE1100 *Shift Management*, "valid to 9999-12-31 → 2026-12-31".
 - Run the sync. Years before 2025 are not touched.
 
 ## 3. Controller: create Budget 2027
 
-Log in as `controller@`, *Setup → New round*.
+Log in as `controller@`, *Setup → New round*. The page shows only the new round: nothing of the round selected before.
 
 1. Kind *Budget*, fiscal year 2027, code `B2027`. *Set up like* proposes Budget 2026, the latest budget.
 2. The checklist carries entry forms and comparisons, adds Budget 2026 as a comparison column, and carries the cost center scope, accounts, capacity and sheets. Tick *Plan values* and set the uplift, e.g. 3 %: the example shows 1,000 becoming 1,030.
-3. Create. The page switches to Budget 2027, in status *setup*.
+3. Create. The page switches to Budget 2027, in status *setup*, with a note that it stays unseen by planners until opened.
+4. *Forms & columns → Round* shows how the round was created: from Budget 2026, by whom and when, each checklist item carried or not, and the plan values with "+3 %" and the number of cells. *Comparison columns* now lists Budget 2026.
+5. Add a note to *Prior-year actuals*, e.g. "2026 to June only". On the sheets, *Actual 2026* is underlined; its tooltip shows the note and that actuals go up to June 2026.
 
 Check: DE1100 *Shift Management* is not part of the round (not valid in 2027).
 
@@ -54,7 +55,7 @@ Check: DE1100 *Shift Management* is not part of the round (not valid in 2027).
 
 *Cost centers* tab.
 
-- DE1290 is marked *new*: planned, without figures in either column.
+- DE1290 is marked *new* (its tooltip: not in Budget 2026, first time in a planning round): planned, without figures in either column.
 - Filter *New* shows it alone; *No longer delivered* is empty unless the source dropped a member.
 - Switch PL1080 *Training Centre PL* off: the round no longer plans it.
 
@@ -63,8 +64,8 @@ Check: DE1100 *Shift Management* is not part of the round (not valid in 2027).
 *Accounts* tab.
 
 1. Switch 6670, 6680 and 6690 off (not planned). The columns show what they carried: Actual 2026 and Budget 2026.
-2. Add the sets *Administration* (other operating income, personnel, travel, IT, facilities, other operating expenses, depreciation, plus 6950), *Accounting* (personnel, travel, IT, other operating expenses, plus 6950) and *Manufacturing* (direct material, inbound freight, personnel, supplies, travel, IT, facilities, depreciation). Tick account groups; their accounts show as included through the group.
-3. On the *Cost centers* tab, assign *Administration* to the node *Corporate*, *Accounting* to DE1240 *Finance*, and *Manufacturing* to *Pump Production* and *Valve Production*. Cost centers below show the inherited set, e.g. "Administration · from DIV_CORP".
+2. Add the sets *Administration* (other operating income, personnel, travel, IT, facilities, other operating expenses, depreciation), *Accounting* (personnel, travel, IT, other operating expenses) and *Manufacturing* (direct material, inbound freight, personnel, supplies, travel, IT, facilities, depreciation). Tick account groups; their accounts show as included through the group. 6950 belongs to the group *IT and software*, so a set with IT includes it.
+3. On the *Cost centers* tab, assign *Administration* to the node *Corporate* (`DIV_CORP`, shown after the node's name), *Accounting* to DE1240 *Finance*, and *Manufacturing* to *Pump Production* and *Valve Production*. Cost centers below show the inherited set, e.g. "Inherited: Administration (DIV_CORP)".
 4. Save. The values carried for the not planned accounts, and for accounts outside each cost center's set, are cleared in the same save.
 
 ## 6. Controller: the sheets
@@ -73,7 +74,7 @@ Check: DE1100 *Shift Management* is not part of the round (not valid in 2027).
 
 - **DE1240 Finance:** personnel, travel, IT and other operating expenses are listed, with or without values, and 6950 appears empty, ready to plan. Accounts outside *Accounting* that carry actuals or Budget 2026 values (e.g. other operating income) show read-only, marked *Not planned*, with their comparisons; group totals include them. *Add account* offers only the set's accounts.
 - **Travel expenses 08–10:** read-only, *Not planned*, with Actual 2026 and Budget 2026; no plan values.
-- **DE1290 Additive Manufacturing:** the *Manufacturing* accounts, all empty: a sheet to start from although it has no history.
+- **DE1290 Additive Manufacturing:** the *Manufacturing* accounts, all empty: a sheet to start from although it has no history. Empty lines show "Monthly · even" without a warning.
 - **Plan values:** carried lines show Budget 2026 + 3 % in 2027's months; the status stays *Not started*.
 - The controller can still edit while the round is in setup; planners see it read-only until it is opened on the status page.
 
@@ -83,4 +84,4 @@ Check: DE1100 *Shift Management* is not part of the round (not valid in 2027).
 
 ## Cleaning up
 
-To run the scenario again, delete round B2027 and its rows (development only), restore the sources' queries if changed, and re-run `uv run gen-testdata --variant standard` if the warehouse was changed by hand.
+To run the scenario again, delete round B2027 and its rows (development only), restore the sources' queries if changed (`planlayer seed-dev-mappings` maps every dataset to the generator's views again), and re-run `uv run gen-testdata --variant standard` if the warehouse was changed by hand.

@@ -1,7 +1,7 @@
 """The setup page (E-03, ADR 0007): create rounds, read and save a round's whole setup, and
 seasonality profiles. Controllers only."""
 
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Annotated, Literal
 
@@ -42,6 +42,8 @@ class RuleIO(BaseModel):
 class ComparisonIO(BaseModel):
     kind: Literal["prior_year_actuals", "actuals", "version"]
     version_code: str | None = None
+    # The controller's note to planners, shown with the column.
+    note: Annotated[str | None, Field(max_length=200)] = None
 
 
 class AccountSetIO(BaseModel):
@@ -65,16 +67,6 @@ class SetupIO(BaseModel):
     account_sets: list[AccountSetIO] = []
 
 
-class SetupOut(BaseModel):
-    round: Version
-    copied_from: str | None
-    setup: SetupIO
-    actuals_available: bool
-    enabled_cost_centers: int
-    sample_cost_center: str | None
-    periods: list[date]
-
-
 class CarryOverIn(BaseModel):
     """What a new round takes from the round it is set up like (ADR 0014)."""
 
@@ -86,6 +78,26 @@ class CarryOverIn(BaseModel):
     sheets: bool = True
     values: bool = False
     uplift: Annotated[Decimal, Field(ge=-100, le=1000)] = Decimal(0)  # percent
+
+
+class CreatedOut(BaseModel):
+    """How the round was created; ``carried`` is null for a round set up from the defaults."""
+
+    by: str | None
+    at: datetime
+    carried: CarryOverIn | None
+    cells: int | None  # plan values copied; null: none were carried
+
+
+class SetupOut(BaseModel):
+    round: Version
+    copied_from: str | None
+    created: CreatedOut | None  # null: created before rounds kept a record
+    setup: SetupIO
+    actuals_available: bool
+    enabled_cost_centers: int
+    sample_cost_center: str | None
+    periods: list[date]
 
 
 class RoundIn(BaseModel):
@@ -170,12 +182,25 @@ def setup(request: Request, user: CurrentUser, code: str) -> SetupOut:
             deadline=r.deadline,
         ),
         copied_from=v.copied_from,
+        created=None
+        if v.created is None or v.created.at is None
+        else CreatedOut(
+            by=v.created.by,
+            at=v.created.at,
+            carried=None
+            if v.created.carried is None
+            else CarryOverIn.model_validate(v.created.carried, from_attributes=True),
+            cells=v.created.cells,
+        ),
         setup=SetupIO(
             default_form=s.default_form,
             entry_forms=[
                 RuleIO.model_validate(rule, from_attributes=True) for rule in s.entry_forms
             ],
-            comparisons=[ComparisonIO(kind=k, version_code=c) for k, c in s.comparisons],
+            comparisons=[
+                ComparisonIO(kind=c.kind, version_code=c.version_code, note=c.note)
+                for c in s.comparisons
+            ],
             not_planned_accounts=s.not_planned_accounts,
             deadline=s.deadline,
             productive_cost_centers=s.productive_cost_centers,
@@ -208,7 +233,9 @@ def save_setup(request: Request, user: CurrentUser, code: str, body: SetupIO) ->
                     )
                     for r in body.entry_forms
                 ],
-                comparisons=[(c.kind, c.version_code) for c in body.comparisons],
+                comparisons=[
+                    rounds.Comparison(c.kind, c.version_code, c.note) for c in body.comparisons
+                ],
                 not_planned_accounts=body.not_planned_accounts,
                 deadline=body.deadline,
                 productive_cost_centers=body.productive_cost_centers,

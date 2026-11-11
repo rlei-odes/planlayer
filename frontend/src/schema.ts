@@ -68,7 +68,7 @@ export type CapacityUnitOut = {
   can_write: boolean
 }
 
-export type CarryOverIn = {
+export type CarryOverInInput = {
   setup?: boolean
   compare_with_source?: boolean
   scope?: boolean
@@ -77,6 +77,17 @@ export type CarryOverIn = {
   sheets?: boolean
   values?: boolean
   uplift?: number | string
+}
+
+export type CarryOverInOutput = {
+  setup?: boolean
+  compare_with_source?: boolean
+  scope?: boolean
+  accounts?: boolean
+  capacity?: boolean
+  sheets?: boolean
+  values?: boolean
+  uplift?: string
 }
 
 export type CellOut = {
@@ -101,11 +112,15 @@ export type CodeName = {
 export type ComparisonIO = {
   kind: "prior_year_actuals" | "actuals" | "version"
   version_code?: string | null
+  note?: string | null
 }
 
 export type ComparisonOut = {
   kind: string
   label: string
+  note: string | null
+  actuals_until: string | null
+  partial: boolean
 }
 
 export type ConflictOut = {
@@ -121,11 +136,19 @@ export type CountsOut = {
   unchanged: number
 }
 
+export type CreatedOut = {
+  by: string | null
+  at: string
+  carried: CarryOverInOutput | null
+  cells: number | null
+}
+
 export type DatasetOut = {
   dataset: "entities" | "cost_centers" | "accounts" | "actuals" | "activity_types" | "work_centers" | "work_center_rates" | "capacity_actuals"
   fields: FieldOut[]
   has_hierarchy: boolean
   mapping: MappingIO | null
+  window?: WindowOut | null
 }
 
 export type DevLoginIn = {
@@ -418,7 +441,7 @@ export type RoundIn = {
   fiscal_year: number
   deadline?: string | null
   copy_from?: string | null
-  carry?: CarryOverIn
+  carry?: CarryOverInInput
 }
 
 export type RoundStatusIn = {
@@ -486,6 +509,7 @@ export type SetupIO = {
 export type SetupOut = {
   round: Version
   copied_from: string | null
+  created: CreatedOut | null
   setup: SetupIO
   actuals_available: boolean
   enabled_cost_centers: number
@@ -528,6 +552,11 @@ export type SyncRunOut = {
   actual_rows: number
   matched: string[]
   seconds: number
+}
+
+export type SyncYearsOut = {
+  default: WindowOut | null
+  years: YearOut[]
 }
 
 export type UndoIn = {
@@ -579,10 +608,22 @@ export type Version = {
   deadline: string | null
 }
 
+export type WindowOut = {
+  first: number
+  last: number
+  period_from: string
+  before: string
+}
+
 export type YearCountOut = {
   fiscal_year: number
   stored: number
   delivered: number
+}
+
+export type YearOut = {
+  fiscal_year: number
+  stored: number
 }
 
 export type YearsIO = {

@@ -189,7 +189,8 @@ Mid-size manufacturer of industrial pumps and valves, ~400 employees.
 - [ ] **E-01** Connections & sync: configure a source; map each dataset to a view, table or query and its columns to fields (T-16), with validation and preview; sync members and actuals; show a reconciliation report.
     - [x] A running sync shows what it writes and for how long; each run records its duration per step, also in the server log.
     - [ ] Real progress for long syncs (current step, rows written), once a sync can run as a background job (D-24).
-    - [x] Actuals and work center actual hours are synced for a window of fiscal years (default: what the setup and open rounds compare with); older years stay. Queries may use `:period_from` and `:period_to`; the preview compares stored and delivered cells per year and warns when a year would be emptied ([ADR 0014](docs/adr/0014-preparing-a-round.md)).
+    - [x] Actuals and work center actual hours are synced for a window of fiscal years (default: what the setup and open rounds compare with); older years stay. The sync adds the window's filter to the query, on the column mapped to period; any day of a month counts as the month. The preview compares stored and delivered cells per year and warns when a year would be emptied ([ADR 0014](docs/adr/0014-preparing-a-round.md)).
+    - [x] Sources show unsaved changes and the filter the sync adds; field types in plain words. Sync picks years from a list with the cells stored per year; changed members show what changed (was → becomes).
     - [x] The system user writes syncs, so an admin without cost centers can sync; the run records who asked.
     - [x] Members no longer delivered keep their place in the hierarchy and are marked since when.
     - [x] Sources grouped by the module that needs them; "Work center actual hours".
@@ -218,7 +219,10 @@ Mid-size manufacturer of industrial pumps and valves, ~400 employees.
     - [x] New rounds carry over by a checklist from a chosen round (default: the latest of the same kind), plan values optionally with an uplift, as one change batch; controllers prepare a round in setup without moving its workflow status.
     - [ ] Uplift per account group (today one percentage for all carried values).
     - [ ] Carry planned hours (capacity) with the values.
-    - [ ] Lines listed by an account set without values show the "even ⚠" fallback badge; for empty lines the warning is noise.
+    - [x] The "even ⚠" fallback warning shows only on lines holding values.
+    - [x] Creating a round is a step of its own; the round then shows how it was created (from which round, by whom, what it carried, plan values with uplift and cell count).
+    - [x] A note per comparison column, shown to planners as the column's tooltip; actuals columns say how far their actuals go when the year is partial.
+    - [ ] A comparison column of actuals for the year to date plus the plan or forecast for the rest of the year, once forecasts exist.
     - [ ] An account set's own accounts and groups could be edited from the cost center tab too; today the Accounts tab holds the matrix.
 - [ ] **E-04** Versions: create, copy with shift + uplift, compare.
 - [ ] **E-05** Planning grid (RevoGrid, ADR 0006) for one planning unit at a time (T-25), with a unit switcher: edit, paste, fill-drag, subtotals, keyboard flow, percentage mode, and cells editable as the entry form allows. Built: editing, paste from Excel and LibreOffice (the trailing newline they copy is dropped, so it never blanks the cell below), one copied value pasted over a selection fills it, fill-drag, subtotals, keyboard flow (E-13).

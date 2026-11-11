@@ -80,7 +80,15 @@ def test_grid_rows_prior_year_and_blank_plan(client: TestClient) -> None:
     grid = client.get(f"{URL}/grid").json()
     assert [r["code"] for r in grid["rows"]] == ["A", "6000", "6010", "B", "7000"]
     assert grid["periods"][0] == "2026-01-01"
-    assert grid["comparisons"] == [{"kind": "prior_year_actuals", "label": "Actual 2025"}]
+    assert grid["comparisons"] == [
+        {
+            "kind": "prior_year_actuals",
+            "label": "Actual 2025",
+            "note": None,
+            "actuals_until": "2025-12-01",
+            "partial": False,
+        }
+    ]
     r = rows(grid)
     assert r["6000"]["comparisons"] == [["100.00"] * 12]
     assert r["6010"]["comparisons"] == [["50.00"] + [None] * 11]

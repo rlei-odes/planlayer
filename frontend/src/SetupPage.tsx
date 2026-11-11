@@ -78,6 +78,7 @@ export default function SetupPage({
   const [profiles, setProfiles] = useState<Profile[]>([])
   const [note, setNote] = useState<{ kind: 'ok' | 'error' | 'warn'; text: string } | null>(null)
   const [creating, setCreating] = useState(false)
+  const [justCreated, setJustCreated] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [tab, setTab] = useState<Tab>('forms')
   const [scope, setScope] = useState<Scope | null>(null)
@@ -157,26 +158,37 @@ export default function SetupPage({
       <div className="su-head">
         <div>
           <div className="su-eyebrow">Yearly planning setup</div>
-          <h2 className="su-title">{round ? `${round.name}` : 'Planning rounds'}</h2>
+          <h2 className="su-title">{creating ? 'New planning round' : round ? `${round.name}` : 'Planning rounds'}</h2>
         </div>
-        <button type="button" className="su-btn primary" onClick={() => setCreating((c) => !c)}>
-          New round
-        </button>
+        {!creating && (
+          <button type="button" className="su-btn primary" onClick={() => setCreating(true)}>
+            New round
+          </button>
+        )}
       </div>
 
+      {/* Creating a round is a step of its own: what the new round takes from an earlier one.
+          Its forms, cost centers and accounts are set up afterwards, on the round itself. */}
       {creating && (
         <NewRoundCard
           rounds={rounds}
           onCancel={() => setCreating(false)}
           onCreated={(created) => {
             setCreating(false)
+            setJustCreated(created)
             onRoundsChanged(created)
           }}
         />
       )}
-      {note && <div className={`su-note ${note.kind}`} style={{ marginBottom: 14 }}>{note.text}</div>}
+      {!creating && justCreated === code && (
+        <div className="su-note ok" style={{ marginBottom: 14 }}>
+          Round created, in status setup: planners don’t see it yet. Set up its forms, cost centers and accounts on the
+          tabs below; all of it stays changeable until you open the round on the status page.
+        </div>
+      )}
+      {!creating && note && <div className={`su-note ${note.kind}`} style={{ marginBottom: 14 }}>{note.text}</div>}
 
-      {view && draft && round && (
+      {!creating && view && draft && round && (
         <div className="seg su-tabs" role="tablist" aria-label="Setup">
           {TABS.map((t) => (
             <button key={t.tab} type="button" role="tab" aria-selected={tab === t.tab} aria-pressed={tab === t.tab} onClick={() => setTab(t.tab)}>
@@ -185,7 +197,7 @@ export default function SetupPage({
           ))}
         </div>
       )}
-      {view && draft && round && scope && tab !== 'forms' && (
+      {!creating && view && draft && round && scope && tab !== 'forms' && (
         <div className="su-scope">
           {tab === 'cost_centers' ? (
             <CostCentersTab
@@ -206,7 +218,7 @@ export default function SetupPage({
           )}
         </div>
       )}
-      {view && draft && round && tab === 'forms' && (
+      {!creating && view && draft && round && tab === 'forms' && (
         <div className="su-layout">
           <div className="su-col">
             <section className="su-card">
@@ -215,10 +227,9 @@ export default function SetupPage({
               </h3>
               <p className="su-hint">
                 {round.kind === 'budget' ? 'Budget' : 'Forecast'} for fiscal year {round.fiscal_year} · status{' '}
-                <strong>{round.status}</strong>
-                {view.copied_from && ` · set up from ${versionNames[view.copied_from] ?? view.copied_from}`} ·{' '}
-                {view.enabled_cost_centers} cost centers to plan
+                <strong>{round.status}</strong> · {view.enabled_cost_centers} cost centers to plan
               </p>
+              <CreatedFrom view={view} sourceName={view.copied_from ? (versionNames[view.copied_from] ?? view.copied_from) : null} />
               <div className="su-body su-row">
                 <label className="su-field">
                   Deadline
@@ -297,7 +308,7 @@ export default function SetupPage({
         </div>
       )}
 
-      <div className={`su-savebar${dirty ? ' show' : ''}`} role="status">
+      <div className={`su-savebar${dirty && !creating ? ' show' : ''}`} role="status">
         <span>Unsaved changes to {round?.name}</span>
         <button type="button" className="su-btn ghost" onClick={() => view && setDraft(view.setup)}>
           Discard
@@ -384,6 +395,10 @@ function EntryForms({
           ))}
         </div>
         <p className="su-explain">{explain}</p>
+        <p className="su-hint su-form-change">
+          Every form stores months. Changing a form keeps the months already stored, carried over or typed: a line
+          switched to a year form shows their total, and only a year total typed afterwards is spread the new way.
+        </p>
         <div className="su-sub">Exceptions · the nearest one above an account wins</div>
         <div className="su-rules">
           {draft.entry_forms.map((r, i) => (
@@ -497,12 +512,28 @@ function Comparisons({
       <h3>
         <span className="su-step">4</span> Comparison columns
       </h3>
-      <p className="su-hint">Shown before the plan, in this order.{!actuals && ' Actuals appear here once they are mapped.'}</p>
+      <p className="su-hint">
+        Shown before the plan, in this order. A note shows as the column’s tooltip on the sheet; actuals columns also
+        say there how far their actuals go, e.g. January to June.{!actuals && ' Actuals appear here once they are mapped.'}
+      </p>
       <div className="su-body">
         <ul className="su-list">
           {draft.comparisons.map((c, i) => (
-            <li key={`${c.kind}-${c.version_code ?? ''}`}>
-              <span className="grow">{label(c)}</span>
+            <li key={`${c.kind}-${c.version_code ?? ''}`} className="su-cmp">
+              <span className="su-cmp-name">{label(c)}</span>
+              <input
+                className="su-input su-cmp-note"
+                value={c.note ?? ''}
+                maxLength={200}
+                placeholder="Note to planners, e.g. January to June only"
+                aria-label={`Note on ${label(c)}`}
+                onChange={(e) =>
+                  setDraft({
+                    ...draft,
+                    comparisons: draft.comparisons.map((x, j) => (j === i ? { ...x, note: e.target.value || null } : x)),
+                  })
+                }
+              />
               <button type="button" className="su-icon" aria-label="Move up" disabled={i === 0} onClick={() => move(i, -1)}>
                 ↑
               </button>
@@ -769,6 +800,51 @@ function profileCode(name: string): string {
   return name.toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 20)
 }
 
+const DATE_TIME = new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeStyle: 'short' })
+
+/** How the round was created: from which round, by whom, and what it carried over. */
+function CreatedFrom({ view, sourceName }: { view: SetupView; sourceName: string | null }) {
+  const created = view.created
+  if (!created) return sourceName ? <p className="su-hint">Set up from {sourceName}.</p> : null
+  const when = `${created.by ? `by ${created.by} ` : ''}on ${DATE_TIME.format(new Date(created.at))}`
+  if (!created.carried || !sourceName)
+    return <p className="su-hint su-created">Created {when} from the defaults.</p>
+  const carried = created.carried
+  const uplift = Number(carried.uplift ?? 0)
+  return (
+    <div className="su-created">
+      <div className="su-sub">
+        Created from {sourceName} {when}
+      </div>
+      <ul className="su-carried">
+        {CARRY.map((c) => {
+          const on = !!carried[c.key]
+          return (
+            <li key={c.key} className={on ? undefined : 'off'}>
+              <span aria-hidden="true">{on ? '✓' : '–'}</span>
+              {c.label}
+              {c.key === 'values' && on && (
+                <span className="ink-3">
+                  {' '}
+                  · {uplift ? `${uplift > 0 ? '+' : ''}${uplift} %` : 'unchanged'}, {(created.cells ?? 0).toLocaleString('en-US')} cells
+                </span>
+              )}
+              {!on && <span className="ink-3"> · not carried</span>}
+            </li>
+          )
+        })}
+      </ul>
+      {carried.values && (
+        <p className="su-hint">
+          The carried values are this round’s plan values, written once at creation as one change batch: planners see
+          them on their sheets when the round opens. Until then you can change them on the sheets, or clear them by
+          marking accounts not planned or by account sets. Settings changed here later don’t copy them again.
+        </p>
+      )}
+    </div>
+  )
+}
+
 const CARRY: { key: keyof Omit<CarryOver, 'uplift'>; label: string; hint: string }[] = [
   { key: 'setup', label: 'Entry forms and comparisons', hint: 'default form, exceptions, comparison columns' },
   { key: 'compare_with_source', label: 'Compare with the source round', hint: 'adds it as a comparison column' },
@@ -834,7 +910,13 @@ function NewRoundCard({
   const uplift = Number(carry.uplift ?? 0)
   return (
     <section className="su-card" style={{ marginBottom: 14 }}>
-      <h3>New planning round</h3>
+      <h3>
+        <span className="su-step">1</span> Create the round
+      </h3>
+      <p className="su-hint">
+        Choose the round it starts from and what it takes over. Next, on the round itself, you adjust its entry forms,
+        comparison columns, cost centers and accounts. The round stays in setup, unseen by planners, until you open it.
+      </p>
       <div className="su-row" style={{ marginTop: 10 }}>
         <div className="su-field su-w-select">
           Kind

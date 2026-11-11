@@ -5,11 +5,12 @@ safe cast turns values that don't fit (extra decimals, wrong types) into errors.
 """
 
 from collections.abc import Iterator, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Protocol
 
 import pyarrow as pa
 from sqlalchemy import (
+    ColumnClause,
     Connection,
     Engine,
     FromClause,
@@ -30,12 +31,14 @@ class Relation:
 
 @dataclass(frozen=True)
 class Query:
-    """A query, with values for the ``:name`` parameters it may use. ``between`` keeps only rows
-    whose contract field lies in a range: (field, lowest, highest), both included."""
+    """A query. ``within`` keeps only rows whose contract field lies in a range: (field, from,
+    before), from included, before not, so timestamps late on a range's last day count. It is
+    added as a filter around the query, on the column the field is mapped to, so the source
+    applies it before sending rows."""
 
     sql: str
-    params: Mapping[str, Any] = field(default_factory=dict)
-    between: tuple[str, Any, Any] | None = None
+    within: tuple[str, Any, Any] | None = None
+    limit: int | None = None  # at most this many rows, after the filter
 
 
 Source = Relation | Query
@@ -88,14 +91,16 @@ class PostgresSource:
         stmt = select(  # type: ignore[var-annotated]
             *[column(mapped.get(n, n)).label(n) for n in names]
         ).select_from(self._origin(source))
-        params = source.params if isinstance(source, Query) else {}
-        if isinstance(source, Query) and source.between is not None:
-            name, lowest, highest = source.between
-            stmt = stmt.where(column(mapped.get(name, name)).between(lowest, highest))
+        if isinstance(source, Query) and source.within is not None:
+            name, start, before = source.within
+            col: ColumnClause[Any] = column(mapped.get(name, name))
+            stmt = stmt.where(col >= start, col < before)
+        if isinstance(source, Query) and source.limit is not None:
+            stmt = stmt.limit(source.limit)
         with self.engine.begin() as conn:
             self._read_only(conn, self.timeout_s)
             result = conn.execution_options(stream_results=True, yield_per=self.batch_rows).execute(
-                stmt, dict(params)
+                stmt
             )
             for chunk in result.partitions():
                 by_column = list(zip(*chunk, strict=True))
@@ -114,7 +119,7 @@ class PostgresSource:
         stmt = select(text("*")).select_from(self._origin(source)).limit(limit)
         with self.engine.begin() as conn:
             self._read_only(conn, 30)
-            result = conn.execute(stmt, dict(source.params) if isinstance(source, Query) else {})
+            result = conn.execute(stmt)
             names = list(result.keys())
             rows = [[None if v is None else str(v) for v in row] for row in result]
         return names, rows

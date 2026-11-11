@@ -124,7 +124,7 @@ def test_level_columns_build_a_ragged_tree(
         ),
     )
     p = sync.plan(engine, source)
-    assert p.problems == [] and p.new == ["cost center CC3"]
+    assert p.problems == [] and p.new == ["cost center CC3 Board"]
     sync.run(engine, source, system(engine))
     m = members(client, "cost_centers")
     assert (m["CC3"]["parent"], m["CC3"]["depth"]) == ("NW", 1)  # level 2 empty: ragged
@@ -291,33 +291,36 @@ def _actual_years(engine: Engine) -> dict[int, int]:
 def test_actuals_sync_replaces_only_the_window(
     engine: Engine, client: TestClient, source_schema: str, source: PostgresSource
 ) -> None:
+    # Any day of a month counts as the month, so daily rows add up; the window's last day is in.
     _source_sql(
-        f"INSERT INTO {source_schema}.v_gl_actuals_natural "
-        "VALUES ('2024-03-01', 'DE', 'CC1', '6000', 77.00)"
+        f"INSERT INTO {source_schema}.v_gl_actuals_natural VALUES "
+        "('2024-03-01', 'DE', 'CC1', '6000', 77.00), ('2024-03-17', 'DE', 'CC1', '6000', 23.00),"
+        "('2024-12-31', 'DE', 'CC1', '6010', 5.00)"
     )
     sync.run(engine, source, system(engine), years=(2024, 2025))
-    assert _actual_years(engine) == {2024: 1, 2025: 16}
+    assert _actual_years(engine) == {2024: 2, 2025: 16}
     # The admin narrows the query to one year, as a warehouse query often does.
     with engine.connect() as conn:
         m = sync.mappings(conn)["actuals"]
-    narrowed = replace(m, query=f"{m.query} WHERE extract(year FROM period) = 2025")
+    narrowed = replace(m, query=f"{m.query} WHERE extract(year FROM posting_month) = 2025")
     sync.save_mapping(engine, system(engine), narrowed)
     # The default window is what round B2026 compares with: 2025 and 2026. 2024 stays.
     p = sync.plan(engine, source)
     assert p.window is not None and (p.window.first, p.window.last) == (2025, 2026)
     assert [(y.fiscal_year, y.stored, y.delivered) for y in p.years] == [(2025, 16, 16)]
     sync.run(engine, source, system(engine))
-    assert _actual_years(engine) == {2024: 1, 2025: 16}
+    assert _actual_years(engine) == {2024: 2, 2025: 16}
     # A window reaching 2024 shows that the narrowed query would empty it.
     wide = sync.plan(engine, source, years=(2024, 2025))
     assert [(y.fiscal_year, y.stored, y.delivered) for y in wide.years] == [
-        (2024, 1, 0),
+        (2024, 2, 0),
         (2025, 16, 16),
     ]
-    # A query can read the window itself, so the warehouse filters early.
-    params = replace(m, query=f"{m.query} WHERE period BETWEEN :period_from AND :period_to")
-    sync.save_mapping(engine, system(engine), params)
-    assert sync.plan(engine, source, years=(2024, 2024)).actual_cells == 1
+    # The window's filter is added to the query's own, on the column mapped to period.
+    own = replace(m, query=f"{m.query} WHERE gl_account <> '6010'")
+    sync.save_mapping(engine, system(engine), own)
+    by_year = sync.plan(engine, source, years=(2024, 2025)).years
+    assert [(y.fiscal_year, y.delivered) for y in by_year] == [(2024, 1), (2025, 15)]
     with pytest.raises(sync.SyncError):
         sync.plan(engine, source, years=(2026, 2025))
 
@@ -344,12 +347,23 @@ def test_a_member_no_longer_delivered_keeps_its_place(
     _source_sql(
         f"DELETE FROM {source_schema}.v_cost_center_hierarchy WHERE member_code = 'CC2';"
         f"DELETE FROM {source_schema}.v_cost_centers WHERE cost_center_code = 'CC2';"
-        f"DELETE FROM {source_schema}.v_gl_actuals_natural WHERE cost_center_code = 'CC2';"
+        f"DELETE FROM {source_schema}.v_gl_actuals_natural WHERE cost_center = 'CC2';"
     )
     p = sync.plan(engine, source)
-    assert p.gone == ["cost center CC2"]
+    assert p.gone == ["cost center CC2 Assembly"]
     sync.run(engine, source, system(engine))
     m = members(client, "cost_centers")["CC2"]
     assert (m["parent"], m["origin"]) == ("DEP", "source")
     status = {r["code"]: r for r in client.get("/api/versions/B2026/overview").json()["rows"]}
     assert status["CC2"]["depth"] == 2  # still under DEP
+
+
+def test_the_preview_says_what_changed(
+    engine: Engine, client: TestClient, source_schema: str, source: PostgresSource
+) -> None:
+    _source_sql(
+        f"UPDATE {source_schema}.v_cost_centers SET valid_to = '2026-12-31' "
+        "WHERE cost_center_code = 'CC2'"
+    )
+    p = sync.plan(engine, source)
+    assert p.changed == ["cost center CC2 Assembly: valid to 9999-12-31 → 2026-12-31"]

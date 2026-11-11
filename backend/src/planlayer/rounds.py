@@ -8,7 +8,7 @@ The yearly setup page (E-03) edits a round through these functions.
 from collections import defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Literal
 
@@ -67,6 +67,16 @@ from planlayer.store.schema import (
 from planlayer.store.uow import unit_of_work
 
 ComparisonKind = Literal["prior_year_actuals", "actuals", "version"]
+
+
+@dataclass
+class Comparison:
+    """A comparison column: prior-year actuals, actuals of the year, or another version; with
+    the controller's note to planners, e.g. "January to June only"."""
+
+    kind: ComparisonKind
+    version_code: str | None = None  # kind ``version`` only
+    note: str | None = None
 
 
 class NotFoundError(LookupError):
@@ -161,6 +171,14 @@ class CarryOver:
     values: bool = False  # plan values, moved to the new year and raised by ``uplift``
     uplift: Decimal = Decimal(0)  # percent
 
+    def record(self, cells: int | None) -> dict[str, object]:
+        """What the round carried, as kept on it: the items, and the plan values copied."""
+        items = {k: getattr(self, k) for k in CARRY_ITEMS}
+        return {**items, "uplift": str(self.uplift), "cells": cells}
+
+
+CARRY_ITEMS = ("setup", "compare_with_source", "scope", "accounts", "capacity", "sheets", "values")
+
 
 CENT = Decimal("0.01")
 
@@ -203,6 +221,8 @@ def create_round(
                 fiscal_year=fiscal_year,
                 deadline=deadline,
                 copied_from=source.version_id if source else None,
+                created_by=actor.login,
+                created_at=func.now(),
             )
         )
         if source is not None and carry.setup:
@@ -258,8 +278,16 @@ def create_round(
                         ),
                     )
                 )
-        if carry.values:
+        cells = (
             _copy_values(conn, source, vid, fiscal_year, planned, carry.uplift)
+            if carry.values
+            else None
+        )
+        conn.execute(
+            update(planning_round)
+            .where(planning_round.c.version_id == vid)
+            .values(carried=carry.record(cells))
+        )
         return vid
 
 
@@ -382,12 +410,13 @@ def _copy_values(
     fiscal_year: int,
     planned: set[int],
     uplift: Decimal,
-) -> None:
+) -> int:
     """The source round's plan values in the new year, month by month, times 1 + uplift %.
     Only cells the new round plans: a planned cost center, an account planned in the round,
-    inside the cost center's account set and not credited by capacity planning."""
+    inside the cost center's account set and not credited by capacity planning. Returns the
+    number of cells written."""
     if not planned:
-        return
+        return 0
     old_periods = fiscal_periods(conn, source.fiscal_year)
     new_periods = fiscal_periods(conn, fiscal_year)
     moved = dict(zip(old_periods, new_periods, strict=True))
@@ -428,6 +457,7 @@ def _copy_values(
             }
         )
     insert_all(conn, f, rows)  # one statement: the lock and audit triggers run once
+    return len(rows)
 
 
 def account_scopes(
@@ -669,20 +699,17 @@ def _set_entry_form(
     )
 
 
-def set_comparisons(
-    engine: Engine, actor: User, code: str, columns: list[tuple[ComparisonKind, str | None]]
-) -> None:
-    """The comparison columns, in order: (kind, version code for kind ``version``)."""
+def set_comparisons(engine: Engine, actor: User, code: str, columns: list[Comparison]) -> None:
+    """The comparison columns, in order."""
     actor.require_controller()
     with unit_of_work(engine, actor) as conn:
         _set_comparisons(conn, get_round(conn, code), columns)
 
 
-def _set_comparisons(
-    conn: Connection, r: RoundRef, columns: list[tuple[ComparisonKind, str | None]]
-) -> None:
+def _set_comparisons(conn: Connection, r: RoundRef, columns: list[Comparison]) -> None:
     rows = []
-    for position, (kind, other) in enumerate(columns, start=1):
+    for position, column in enumerate(columns, start=1):
+        kind, other = column.kind, column.version_code
         if kind not in ("prior_year_actuals", "actuals", "version"):
             raise RoundError(f"unknown comparison {kind}")
         if (kind == "version") != (other is not None):
@@ -697,6 +724,7 @@ def _set_comparisons(
                 "position": position,
                 "kind": kind,
                 "compare_version_id": other_id,
+                "note": (column.note or "").strip() or None,
             }
         )
     conn.execute(
@@ -788,7 +816,7 @@ class Setup:
 
     default_form: Form
     entry_forms: list[EntryFormRule]
-    comparisons: list[tuple[ComparisonKind, str | None]]
+    comparisons: list[Comparison]
     not_planned_accounts: list[str]
     deadline: date | None
     # Cost centers planned with capacity planning (ADR 0013), by code.
@@ -807,6 +835,33 @@ class SetupView:
     enabled_cost_centers: int
     sample_cost_center: str | None  # a name for the preview
     periods: list[date]
+    created: "Created | None" = None
+
+
+@dataclass
+class Created:
+    """How a round was created (ADR 0014); ``carried`` is None for a round set up from the
+    defaults."""
+
+    by: str | None
+    at: datetime | None
+    carried: CarryOver | None
+    cells: int | None  # plan values copied; None: none were carried
+
+
+def _created(conn: Connection, version_id: int) -> Created | None:
+    row = conn.execute(
+        select(
+            planning_round.c.created_by, planning_round.c.created_at, planning_round.c.carried
+        ).where(planning_round.c.version_id == version_id)
+    ).one()
+    if row.created_at is None:
+        return None  # created before rounds kept a record
+    record = row.carried
+    if record is None:
+        return Created(row.created_by, row.created_at, None, None)
+    carry = CarryOver(**{k: bool(record[k]) for k in CARRY_ITEMS}, uplift=Decimal(record["uplift"]))
+    return Created(row.created_by, row.created_at, carry, record.get("cells"))
 
 
 def setup_of(engine: Engine, user: User, code: str) -> SetupView:
@@ -838,9 +893,9 @@ def setup_of(engine: Engine, user: User, code: str) -> SetupView:
             )
         ]
         columns = [
-            (k, v)
-            for k, v in conn.execute(
-                select(comparison.c.kind, version.c.code)
+            Comparison(k, v, n)
+            for k, v, n in conn.execute(
+                select(comparison.c.kind, version.c.code, comparison.c.note)
                 .outerjoin(version, version.c.version_id == comparison.c.compare_version_id)
                 .where(
                     comparison.c.version_id == r.version_id,
@@ -864,6 +919,7 @@ def setup_of(engine: Engine, user: User, code: str) -> SetupView:
             .where(planning_round.c.version_id == r.version_id)
         ).scalar()
         periods = fiscal_periods(conn, r.fiscal_year)
+        created = _created(conn, r.version_id)
         actuals = (
             conn.execute(
                 select(dataset_mapping.c.dataset).where(dataset_mapping.c.dataset == "actuals")
@@ -909,6 +965,7 @@ def setup_of(engine: Engine, user: User, code: str) -> SetupView:
         len(enabled),
         enabled[0][1] if enabled else None,
         periods,
+        created,
     )
 
 

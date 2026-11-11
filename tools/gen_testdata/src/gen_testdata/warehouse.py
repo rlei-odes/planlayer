@@ -2,7 +2,9 @@
 
 Bronze looks like an ERP extract (German and English column names, local currency, ledger
 signs, dated tranches). Gold is what an admin would point Planlayer at: one view per dataset,
-in EUR, current hierarchy as of the generator's anchor date.
+in EUR, current hierarchy as of the generator's anchor date. The fact views carry warehouse
+column names (posting_month, company_code, gl_account, ...), so the admin maps them to
+Planlayer's fields.
 """
 
 from collections.abc import Iterable
@@ -148,18 +150,18 @@ GOLD_VIEWS = {
         FROM {b}.land""",
     # Monthly GL actuals in EUR, ledger signs (debit positive: revenue is negative).
     "v_gl_actuals_ledger": """
-        SELECT date_trunc('month', l.budat)::date AS period, l.bukrs AS entity_code,
-               l.kostl AS cost_center_code, l.saknr AS account_code,
-               round(sum(l.betrag_lc * r.rate_to_eur), 2) AS amount
+        SELECT date_trunc('month', l.budat)::date AS posting_month, l.bukrs AS company_code,
+               l.kostl AS cost_center, l.saknr AS gl_account,
+               round(sum(l.betrag_lc * r.rate_to_eur), 2) AS amount_eur
         FROM {b}.gl_lines l
         JOIN {b}.fx_rates r ON r.period = date_trunc('month', l.budat)::date
                            AND r.currency = l.waers
         GROUP BY 1, 2, 3, 4""",
     # The same in natural signs: revenue and cost both positive (T-7).
     "v_gl_actuals_natural": """
-        SELECT a.period, a.entity_code, a.cost_center_code, a.account_code,
-               CASE s.kontoart WHEN 'E' THEN -a.amount ELSE a.amount END AS amount
-        FROM {g}.v_gl_actuals_ledger a JOIN {b}.sachkonto s ON s.saknr = a.account_code""",
+        SELECT a.posting_month, a.company_code, a.cost_center, a.gl_account,
+               CASE s.kontoart WHEN 'E' THEN -a.amount_eur ELSE a.amount_eur END AS amount_eur
+        FROM {g}.v_gl_actuals_ledger a JOIN {b}.sachkonto s ON s.saknr = a.gl_account""",
     # Monthly sales in EUR, long format: one row per measure (T-23).
     "v_sales_actuals": """
         WITH monthly AS (
@@ -185,8 +187,8 @@ GOLD_VIEWS = {
         SELECT arbpl AS work_center_code, lstar AS activity_type_code, tarif_eur AS rate
         FROM {b}.tarif""",
     "v_capacity_actuals": """
-        SELECT periode AS period, arbpl AS work_center_code, lstar AS activity_type_code,
-               menge AS hours
+        SELECT periode AS posting_month, arbpl AS work_center, lstar AS activity_type,
+               menge AS actual_hours
         FROM {b}.leistung_ist""",
 }
 
@@ -202,13 +204,13 @@ EXPORT_ORDER = {
     "v_product_hierarchy": "member_code",
     "v_countries": "country_code",
     "v_country_hierarchy": "member_code",
-    "v_gl_actuals_ledger": "period, entity_code, cost_center_code, account_code",
-    "v_gl_actuals_natural": "period, entity_code, cost_center_code, account_code",
+    "v_gl_actuals_ledger": "posting_month, company_code, cost_center, gl_account",
+    "v_gl_actuals_natural": "posting_month, company_code, cost_center, gl_account",
     "v_sales_actuals": "period, entity_code, country_code, product_code, measure",
     "v_activity_types": "activity_type_code",
     "v_work_centers": "work_center_code",
     "v_work_center_rates": "work_center_code, activity_type_code",
-    "v_capacity_actuals": "period, work_center_code, activity_type_code",
+    "v_capacity_actuals": "posting_month, work_center, activity_type",
 }
 
 
@@ -344,9 +346,9 @@ def export(conn: psycopg.Connection, out: Path, gold: str = "gold") -> list[Path
             )
             types = {}
             for col in cur.description or []:
-                if col.name in ("amount", "value", "rate_to_eur"):
+                if col.name in ("amount_eur", "value", "rate_to_eur"):
                     types[col.name] = pa.decimal128(18, 3 if col.name == "value" else 2)
-                elif col.name in ("period", "valid_from", "valid_to"):
+                elif col.name in ("period", "posting_month", "valid_from", "valid_to"):
                     types[col.name] = pa.date32()
                 elif col.name == "is_group":
                     types[col.name] = pa.bool_()

@@ -99,6 +99,11 @@ class Cell:
 class ComparisonColumn:
     kind: str
     label: str
+    note: str | None = None  # the controller's note to planners
+    # Actuals columns: the last month holding actuals, and whether months after it are missing,
+    # as for the current year's actuals in a budget prepared mid-year.
+    actuals_until: date | None = None
+    partial: bool = False
 
 
 @dataclass(frozen=True)
@@ -268,8 +273,10 @@ def _comparisons(
     conn: Connection, ctx: _Context
 ) -> tuple[list[ComparisonColumn], list[dict[int, list[Decimal | None]]]]:
     columns, values = [], []
-    for kind, other_id, other_name in conn.execute(
-        select(comparison.c.kind, comparison.c.compare_version_id, version.c.name)
+    for kind, other_id, other_name, note in conn.execute(
+        select(
+            comparison.c.kind, comparison.c.compare_version_id, version.c.name, comparison.c.note
+        )
         .outerjoin(version, version.c.version_id == comparison.c.compare_version_id)
         .where(
             comparison.c.version_id == ctx.version_id,
@@ -278,19 +285,36 @@ def _comparisons(
         .order_by(comparison.c.position)
     ):
         match kind:
-            case "prior_year_actuals":
-                label = f"Actual {ctx.round.fiscal_year - 1}"
-                cells = _values(conn, ctx.actuals_id, ctx.cost_center_id, ctx.prior_periods)
-            case "actuals":
-                label = f"Actual {ctx.round.fiscal_year}"
-                cells = _values(conn, ctx.actuals_id, ctx.cost_center_id, ctx.periods)
+            case "prior_year_actuals" | "actuals":
+                year = ctx.round.fiscal_year - (1 if kind == "prior_year_actuals" else 0)
+                periods = ctx.prior_periods if kind == "prior_year_actuals" else ctx.periods
+                cells = _values(conn, ctx.actuals_id, ctx.cost_center_id, periods)
+                until = _actuals_until(conn, ctx.actuals_id, periods)
+                column = ComparisonColumn(
+                    kind, f"Actual {year}", note, until, until is not None and until < periods[-1]
+                )
             case _:
-                label = other_name
                 periods = _round_periods(conn, other_id, ctx.periods)
                 cells = _values(conn, other_id, ctx.cost_center_id, periods)
-        columns.append(ComparisonColumn(kind, label))
+                column = ComparisonColumn(kind, other_name, note)
+        columns.append(column)
         values.append(_amounts(cells))
     return columns, values
+
+
+def _actuals_until(conn: Connection, actuals_id: int, periods: list[date]) -> date | None:
+    """The last of ``periods`` holding actuals on any cost center the user sees: actuals are
+    synced up to a month, so the months after it are missing, not zero."""
+    f = fact_cost_center
+    last: date | None = conn.execute(
+        select(func.max(f.c.period)).where(
+            f.c.version_id == actuals_id,
+            f.c.layer_id == BASE_LAYER,
+            f.c.measure_id == AMOUNT,
+            f.c.period.between(periods[0], periods[-1]),
+        )
+    ).scalar()
+    return last
 
 
 def _not_planned(conn: Connection, version_id: int) -> set[int]:

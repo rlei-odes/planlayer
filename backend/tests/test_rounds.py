@@ -247,13 +247,23 @@ def test_comparisons_in_order(engine: Engine, client: TestClient) -> None:
         engine,
         system(engine),
         R,
-        [("version", "B2025"), ("prior_year_actuals", None), ("actuals", None)],
+        [
+            rounds.Comparison("version", "B2025"),
+            rounds.Comparison("prior_year_actuals", note="  "),
+            rounds.Comparison("actuals", note="January to June only"),
+        ],
     )
     grid = client.get(f"{URL}/grid").json()
     assert [c["label"] for c in grid["comparisons"]] == [
         "Budget 2025",
         "Actual 2025",
         "Actual 2026",
+    ]
+    # Notes reach the planner; actuals columns say how far their actuals go.
+    assert [(c["note"], c["actuals_until"], c["partial"]) for c in grid["comparisons"]] == [
+        (None, None, False),
+        (None, "2025-12-01", False),
+        ("January to June only", None, False),
     ]
     assert rows(grid)["6000"]["comparisons"][1] == ["100.00"] * 12
     assert rows(grid)["6000"]["comparisons"][0] == BLANK
