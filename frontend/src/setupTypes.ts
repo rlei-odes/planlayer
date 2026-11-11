@@ -8,3 +8,5 @@ export type SetupDraft = S.SetupIO
 export type SetupView = S.SetupOut
 export type Profile = S.ProfileIOOutput
 export type NewRound = S.RoundIn
+export type Scope = S.ScopeOut
+export type CarryOver = S.CarryOverIn

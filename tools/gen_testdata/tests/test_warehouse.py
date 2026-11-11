@@ -144,6 +144,15 @@ def test_new_and_closed_cost_centers_have_actuals_only_while_valid(
     )
     assert str(first_new) == "2025-07-01"
     assert str(last_closed) == "2025-12-01"
+    # Created ahead of the next fiscal year: in the hierarchy, without actuals.
+    parent, actuals = one(
+        conn,
+        f"""
+        SELECT h.parent_code, (SELECT count(*) FROM {g}.v_gl_actuals_natural a
+                               WHERE a.cost_center_code = h.member_code)
+        FROM {g}.v_cost_center_hierarchy h WHERE h.member_name = 'Additive Manufacturing'""",
+    )
+    assert (parent, actuals) == ("DEP_PUMP_PROD", 0)
 
 
 def test_every_hierarchy_has_one_root_and_known_parents(

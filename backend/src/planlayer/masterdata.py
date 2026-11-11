@@ -8,7 +8,7 @@ kept in ``member_override`` / ``edge_override`` and survives syncs, while ``memb
 
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 
 from sqlalchemy import Connection, Engine, delete, insert, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -63,6 +63,7 @@ class MemberRow:
     cost_center_code: str | None
     account_code: str | None
     variable_account_code: str | None
+    missing_since: datetime | None = None  # synced, but no longer delivered by the source
 
 
 def tree(engine: Engine, user: User, dataset: str) -> list[MemberRow]:
@@ -118,6 +119,7 @@ def tree(engine: Engine, user: User, dataset: str) -> list[MemberRow]:
             r.cost_center_code,
             r.account_code,
             r.variable_account_code,
+            r.missing_since,
         )
 
     def visit(m: int, depth: int) -> None:

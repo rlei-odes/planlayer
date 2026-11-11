@@ -9,14 +9,15 @@ from dataclasses import replace
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine, create_engine, select, text
+from sqlalchemy import Engine, Integer, create_engine, func, select, text
 
 from planlayer import access, masterdata, rounds, sync
 from planlayer.adapters.source import PostgresSource
 from planlayer.api.app import create_app
 from planlayer.config import Settings
 from planlayer.store.db import create_app_engine
-from planlayer.store.schema import member, member_shadow
+from planlayer.store.schema import fact_cost_center, member, member_shadow, sync_run, version
+from planlayer.store.uow import unit_of_work
 
 from .conftest import APP_ROLE, BLANK, OWNER, TEST_DATABASE_URL, login, plan, rows
 
@@ -260,3 +261,95 @@ def test_member_rules(engine: Engine, client: TestClient) -> None:
     login(client, OWNER)
     assert client.get("/api/members/cost_centers").status_code == 403
     assert client.post("/api/sync/plan", json={}).status_code == 403
+
+
+# --- Windows of fiscal years, admins syncing, members no longer delivered ------------------------
+
+
+def _source_sql(sql: str) -> None:
+    admin_db = create_engine(TEST_DATABASE_URL or "")
+    with admin_db.begin() as conn:
+        conn.execute(text(sql))
+    admin_db.dispose()
+
+
+def _actual_years(engine: Engine) -> dict[int, int]:
+    """Stored actual cells per year, read as the system user (row-level security)."""
+    f = fact_cost_center
+    year = func.extract("year", f.c.period).cast(Integer)
+    with unit_of_work(engine, system(engine)) as conn:
+        return dict(
+            conn.execute(
+                select(year, func.count())
+                .join(version, version.c.version_id == f.c.version_id)
+                .where(version.c.code == "ACT")
+                .group_by(year)
+            ).all()
+        )
+
+
+def test_actuals_sync_replaces_only_the_window(
+    engine: Engine, client: TestClient, source_schema: str, source: PostgresSource
+) -> None:
+    _source_sql(
+        f"INSERT INTO {source_schema}.v_gl_actuals_natural "
+        "VALUES ('2024-03-01', 'DE', 'CC1', '6000', 77.00)"
+    )
+    sync.run(engine, source, system(engine), years=(2024, 2025))
+    assert _actual_years(engine) == {2024: 1, 2025: 16}
+    # The admin narrows the query to one year, as a warehouse query often does.
+    with engine.connect() as conn:
+        m = sync.mappings(conn)["actuals"]
+    narrowed = replace(m, query=f"{m.query} WHERE extract(year FROM period) = 2025")
+    sync.save_mapping(engine, system(engine), narrowed)
+    # The default window is what round B2026 compares with: 2025 and 2026. 2024 stays.
+    p = sync.plan(engine, source)
+    assert p.window is not None and (p.window.first, p.window.last) == (2025, 2026)
+    assert [(y.fiscal_year, y.stored, y.delivered) for y in p.years] == [(2025, 16, 16)]
+    sync.run(engine, source, system(engine))
+    assert _actual_years(engine) == {2024: 1, 2025: 16}
+    # A window reaching 2024 shows that the narrowed query would empty it.
+    wide = sync.plan(engine, source, years=(2024, 2025))
+    assert [(y.fiscal_year, y.stored, y.delivered) for y in wide.years] == [
+        (2024, 1, 0),
+        (2025, 16, 16),
+    ]
+    # A query can read the window itself, so the warehouse filters early.
+    params = replace(m, query=f"{m.query} WHERE period BETWEEN :period_from AND :period_to")
+    sync.save_mapping(engine, system(engine), params)
+    assert sync.plan(engine, source, years=(2024, 2024)).actual_cells == 1
+    with pytest.raises(sync.SyncError):
+        sync.plan(engine, source, years=(2026, 2025))
+
+
+def test_an_admin_runs_the_sync(engine: Engine, client: TestClient) -> None:
+    """The admin reads no actuals (ADR 0009), but syncs them: the system user writes."""
+    login(client, ADMIN)
+    p = client.post("/api/sync/plan", json={"years": {"first": 2025, "last": 2025}}).json()
+    assert p["years"] == {"first": 2025, "last": 2025}
+    assert p["actual_years"] == [{"fiscal_year": 2025, "stored": 16, "delivered": 16}]
+    run = client.post("/api/sync/run", json={"years": {"first": 2025, "last": 2025}})
+    assert run.status_code == 200 and run.json()["actual_rows"] == 16
+    with engine.connect() as conn:
+        actor = conn.execute(
+            select(sync_run.c.actor).order_by(sync_run.c.id.desc()).limit(1)
+        ).scalar()
+    assert actor == ADMIN
+    assert _actual_years(engine) == {2025: 16}
+
+
+def test_a_member_no_longer_delivered_keeps_its_place(
+    engine: Engine, client: TestClient, source_schema: str, source: PostgresSource
+) -> None:
+    _source_sql(
+        f"DELETE FROM {source_schema}.v_cost_center_hierarchy WHERE member_code = 'CC2';"
+        f"DELETE FROM {source_schema}.v_cost_centers WHERE cost_center_code = 'CC2';"
+        f"DELETE FROM {source_schema}.v_gl_actuals_natural WHERE cost_center_code = 'CC2';"
+    )
+    p = sync.plan(engine, source)
+    assert p.gone == ["cost center CC2"]
+    sync.run(engine, source, system(engine))
+    m = members(client, "cost_centers")["CC2"]
+    assert (m["parent"], m["origin"]) == ("DEP", "source")
+    status = {r["code"]: r for r in client.get("/api/versions/B2026/overview").json()["rows"]}
+    assert status["CC2"]["depth"] == 2  # still under DEP

@@ -6,6 +6,12 @@ export type AccountOut = {
   name: string
 }
 
+export type AccountSetIO = {
+  name: string
+  accounts: string[]
+  assigned_to?: string[]
+}
+
 export type ActionIn = {
   action: "submit" | "approve" | "reject" | "reopen"
   cost_centers?: string[] | null
@@ -60,6 +66,17 @@ export type CapacityUnitOut = {
   name: string
   status: "not_started" | "in_progress" | "submitted" | "approved"
   can_write: boolean
+}
+
+export type CarryOverIn = {
+  setup?: boolean
+  compare_with_source?: boolean
+  scope?: boolean
+  accounts?: boolean
+  capacity?: boolean
+  sheets?: boolean
+  values?: boolean
+  uplift?: number | string
 }
 
 export type CellOut = {
@@ -304,6 +321,8 @@ export type PlanOut = {
   gone: string[]
   matches: MatchOut[]
   actual_cells: number | null
+  years: YearsIO | null
+  actual_years: YearCountOut[]
 }
 
 export type PlanningUnit = {
@@ -399,6 +418,7 @@ export type RoundIn = {
   fiscal_year: number
   deadline?: string | null
   copy_from?: string | null
+  carry?: CarryOverIn
 }
 
 export type RoundStatusIn = {
@@ -423,6 +443,7 @@ export type RowOut = {
   months_editable: boolean
   total_editable: boolean
   capacity: boolean
+  not_planned?: "round" | "set" | null
 }
 
 export type RuleIO = {
@@ -432,13 +453,34 @@ export type RuleIO = {
   reference_version_code?: string | null
 }
 
+export type ScopeOut = {
+  source_round: string | null
+  cost_centers: ScopeRowOut[]
+  accounts: ScopeRowOut[]
+}
+
+export type ScopeRowOut = {
+  code: string
+  name: string
+  depth: number
+  is_group: boolean
+  parent: string | null
+  planned: boolean | null
+  new: boolean
+  missing: boolean
+  prior_actuals: string | null
+  source_plan: string | null
+}
+
 export type SetupIO = {
   default_form: "monthly" | "annual" | "annual_even" | "annual_profile" | "annual_reference"
   entry_forms: RuleIO[]
   comparisons: ComparisonIO[]
-  hidden_accounts: string[]
+  not_planned_accounts: string[]
   deadline: string | null
   productive_cost_centers?: string[]
+  planned_cost_centers?: string[] | null
+  account_sets?: AccountSetIO[]
 }
 
 export type SetupOut = {
@@ -472,10 +514,12 @@ export type StatusRowOut = {
 
 export type SyncIn = {
   entity?: string | null
+  years?: YearsIO | null
 }
 
 export type SyncRunIn = {
   entity?: string | null
+  years?: YearsIO | null
   confirm?: string[]
 }
 
@@ -533,4 +577,15 @@ export type Version = {
   fiscal_year: number
   status: "setup" | "open" | "closed"
   deadline: string | null
+}
+
+export type YearCountOut = {
+  fiscal_year: number
+  stored: number
+  delivered: number
+}
+
+export type YearsIO = {
+  first: number
+  last: number
 }

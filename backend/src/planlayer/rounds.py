@@ -1,15 +1,30 @@
-"""Planning rounds and their setup (ADR 0007): modules, enabled members, entry forms,
-comparisons, hidden accounts, seasonality profiles; round status and approvers (ADR 0008).
+"""Planning rounds and their setup (ADR 0007, ADR 0014): modules, planned cost centers, entry
+forms, comparisons, accounts not planned, account sets, seasonality profiles; round status
+(ADR 0008); new rounds set up like an earlier one, with what they carry over.
 
 The yearly setup page (E-03) edits a round through these functions.
 """
 
+from collections import defaultdict
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import date
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Literal
 
-from sqlalchemy import Connection, Engine, delete, insert, literal, select, union, update
+from sqlalchemy import (
+    Connection,
+    Engine,
+    Table,
+    delete,
+    func,
+    insert,
+    literal,
+    select,
+    tuple_,
+    union,
+    update,
+)
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from planlayer.access import User
@@ -17,25 +32,36 @@ from planlayer.domain.entry_forms import FORMS, Form
 from planlayer.domain.periods import calendar_days, fiscal_year_periods, working_days
 from planlayer.domain.spreading import Profile
 from planlayer.domain.workflow import RoundStatus, round_transition
+from planlayer.store.bulk import insert_all
 from planlayer.store.schema import (
     ACCOUNT,
+    AMOUNT,
+    BASE_LAYER,
     COST_CENTER,
+    H_ACCOUNT,
+    H_COST_CENTER,
     MODULE_CAPACITY,
     MODULE_COST_CENTER,
+    account_set,
+    account_set_account,
+    account_set_assignment,
     capacity_line,
+    closure,
     comparison,
+    credit_account,
     dataset_mapping,
     entry_form,
     fact_capacity,
     fact_cost_center,
-    hidden_account,
     installation,
     line_spread,
     member,
+    not_planned_account,
     planning_round,
     round_member,
     round_module,
     seasonality_profile,
+    sheet_account,
     version,
 )
 from planlayer.store.uow import unit_of_work
@@ -122,6 +148,23 @@ def _version_id(conn: Connection, code: str) -> int:
     return int(found)
 
 
+@dataclass
+class CarryOver:
+    """What a new round takes from the round it is set up like (ADR 0014)."""
+
+    setup: bool = True  # default form, entry forms, comparison columns
+    compare_with_source: bool = True  # the source round as a comparison column
+    scope: bool = True  # cost centers not planned
+    accounts: bool = True  # accounts not planned, account sets and their assignments
+    capacity: bool = True  # productive cost centers and their capacity lines
+    sheets: bool = True  # accounts added to sheets, line spreads
+    values: bool = False  # plan values, moved to the new year and raised by ``uplift``
+    uplift: Decimal = Decimal(0)  # percent
+
+
+CENT = Decimal("0.01")
+
+
 def create_round(
     engine: Engine,
     actor: User,
@@ -131,15 +174,18 @@ def create_round(
     fiscal_year: int,
     deadline: date | None = None,
     copy_from: str | None = None,
+    carry: CarryOver | None = None,
 ) -> int:
     """A plan version and its round, in status ``setup``.
 
-    The setup is copied from ``copy_from`` (modules, entry forms, comparisons, hidden accounts,
-    disabled and productive cost centers), or starts from the module defaults: every account
-    ``monthly``, prior-year actuals as the only comparison. Every cost center valid in the
-    fiscal year is enabled, except those disabled in the copied round.
+    Without ``copy_from`` it starts from the module defaults: every account ``monthly``,
+    prior-year actuals as the only comparison, every cost center valid in the fiscal year
+    planned. With it, ``carry`` says what the new round takes from that round; cost centers
+    valid in the fiscal year that the source round didn't know start planned. Everything is
+    written in one transaction, plan values as one change batch.
     """
     actor.require_controller()
+    carry = carry or CarryOver()
     with unit_of_work(engine, actor) as conn:
         if conn.execute(select(version.c.version_id).where(version.c.code == code)).first():
             raise RoundError(f"a round or version {code} exists")
@@ -159,8 +205,9 @@ def create_round(
                 copied_from=source.version_id if source else None,
             )
         )
-        disabled: set[int] = set()
-        if source is None:
+        if source is not None and carry.setup:
+            _copy_rows(conn, source.version_id, vid, round_module, entry_form, comparison)
+        else:
             conn.execute(insert(round_module).values(version_id=vid, module=MODULE_COST_CENTER))
             conn.execute(
                 insert(comparison).values(
@@ -170,18 +217,14 @@ def create_round(
                     kind="prior_year_actuals",
                 )
             )
-        else:
-            _copy_setup(conn, source.version_id, vid)
-            disabled = set(
-                conn.execute(
-                    select(round_member.c.member_id).where(
-                        round_member.c.version_id == source.version_id,
-                        round_member.c.module == MODULE_COST_CENTER,
-                        round_member.c.enabled.is_(False),
-                    )
-                ).scalars()
-            )
+        if source is not None and carry.compare_with_source:
+            _compare_with(conn, vid, source.version_id)
         members = valid_cost_centers(conn, fiscal_year)
+        disabled = (
+            _round_members(conn, source.version_id, MODULE_COST_CENTER, enabled=False)
+            if source is not None and carry.scope
+            else set()
+        )
         if members:
             conn.execute(
                 insert(round_member),
@@ -195,34 +238,33 @@ def create_round(
                     for m in members
                 ],
             )
-        if source is not None:
-            productive = set(
+        if source is None:
+            return vid
+        if carry.accounts:
+            _copy_rows(conn, source.version_id, vid, not_planned_account)
+            _copy_account_sets(conn, source.version_id, vid)
+        planned = set(members) - disabled
+        if carry.capacity:
+            _copy_capacity(conn, source.version_id, vid, set(members))
+        if carry.sheets:
+            for table in (sheet_account, line_spread):
+                columns = [c for c in table.c if c.name != "version_id"]
                 conn.execute(
-                    select(round_member.c.member_id).where(
-                        round_member.c.version_id == source.version_id,
-                        round_member.c.module == MODULE_CAPACITY,
-                        round_member.c.enabled.is_(True),
+                    insert(table).from_select(
+                        ["version_id", *(c.name for c in columns)],
+                        select(literal(vid, table.c.version_id.type), *columns).where(
+                            table.c.version_id == source.version_id,
+                            table.c.cost_center_id.in_(planned),
+                        ),
                     )
-                ).scalars()
-            ) & set(members)
-            if productive:
-                conn.execute(
-                    insert(round_member),
-                    [
-                        {
-                            "version_id": vid,
-                            "module": MODULE_CAPACITY,
-                            "member_id": m,
-                            "enabled": True,
-                        }
-                        for m in sorted(productive)
-                    ],
                 )
+        if carry.values:
+            _copy_values(conn, source, vid, fiscal_year, planned, carry.uplift)
         return vid
 
 
-def _copy_setup(conn: Connection, source_id: int, target_id: int) -> None:
-    for table in (round_module, entry_form, comparison, hidden_account):
+def _copy_rows(conn: Connection, source_id: int, target_id: int, *tables: Table) -> None:
+    for table in tables:
         columns = [c for c in table.c if c.name != "version_id"]
         conn.execute(
             insert(table).from_select(
@@ -232,6 +274,199 @@ def _copy_setup(conn: Connection, source_id: int, target_id: int) -> None:
                 ),
             )
         )
+
+
+def _round_members(conn: Connection, version_id: int, module: str, *, enabled: bool) -> set[int]:
+    return set(
+        conn.execute(
+            select(round_member.c.member_id).where(
+                round_member.c.version_id == version_id,
+                round_member.c.module == module,
+                round_member.c.enabled.is_(enabled),
+            )
+        ).scalars()
+    )
+
+
+def _compare_with(conn: Connection, version_id: int, other_id: int) -> None:
+    """Add a version comparison column at the end, unless the round has it already."""
+    c = comparison
+    rows = conn.execute(
+        select(c.c.position, c.c.compare_version_id).where(
+            c.c.version_id == version_id, c.c.module == MODULE_COST_CENTER
+        )
+    ).all()
+    if any(other == other_id for _, other in rows):
+        return
+    conn.execute(
+        insert(c).values(
+            version_id=version_id,
+            module=MODULE_COST_CENTER,
+            position=max((p for p, _ in rows), default=0) + 1,
+            kind="version",
+            compare_version_id=other_id,
+        )
+    )
+
+
+def _copy_account_sets(conn: Connection, source_id: int, target_id: int) -> None:
+    ids = {}
+    for set_id, module, set_name in conn.execute(
+        select(account_set.c.set_id, account_set.c.module, account_set.c.name).where(
+            account_set.c.version_id == source_id
+        )
+    ):
+        ids[set_id] = conn.execute(
+            insert(account_set)
+            .values(version_id=target_id, module=module, name=set_name)
+            .returning(account_set.c.set_id)
+        ).scalar_one()
+    for old, new in ids.items():
+        conn.execute(
+            insert(account_set_account).from_select(
+                ["set_id", "account_id"],
+                select(literal(new), account_set_account.c.account_id).where(
+                    account_set_account.c.set_id == old
+                ),
+            )
+        )
+    a = account_set_assignment
+    rows = conn.execute(
+        select(a.c.module, a.c.member_id, a.c.set_id).where(a.c.version_id == source_id)
+    ).all()
+    if rows:
+        conn.execute(
+            insert(a),
+            [
+                {"version_id": target_id, "module": m, "member_id": mid, "set_id": ids[sid]}
+                for m, mid, sid in rows
+            ],
+        )
+
+
+def _copy_capacity(conn: Connection, source_id: int, target_id: int, members: set[int]) -> None:
+    """Productive cost centers valid in the new year, and their capacity lines."""
+    productive = _round_members(conn, source_id, MODULE_CAPACITY, enabled=True) & members
+    if not productive:
+        return
+    conn.execute(
+        pg_insert(round_module)
+        .values(version_id=target_id, module=MODULE_CAPACITY)
+        .on_conflict_do_nothing()
+    )
+    conn.execute(
+        insert(round_member),
+        [
+            {"version_id": target_id, "module": MODULE_CAPACITY, "member_id": m, "enabled": True}
+            for m in sorted(productive)
+        ],
+    )
+    columns = [
+        c for c in capacity_line.c if c.name not in ("version_id", "changed_by", "changed_at")
+    ]
+    conn.execute(
+        insert(capacity_line).from_select(
+            ["version_id", *(c.name for c in columns)],
+            select(literal(target_id, capacity_line.c.version_id.type), *columns).where(
+                capacity_line.c.version_id == source_id,
+                capacity_line.c.cost_center_id.in_(productive),
+            ),
+        )
+    )
+
+
+def _copy_values(
+    conn: Connection,
+    source: RoundRef,
+    target_id: int,
+    fiscal_year: int,
+    planned: set[int],
+    uplift: Decimal,
+) -> None:
+    """The source round's plan values in the new year, month by month, times 1 + uplift %.
+    Only cells the new round plans: a planned cost center, an account planned in the round,
+    inside the cost center's account set and not credited by capacity planning."""
+    if not planned:
+        return
+    old_periods = fiscal_periods(conn, source.fiscal_year)
+    new_periods = fiscal_periods(conn, fiscal_year)
+    moved = dict(zip(old_periods, new_periods, strict=True))
+    excluded = set(
+        conn.execute(
+            select(not_planned_account.c.account_id).where(
+                not_planned_account.c.version_id == target_id,
+                not_planned_account.c.module == MODULE_COST_CENTER,
+            )
+        ).scalars()
+    ) | set(conn.execute(select(credit_account.c.account_id)).scalars())
+    scopes = account_scopes(conn, target_id, planned)
+    factor = 1 + uplift / 100
+    f = fact_cost_center
+    rows = []
+    for period, entity_id, cc_id, account_id, amount in conn.execute(
+        select(f.c.period, f.c.dim_entity, f.c.dim_cost_center, f.c.dim_account, f.c.amount).where(
+            f.c.version_id == source.version_id,
+            f.c.layer_id == BASE_LAYER,
+            f.c.measure_id == AMOUNT,
+            f.c.period.in_(old_periods),
+            f.c.dim_cost_center.in_(planned),
+        )
+    ):
+        scope = scopes.get(cc_id)
+        if account_id in excluded or (scope is not None and account_id not in scope):
+            continue
+        rows.append(
+            {
+                "version_id": target_id,
+                "layer_id": BASE_LAYER,
+                "measure_id": AMOUNT,
+                "period": moved[period],
+                "dim_entity": entity_id,
+                "dim_cost_center": cc_id,
+                "dim_account": account_id,
+                "amount": (amount * factor).quantize(CENT, ROUND_HALF_UP),
+            }
+        )
+    insert_all(conn, f, rows)  # one statement: the lock and audit triggers run once
+
+
+def account_scopes(
+    conn: Connection, version_id: int, cost_centers: Iterable[int]
+) -> dict[int, set[int] | None]:
+    """Per cost center, the leaf accounts of its account set: the nearest assignment on it or a
+    node above it (ADR 0014). None: no set, every account."""
+    ids = list(cost_centers)
+    if not ids:
+        return {}
+    a = account_set_assignment
+    nearest: dict[int, tuple[int, int]] = {}
+    for cc_id, depth, set_id in conn.execute(
+        select(closure.c.descendant_id, closure.c.depth, a.c.set_id)
+        .join(a, a.c.member_id == closure.c.ancestor_id)
+        .where(
+            closure.c.hier_id == H_COST_CENTER,
+            closure.c.descendant_id.in_(ids),
+            a.c.version_id == version_id,
+            a.c.module == MODULE_COST_CENTER,
+        )
+    ):
+        if cc_id not in nearest or depth < nearest[cc_id][0]:
+            nearest[cc_id] = (depth, set_id)
+    leaves: dict[int, set[int]] = defaultdict(set)
+    used = {set_id for _, set_id in nearest.values()}
+    if used:
+        for set_id, account_id in conn.execute(
+            select(account_set_account.c.set_id, closure.c.descendant_id)
+            .join(closure, closure.c.ancestor_id == account_set_account.c.account_id)
+            .join(member, member.c.member_id == closure.c.descendant_id)
+            .where(
+                closure.c.hier_id == H_ACCOUNT,
+                account_set_account.c.set_id.in_(used),
+                member.c.is_group.is_(False),
+            )
+        ):
+            leaves[set_id].add(account_id)
+    return {cc: (leaves[nearest[cc][1]] if cc in nearest else None) for cc in ids}
 
 
 def set_round_status(engine: Engine, actor: User, code: str, status: RoundStatus) -> None:
@@ -473,22 +708,34 @@ def _set_comparisons(
         conn.execute(insert(comparison), rows)
 
 
-def hide_account(engine: Engine, actor: User, code: str, account_code: str) -> None:
-    """Hide an account in a round; refused while any cost center has plan values on it."""
+def set_account_planned(
+    engine: Engine, actor: User, code: str, account_code: str, planned: bool
+) -> None:
+    """Mark an account planned or not planned in a round (ADR 0014). Not planned is refused while
+    any cost center has plan values on it."""
     actor.require_controller()
     with unit_of_work(engine, actor) as conn:
-        _hide(conn, get_round(conn, code), account_code)
+        r = get_round(conn, code)
+        if planned:
+            _include(conn, r, account_code)
+        else:
+            _exclude(conn, r, account_code)
 
 
-def _hide(conn: Connection, r: RoundRef, account_code: str) -> None:
+def _exclude(conn: Connection, r: RoundRef, account_code: str) -> None:
+    """Mark an account not planned. In a round in setup its plan values, which the controller
+    carried over or prepared, are cleared with it; in an open round it must have none."""
     account_id = _member_id(conn, ACCOUNT, account_code, leaf=True)
     f = fact_cost_center
+    in_round = (f.c.version_id == r.version_id) & (f.c.dim_account == account_id)
+    if r.status == "setup":
+        conn.execute(delete(f).where(in_round))
     with_values = list(
         conn.execute(
             select(member.c.code)
             .distinct()
             .join(f, f.c.dim_cost_center == member.c.member_id)
-            .where(f.c.version_id == r.version_id, f.c.dim_account == account_id)
+            .where(in_round)
             .order_by(member.c.code)
         ).scalars()
     )
@@ -497,25 +744,19 @@ def _hide(conn: Connection, r: RoundRef, account_code: str) -> None:
             f"account {account_code} still has plan values on {', '.join(with_values)}"
         )
     conn.execute(
-        pg_insert(hidden_account)
+        pg_insert(not_planned_account)
         .values(version_id=r.version_id, module=MODULE_COST_CENTER, account_id=account_id)
         .on_conflict_do_nothing()
     )
 
 
-def unhide_account(engine: Engine, actor: User, code: str, account_code: str) -> None:
-    actor.require_controller()
-    with unit_of_work(engine, actor) as conn:
-        _unhide(conn, get_round(conn, code), account_code)
-
-
-def _unhide(conn: Connection, r: RoundRef, account_code: str) -> None:
+def _include(conn: Connection, r: RoundRef, account_code: str) -> None:
     account_id = _member_id(conn, ACCOUNT, account_code, leaf=True)
     conn.execute(
-        delete(hidden_account).where(
-            hidden_account.c.version_id == r.version_id,
-            hidden_account.c.module == MODULE_COST_CENTER,
-            hidden_account.c.account_id == account_id,
+        delete(not_planned_account).where(
+            not_planned_account.c.version_id == r.version_id,
+            not_planned_account.c.module == MODULE_COST_CENTER,
+            not_planned_account.c.account_id == account_id,
         )
     )
 
@@ -532,16 +773,29 @@ class EntryFormRule:
 
 
 @dataclass
+class AccountSet:
+    """A named list of accounts and account groups, assigned to cost center nodes or cost
+    centers (ADR 0014)."""
+
+    name: str
+    accounts: list[str]  # account or account group codes
+    assigned_to: list[str] = field(default_factory=list)  # cost center node or cost center codes
+
+
+@dataclass
 class Setup:
     """A round's whole setup, as the setup page edits it."""
 
     default_form: Form
     entry_forms: list[EntryFormRule]
     comparisons: list[tuple[ComparisonKind, str | None]]
-    hidden_accounts: list[str]
+    not_planned_accounts: list[str]
     deadline: date | None
     # Cost centers planned with capacity planning (ADR 0013), by code.
     productive_cost_centers: list[str] = field(default_factory=list)
+    # Cost centers planned in the round, by code; None leaves them as they are.
+    planned_cost_centers: list[str] | None = None
+    account_sets: list[AccountSet] = field(default_factory=list)
 
 
 @dataclass
@@ -595,14 +849,15 @@ def setup_of(engine: Engine, user: User, code: str) -> SetupView:
                 .order_by(comparison.c.position)
             )
         ]
-        hidden = list(
+        not_planned = list(
             conn.execute(
                 select(member.c.code)
-                .join(hidden_account, hidden_account.c.account_id == member.c.member_id)
-                .where(hidden_account.c.version_id == r.version_id)
+                .join(not_planned_account, not_planned_account.c.account_id == member.c.member_id)
+                .where(not_planned_account.c.version_id == r.version_id)
                 .order_by(member.c.code)
             ).scalars()
         )
+        sets = _account_sets(conn, r.version_id)
         copied = conn.execute(
             select(version.c.code)
             .join(planning_round, planning_round.c.copied_from == version.c.version_id)
@@ -615,18 +870,16 @@ def setup_of(engine: Engine, user: User, code: str) -> SetupView:
             ).first()
             is not None
         )
-        enabled = list(
-            conn.execute(
-                select(member.c.name)
-                .join(round_member, round_member.c.member_id == member.c.member_id)
-                .where(
-                    round_member.c.version_id == r.version_id,
-                    round_member.c.module == MODULE_COST_CENTER,
-                    round_member.c.enabled.is_(True),
-                )
-                .order_by(member.c.code)
-            ).scalars()
-        )
+        enabled = conn.execute(
+            select(member.c.code, member.c.name)
+            .join(round_member, round_member.c.member_id == member.c.member_id)
+            .where(
+                round_member.c.version_id == r.version_id,
+                round_member.c.module == MODULE_COST_CENTER,
+                round_member.c.enabled.is_(True),
+            )
+            .order_by(member.c.code)
+        ).all()
         productive = list(
             conn.execute(
                 select(member.c.code)
@@ -642,12 +895,51 @@ def setup_of(engine: Engine, user: User, code: str) -> SetupView:
     return SetupView(
         r,
         copied,
-        Setup(default, rules, columns, hidden, r.deadline, productive),
+        Setup(
+            default,
+            rules,
+            columns,
+            not_planned,
+            r.deadline,
+            productive,
+            [c for c, _ in enabled],
+            sets,
+        ),
         actuals,
         len(enabled),
-        enabled[0] if enabled else None,
+        enabled[0][1] if enabled else None,
         periods,
     )
+
+
+def _account_sets(conn: Connection, version_id: int) -> list[AccountSet]:
+    sets = {
+        set_id: AccountSet(name, [], [])
+        for set_id, name in conn.execute(
+            select(account_set.c.set_id, account_set.c.name)
+            .where(
+                account_set.c.version_id == version_id,
+                account_set.c.module == MODULE_COST_CENTER,
+            )
+            .order_by(account_set.c.name)
+        )
+    }
+    for set_id, code in conn.execute(
+        select(account_set_account.c.set_id, member.c.code)
+        .join(member, member.c.member_id == account_set_account.c.account_id)
+        .where(account_set_account.c.set_id.in_(sets))
+        .order_by(member.c.code)
+    ):
+        sets[set_id].accounts.append(code)
+    a = account_set_assignment
+    for set_id, code in conn.execute(
+        select(a.c.set_id, member.c.code)
+        .join(member, member.c.member_id == a.c.member_id)
+        .where(a.c.version_id == version_id, a.c.module == MODULE_COST_CENTER)
+        .order_by(member.c.code)
+    ):
+        sets[set_id].assigned_to.append(code)
+    return list(sets.values())
 
 
 def save_setup(engine: Engine, actor: User, code: str, setup: Setup) -> None:
@@ -678,23 +970,135 @@ def save_setup(engine: Engine, actor: User, code: str, setup: Setup) -> None:
                 rule.reference_version_code,
             )
         _set_comparisons(conn, r, setup.comparisons)
-        now_hidden = set(
+        now_excluded = set(
             conn.execute(
                 select(member.c.code)
-                .join(hidden_account, hidden_account.c.account_id == member.c.member_id)
-                .where(hidden_account.c.version_id == r.version_id)
+                .join(not_planned_account, not_planned_account.c.account_id == member.c.member_id)
+                .where(not_planned_account.c.version_id == r.version_id)
             ).scalars()
         )
-        for account in sorted(now_hidden - set(setup.hidden_accounts)):
-            _unhide(conn, r, account)
-        for account in sorted(set(setup.hidden_accounts) - now_hidden):
-            _hide(conn, r, account)
+        for account in sorted(now_excluded - set(setup.not_planned_accounts)):
+            _include(conn, r, account)
+        for account in sorted(set(setup.not_planned_accounts) - now_excluded):
+            _exclude(conn, r, account)
+        if setup.planned_cost_centers is not None:
+            _set_planned(conn, r, setup.planned_cost_centers)
+        _set_account_sets(conn, r, setup.account_sets)
+        _clear_outside_sets(conn, r)
         _set_productive(conn, r, setup.productive_cost_centers)
         conn.execute(
             update(planning_round)
             .where(planning_round.c.version_id == r.version_id)
             .values(deadline=setup.deadline)
         )
+
+
+def _set_planned(conn: Connection, r: RoundRef, codes: list[str]) -> None:
+    """The cost centers planned in the round. One the round hasn't seen and that isn't listed
+    stays without a row: not planned, and new on the status page (ADR 0007)."""
+    wanted = {_member_id(conn, COST_CENTER, code, leaf=True) for code in codes}
+    seen = _round_members(conn, r.version_id, MODULE_COST_CENTER, enabled=True) | _round_members(
+        conn, r.version_id, MODULE_COST_CENTER, enabled=False
+    )
+    rows = [
+        {
+            "version_id": r.version_id,
+            "module": MODULE_COST_CENTER,
+            "member_id": m,
+            "enabled": m in wanted,
+        }
+        for m in sorted(wanted | seen)
+    ]
+    if rows:
+        stmt = pg_insert(round_member).values(rows)
+        conn.execute(
+            stmt.on_conflict_do_update(
+                index_elements=list(round_member.primary_key.columns),
+                set_={"enabled": stmt.excluded.enabled},
+            )
+        )
+
+
+def _set_account_sets(conn: Connection, r: RoundRef, sets: list[AccountSet]) -> None:
+    """Replace the round's account sets and their assignments."""
+    conn.execute(
+        delete(account_set).where(
+            account_set.c.version_id == r.version_id,
+            account_set.c.module == MODULE_COST_CENTER,
+        )
+    )
+    names: set[str] = set()
+    assigned: dict[str, str] = {}
+    for s in sets:
+        name = s.name.strip()
+        if not name:
+            raise RoundError("an account set needs a name")
+        if name in names:
+            raise RoundError(f"two account sets are named {name}")
+        names.add(name)
+        set_id = conn.execute(
+            insert(account_set)
+            .values(version_id=r.version_id, module=MODULE_COST_CENTER, name=name)
+            .returning(account_set.c.set_id)
+        ).scalar_one()
+        accounts = {_member_id(conn, ACCOUNT, code) for code in s.accounts}
+        if accounts:
+            conn.execute(
+                insert(account_set_account),
+                [{"set_id": set_id, "account_id": a} for a in sorted(accounts)],
+            )
+        for code in s.assigned_to:
+            if code in assigned:
+                raise RoundError(f"{code} is assigned to {assigned[code]} and {name}")
+            assigned[code] = name
+            conn.execute(
+                insert(account_set_assignment).values(
+                    version_id=r.version_id,
+                    module=MODULE_COST_CENTER,
+                    member_id=_member_id(conn, COST_CENTER, code),
+                    set_id=set_id,
+                )
+            )
+
+
+def _clear_outside_sets(conn: Connection, r: RoundRef) -> None:
+    """Plan values outside a cost center's account set: cleared in a round in setup, where they
+    are values the controller carried over or prepared; refused in an open round, where a
+    planner entered them and couldn't clear them any more (ADR 0014)."""
+    f = fact_cost_center
+    with_values = {
+        cc: set(accounts)
+        for cc, accounts in conn.execute(
+            select(f.c.dim_cost_center, func.array_agg(f.c.dim_account.distinct()))
+            .where(f.c.version_id == r.version_id)
+            .group_by(f.c.dim_cost_center)
+        )
+    }
+    credited = set(conn.execute(select(credit_account.c.account_id)).scalars())
+    outside: list[tuple[int, int]] = []
+    for cc, scope in account_scopes(conn, r.version_id, with_values).items():
+        if scope is not None:
+            outside += [(cc, a) for a in with_values[cc] - scope - credited]
+    if not outside:
+        return
+    if r.status != "setup":
+        codes = dict(
+            conn.execute(
+                select(member.c.member_id, member.c.code).where(
+                    member.c.member_id.in_({cc for cc, _ in outside})
+                )
+            ).all()
+        )
+        raise RoundError(
+            "plan values outside the account set on "
+            f"{', '.join(sorted({codes[cc] for cc, _ in outside}))}; clear them first"
+        )
+    conn.execute(
+        delete(f).where(
+            f.c.version_id == r.version_id,
+            tuple_(f.c.dim_cost_center, f.c.dim_account).in_(outside),
+        )
+    )
 
 
 def _set_productive(conn: Connection, r: RoundRef, codes: list[str]) -> None:
@@ -785,3 +1189,150 @@ def rounds(engine: Engine) -> list[RoundRef]:
             _ROUNDS.order_by(planning_round.c.fiscal_year.desc(), version.c.code)
         ).all()
     return [RoundRef(**r._mapping) for r in rows]
+
+
+# --- The round's scope (ADR 0014) -----------------------------------------------------------------
+
+
+@dataclass
+class ScopeRow:
+    code: str
+    name: str
+    depth: int
+    is_group: bool
+    parent: str | None
+    planned: bool | None  # leaves: planned in the round; None for groups
+    new: bool  # a leaf the source round didn't have
+    missing: bool  # no longer delivered by the source
+    prior_actuals: Decimal | None  # prior-year actuals, summed over the year
+    source_plan: Decimal | None  # in the round this one was set up from
+
+
+@dataclass
+class Scope:
+    source_round: str | None
+    cost_centers: list[ScopeRow]
+    accounts: list[ScopeRow]
+
+
+def scope_of(engine: Engine, user: User, code: str) -> Scope:
+    """The cost center and account trees as the round's scope: what is planned, what is new or
+    no longer delivered, and last year's figures beside them."""
+    from planlayer.masterdata import tree  # masterdata depends on the sync, not on rounds
+
+    user.require_controller()
+    cost_centers = tree(engine, user, "cost_centers")
+    accounts = tree(engine, user, "accounts")
+    with unit_of_work(engine, user) as conn:
+        r = get_round(conn, code)
+        source = conn.execute(
+            select(version.c.version_id, version.c.code)
+            .join(planning_round, planning_round.c.copied_from == version.c.version_id)
+            .where(planning_round.c.version_id == r.version_id)
+        ).first()
+        members = dict(
+            conn.execute(
+                select(member.c.code, member.c.member_id).where(
+                    member.c.dim_id.in_((COST_CENTER, ACCOUNT))
+                )
+            ).all()
+        )
+        state = dict(
+            conn.execute(
+                select(round_member.c.member_id, round_member.c.enabled).where(
+                    round_member.c.version_id == r.version_id,
+                    round_member.c.module == MODULE_COST_CENTER,
+                )
+            ).all()
+        )
+        valid = set(valid_cost_centers(conn, r.fiscal_year))
+        known_before = (
+            _round_members(conn, source.version_id, MODULE_COST_CENTER, enabled=True)
+            | _round_members(conn, source.version_id, MODULE_COST_CENTER, enabled=False)
+            if source is not None
+            else None
+        )
+        excluded = set(
+            conn.execute(
+                select(not_planned_account.c.account_id).where(
+                    not_planned_account.c.version_id == r.version_id,
+                    not_planned_account.c.module == MODULE_COST_CENTER,
+                )
+            ).scalars()
+        )
+        actuals_id = conn.execute(
+            select(version.c.version_id).where(version.c.kind == "actuals")
+        ).scalar()
+        prior = _totals(conn, actuals_id, fiscal_periods(conn, r.fiscal_year - 1))
+        before = _totals(conn, source.version_id if source else None, None)
+
+    shown = {
+        row.code
+        for row in cost_centers
+        if not row.is_group and (members[row.code] in valid or members[row.code] in state)
+    }
+    parents = {row.code: row.parent for row in cost_centers}
+    for leaf in list(shown):
+        node = parents.get(leaf)
+        while node is not None and node not in shown:
+            shown.add(node)
+            node = parents.get(node)
+
+    def leaf_new(m: int) -> bool:
+        return known_before is not None and m not in known_before
+
+    cc_rows = [
+        ScopeRow(
+            row.code,
+            row.name,
+            row.depth,
+            row.is_group,
+            row.parent,
+            None if row.is_group else bool(state.get(members[row.code])),
+            not row.is_group and leaf_new(members[row.code]),
+            row.missing_since is not None,
+            prior[0].get(members[row.code]),
+            before[0].get(members[row.code]),
+        )
+        for row in cost_centers
+        if row.code in shown
+    ]
+    account_rows = [
+        ScopeRow(
+            row.code,
+            row.name,
+            row.depth,
+            row.is_group,
+            row.parent,
+            None if row.is_group else members[row.code] not in excluded,
+            False,
+            row.missing_since is not None,
+            prior[1].get(members[row.code]),
+            before[1].get(members[row.code]),
+        )
+        for row in accounts
+    ]
+    return Scope(source.code if source else None, cc_rows, account_rows)
+
+
+def _totals(
+    conn: Connection, version_id: int | None, periods: list[date] | None
+) -> tuple[dict[int, Decimal], dict[int, Decimal]]:
+    """A version's values summed per cost center and per account, rolled up through the
+    hierarchies so groups carry their totals too."""
+    if version_id is None:
+        return {}, {}
+    f = fact_cost_center
+    out: list[dict[int, Decimal]] = []
+    for column, hier_id in ((f.c.dim_cost_center, H_COST_CENTER), (f.c.dim_account, H_ACCOUNT)):
+        query = (
+            select(closure.c.ancestor_id, func.sum(f.c.amount))
+            .join(closure, (closure.c.descendant_id == column) & (closure.c.hier_id == hier_id))
+            .where(f.c.version_id == version_id, f.c.layer_id == BASE_LAYER)
+            .where(f.c.measure_id == AMOUNT)
+            .group_by(closure.c.ancestor_id)
+        )
+        if periods is not None:
+            query = query.where(f.c.period.in_(periods))
+        out.append(dict(conn.execute(query).all()))
+    return out[0], out[1]

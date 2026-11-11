@@ -25,7 +25,18 @@ def report(p: sync.SyncPlan) -> None:
     ):
         print(f"{label}: {len(items)}" + (f" ({', '.join(items[:10])})" if items else ""))
     if p.actual_cells is not None:
-        print(f"actual cells: {p.actual_cells}")
+        window = f"fiscal years {p.window.first}-{p.window.last}" if p.window else "every year"
+        print(f"actual cells: {p.actual_cells} ({window})")
+        for y in p.years:
+            print(f"  {y.fiscal_year}: {y.stored} stored, {y.delivered} delivered")
+
+
+def _years(value: str) -> tuple[int, int]:
+    first, _, last = value.partition("-")
+    try:
+        return int(first), int(last or first)
+    except ValueError:
+        raise argparse.ArgumentTypeError("a year or a range, e.g. 2025-2027") from None
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -39,6 +50,12 @@ def main(argv: list[str] | None = None) -> None:
 
     sync_cmd = commands.add_parser("sync", help="sync master data and actuals from the source")
     sync_cmd.add_argument("--entity", help="only this entity's actuals")
+    sync_cmd.add_argument(
+        "--years",
+        type=_years,
+        help="fiscal years of actuals to replace, e.g. 2025-2027 or 2026 (default: the years the "
+        "setup and open rounds compare with)",
+    )
     sync_cmd.add_argument("--dry-run", action="store_true", help="show the plan, write nothing")
     sync_cmd.add_argument(
         "--confirm-matches",
@@ -93,7 +110,7 @@ def main(argv: list[str] | None = None) -> None:
             try:
                 actor = access.system_user(engine)
                 if args.dry_run:
-                    report(sync.plan(engine, source, entity=args.entity))
+                    report(sync.plan(engine, source, entity=args.entity, years=args.years))
                     return
                 result = sync.run(
                     engine,
@@ -103,6 +120,7 @@ def main(argv: list[str] | None = None) -> None:
                     confirm=[m.key for m in sync.plan(engine, source).matches]
                     if args.confirm_matches
                     else (),
+                    years=args.years,
                 )
             except sync.SyncError as e:
                 raise SystemExit(f"sync refused, nothing written: {e}") from None

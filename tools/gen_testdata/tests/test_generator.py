@@ -52,7 +52,7 @@ def test_standard_sizes() -> None:
     master = build()
     assert len(master.entities) == 4
     assert 55 <= len(master.cost_centers) <= 65
-    assert len(master.accounts) == 154
+    assert len(master.accounts) == 155  # 154 booked, plus the new one (NEW_ACCOUNT)
     assert len(master.account_groups) == 13
     assert len(master.products) == 400
     assert len(master.product_groups) == 40
@@ -88,6 +88,11 @@ def test_special_cost_centers(variant: str) -> None:
         assert master.cc_by_name(m.UNMATCHED_OWNER_CC).owner == m.UNMATCHED_OWNER
         renamed = [n.name for n in master.cc_nodes if n.code == m.RENAMED_DEPARTMENT]
         assert renamed == ["Pump Plant Poland", m.RENAMED_TO]
+        # The next fiscal year: created ahead of it, closed at the end of the current one.
+        new = master.cc_by_name(m.NEXT_NEW_CC[0])
+        assert (new.code, new.valid_from) == ("DE1290", date(2027, 1, 1))
+        assert master.cc_by_name(m.NEXT_CLOSED_CC).valid_to == date(2026, 12, 31)
+        assert master.cc_by_name("Machining").code == "DE1010"  # existing codes stay
 
 
 def test_owners_are_users_except_the_unmatched_one() -> None:

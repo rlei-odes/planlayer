@@ -3,6 +3,7 @@
 - **Status:** Accepted
 - **Closes:** D-11, D-31; the preview and confirmation part of D-27
 - **Date:** 2026-11-08
+- **Amended by:** [0014](0014-preparing-a-round.md): actuals are synced for a window of fiscal years; syncs are written by the system user; members no longer delivered keep their place in the hierarchy
 
 ## Context
 
@@ -35,13 +36,13 @@ Every dataset is optional. Without `actuals`, rounds have no actuals to compare 
 - Members of every dimension live in `member` and the hierarchy edges in `hier_edge`. Each member and edge records its **origin**: `source` or `manual`.
 - **Manual members:** the controller adds cost centers, accounts, groups and entities on the master-data page, and edits or deletes them (deleting only while nothing refers to them). The same page builds all master data from scratch when there is no source.
 - **Local overrides on synced members:** the controller may rename a synced member or move it to another parent. The override survives syncs and is marked; the page shows the source's value next to it, and the override can be removed.
-- A member the source stops delivering is kept with its values (D-13 decides how it's flagged).
+- A member the source stops delivering is kept with its values and its place in the hierarchy, and marked since when ([ADR 0014](0014-preparing-a-round.md)).
 
 ### Sync: preview, confirm, run
 
 1. **Preview** reads every mapped dataset, resolves every code and builds the hierarchies. It reports problems (unknown codes, cycles, duplicate codes), and members new, changed, not delivered any more, and **matches**: source rows whose code exists as a manual member. Nothing is written.
 2. **Matches are confirmed:** a run refuses while the source delivers a code that is still a manual member and hasn't been confirmed ("found 1 match from the source").
-3. **Run:** applies everything in one transaction, as the preview showed. A confirmed match keeps the member's identity and plan values. From then on the source owns it, and its manual data is kept as a **shadow record** (name, attributes, parents, who confirmed and when).
+3. **Run:** applies everything in one transaction, as the preview showed. Actuals and actual hours are replaced only for the preview's window of fiscal years ([ADR 0014](0014-preparing-a-round.md)). A confirmed match keeps the member's identity and plan values. From then on the source owns it, and its manual data is kept as a **shadow record** (name, attributes, parents, who confirmed and when).
 4. Every run is recorded with actor, counts, the mappings used, and how long each step took (reading the source, members, actuals, capacity); the steps are also logged. Actuals are written with one statement per 50,000 rows rather than one per row, because row-level security and the statement triggers run once per statement: a full sync of the standard test data (163,000 cells) takes about 7 s instead of a minute.
 
 Admins edit mappings. Admins and controllers preview, confirm and run syncs, and controllers edit master data.

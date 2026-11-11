@@ -14,6 +14,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     ForeignKeyConstraint,
+    Identity,
     Integer,
     MetaData,
     Numeric,
@@ -92,6 +93,8 @@ member = Table(
     # wins); ``source_name`` is what the source delivered.
     Column("origin", Text, nullable=False, server_default="source"),
     Column("source_name", Text),
+    # ADR 0014: since when the source no longer delivers a synced member; NULL while it does.
+    Column("missing_since", DateTime(timezone=True)),
     UniqueConstraint("dim_id", "code"),
 )
 
@@ -255,14 +258,45 @@ line_spread = Table(
     CheckConstraint("(basis = 'profile') = (profile_id IS NOT NULL)", name="profile"),
 )
 
-# Accounts excluded from a module in a round; the lock trigger refuses plan values on them.
-hidden_account = Table(
-    "hidden_account",
+# Accounts a module doesn't plan in a round (ADR 0014): shown read only where they have
+# comparison values; the lock trigger refuses plan values on them.
+not_planned_account = Table(
+    "not_planned_account",
     metadata,
     Column("version_id", SmallInteger, nullable=False),
     Column("module", Text, nullable=False),
     Column("account_id", Integer, ForeignKey("member.member_id"), nullable=False),
     PrimaryKeyConstraint("version_id", "module", "account_id"),
+    _module_fk(),
+)
+
+# Named lists of accounts and account groups per round (ADR 0014), assigned to cost center nodes
+# or cost centers; the nearest assignment above a cost center decides what its sheet plans.
+account_set = Table(
+    "account_set",
+    metadata,
+    Column("set_id", Integer, Identity(), primary_key=True),
+    Column("version_id", SmallInteger, nullable=False),
+    Column("module", Text, nullable=False),
+    Column("name", Text, nullable=False),
+    UniqueConstraint("version_id", "module", "name"),
+    _module_fk(),
+)
+account_set_account = Table(
+    "account_set_account",
+    metadata,
+    Column("set_id", Integer, ForeignKey("account_set.set_id", ondelete="CASCADE"), nullable=False),
+    Column("account_id", Integer, ForeignKey("member.member_id"), nullable=False),
+    PrimaryKeyConstraint("set_id", "account_id"),
+)
+account_set_assignment = Table(
+    "account_set_assignment",
+    metadata,
+    Column("version_id", SmallInteger, nullable=False),
+    Column("module", Text, nullable=False),
+    Column("member_id", Integer, ForeignKey("member.member_id"), nullable=False),
+    Column("set_id", Integer, ForeignKey("account_set.set_id", ondelete="CASCADE"), nullable=False),
+    PrimaryKeyConstraint("version_id", "module", "member_id"),
     _module_fk(),
 )
 

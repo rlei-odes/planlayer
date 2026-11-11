@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { flushSync } from 'react-dom'
-import { api, type EntryForm, type MemberRow, type PlanningUnit, type Version } from './api'
+import { api, type EntryForm, type MemberRow, type Version } from './api'
 import PlannerPreview, { Bars } from './PlannerPreview'
 import Select, { type Option } from './Select'
-import type { ComparisonColumn, NewRound, Profile, Rule, SetupDraft, SetupView } from './setupTypes'
+import { AccountsTab, CostCentersTab } from './ScopeTabs'
+import type { CarryOver, ComparisonColumn, NewRound, Profile, Rule, Scope, SetupDraft, SetupView } from './setupTypes'
 
 // The yearly planning setup (E-03, ADR 0007): what a round plans and in what form, with a live
 // preview of the planner's sheet. Edits stay a draft until saved; the save is all or nothing.
@@ -19,6 +19,12 @@ const PROFILE_FORMS: EntryForm[] = ['monthly', 'annual_profile']
 const REFERENCE_FORMS: EntryForm[] = ['monthly', 'annual_reference']
 
 type Level = 'simple' | 'medium' | 'full'
+type Tab = 'forms' | 'cost_centers' | 'accounts'
+const TABS: { tab: Tab; label: string }[] = [
+  { tab: 'forms', label: 'Forms & columns' },
+  { tab: 'cost_centers', label: 'Cost centers' },
+  { tab: 'accounts', label: 'Accounts' },
+]
 type ProfilePreset = 'working_days' | 'calendar_days'
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
@@ -32,6 +38,7 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 
 const setupApi = {
   get: (code: string) => request<SetupView>(`/api/rounds/${encodeURIComponent(code)}/setup`),
+  scope: (code: string) => request<Scope>(`/api/rounds/${encodeURIComponent(code)}/scope`),
   save: (code: string, draft: SetupDraft) =>
     request<null>(`/api/rounds/${encodeURIComponent(code)}/setup`, { method: 'PUT', body: JSON.stringify(draft) }),
   createRound: (round: NewRound) => request<Version>('/api/rounds', { method: 'POST', body: JSON.stringify(round) }),
@@ -72,6 +79,8 @@ export default function SetupPage({
   const [note, setNote] = useState<{ kind: 'ok' | 'error' | 'warn'; text: string } | null>(null)
   const [creating, setCreating] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [tab, setTab] = useState<Tab>('forms')
+  const [scope, setScope] = useState<Scope | null>(null)
 
   const loadProfiles = useCallback(() => setupApi.profiles().then(setProfiles), [])
 
@@ -90,6 +99,7 @@ export default function SetupPage({
       },
       (e: unknown) => setNote({ kind: 'error', text: String(e) }),
     )
+    setupApi.scope(code).then(setScope, (e: unknown) => setNote({ kind: 'error', text: String(e) }))
   }, [code])
 
   const dirty = useMemo(() => !!view && !!draft && JSON.stringify(view.setup) !== JSON.stringify(draft), [view, draft])
@@ -100,9 +110,10 @@ export default function SetupPage({
     setSaving(true)
     try {
       await setupApi.save(view.round.code, draft)
-      const fresh = await setupApi.get(view.round.code)
+      const [fresh, freshScope] = await Promise.all([setupApi.get(view.round.code), setupApi.scope(view.round.code)])
       setView(fresh)
       setDraft(fresh.setup)
+      setScope(freshScope)
       setNote({ kind: 'ok', text: 'Setup saved. Planners see it on their next load.' })
       onRoundsChanged()
     } catch (e) {
@@ -166,6 +177,36 @@ export default function SetupPage({
       {note && <div className={`su-note ${note.kind}`} style={{ marginBottom: 14 }}>{note.text}</div>}
 
       {view && draft && round && (
+        <div className="seg su-tabs" role="tablist" aria-label="Setup">
+          {TABS.map((t) => (
+            <button key={t.tab} type="button" role="tab" aria-selected={tab === t.tab} aria-pressed={tab === t.tab} onClick={() => setTab(t.tab)}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+      )}
+      {view && draft && round && scope && tab !== 'forms' && (
+        <div className="su-scope">
+          {tab === 'cost_centers' ? (
+            <CostCentersTab
+              draft={draft}
+              setDraft={setDraft}
+              rows={scope.cost_centers}
+              fiscalYear={round.fiscal_year}
+              sourceName={scope.source_round ? (versionNames[scope.source_round] ?? scope.source_round) : null}
+            />
+          ) : (
+            <AccountsTab
+              draft={draft}
+              setDraft={setDraft}
+              rows={scope.accounts}
+              fiscalYear={round.fiscal_year}
+              sourceName={scope.source_round ? (versionNames[scope.source_round] ?? scope.source_round) : null}
+            />
+          )}
+        </div>
+      )}
+      {view && draft && round && tab === 'forms' && (
         <div className="su-layout">
           <div className="su-col">
             <section className="su-card">
@@ -239,8 +280,6 @@ export default function SetupPage({
 
             <EntryForms draft={draft} setDraft={setDraft} accounts={accounts} profiles={profiles} rounds={rounds} current={code} />
             <Comparisons draft={draft} setDraft={setDraft} rounds={rounds} current={code} actuals={view.actuals_available} />
-            <HiddenAccounts draft={draft} setDraft={setDraft} accounts={accounts} />
-            <ProductiveCostCenters key={code} draft={draft} setDraft={setDraft} round={code} />
             <Profiles profiles={profiles} periods={view.periods} fiscalYear={round.fiscal_year} onChanged={() => void loadProfiles()} />
           </div>
 
@@ -506,130 +545,6 @@ function Comparisons({
   )
 }
 
-function HiddenAccounts({ draft, setDraft, accounts }: DraftProps & { accounts: MemberRow[] }) {
-  const name = (code: string) => accounts.find((a) => a.code === code)?.name ?? ''
-  return (
-    <section className="su-card">
-      <h3>
-        <span className="su-step">5</span> Hidden accounts
-      </h3>
-      <p className="su-hint">Kept off every sheet in this round, e.g. accounts being phased out. Only possible while they hold no plan values.</p>
-      <div className="su-body">
-        <div className="su-chips">
-          {draft.hidden_accounts.map((code) => (
-            <span className="su-chip" key={code}>
-              {code} {name(code)}
-              <button
-                type="button"
-                aria-label={`Show ${code} again`}
-                onClick={() => setDraft({ ...draft, hidden_accounts: draft.hidden_accounts.filter((c) => c !== code) })}
-              >
-                ✕
-              </button>
-            </span>
-          ))}
-          {draft.hidden_accounts.length === 0 && <span className="su-empty">None hidden.</span>}
-        </div>
-        <Select
-          variant="action"
-          label="Hide an account"
-          display="Hide an account"
-          icon={<span className="pl-plus">+</span>}
-          value=""
-          searchable
-          options={accountOptions(
-            accounts.filter((a) => !draft.hidden_accounts.includes(a.code)),
-            false,
-          )}
-          onChange={(code) => setDraft({ ...draft, hidden_accounts: [...draft.hidden_accounts, code].sort() })}
-        />
-      </div>
-    </section>
-  )
-}
-
-/** Cost centers whose plan starts from capacity: the round's productive cost centers (ADR 0013).
- * A toggle moves a cost center between the two lists, animated where the browser can. */
-function ProductiveCostCenters({ draft, setDraft, round }: DraftProps & { round: string }) {
-  const [units, setUnits] = useState<PlanningUnit[]>([])
-  const [query, setQuery] = useState('')
-  useEffect(() => {
-    api.costCenters(round).then(setUnits, () => setUnits([]))
-  }, [round])
-  const productive = new Set(draft.productive_cost_centers ?? [])
-  const q = query.trim().toLowerCase()
-  const on = units.filter((u) => productive.has(u.code))
-  const off = units.filter((u) => !productive.has(u.code) && (!q || `${u.code} ${u.name}`.toLowerCase().includes(q)))
-
-  // Only the toggled row takes part in the transition (it slides to its new place); the rest of
-  // the page, the other rows included, changes at once.
-  const [moving, setMoving] = useState<string | null>(null)
-
-  function toggle(code: string, row: HTMLElement | null) {
-    const next = productive.has(code)
-      ? [...productive].filter((c) => c !== code)
-      : [...productive, code].sort()
-    const apply = () =>
-      flushSync(() => {
-        setMoving(code)
-        setDraft({ ...draft, productive_cost_centers: next })
-      })
-    if (row && document.startViewTransition && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      row.style.viewTransitionName = 'pc-moving'
-      void document.startViewTransition(apply).finished.finally(() => setMoving(null))
-    } else apply()
-  }
-
-  const item = (u: PlanningUnit, isOn: boolean) => (
-    <li key={u.code} style={moving === u.code ? { viewTransitionName: 'pc-moving' } : undefined}>
-      <span className="pc-name">
-        <span className="pl-code">{u.code}</span>
-        {u.name}
-      </span>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={isOn}
-        aria-label={`${u.code} ${u.name} productive`}
-        className="pc-switch"
-        onClick={(e) => toggle(u.code, e.currentTarget.closest('li'))}
-      >
-        <i />
-      </button>
-    </li>
-  )
-
-  return (
-    <section className="su-card">
-      <h3>
-        <span className="su-step">6</span> Productive cost centers
-      </h3>
-      <p className="su-hint">
-        Their plan starts from capacity: work center hours × rates, credited to the cost center. They get a sheet on the
-        Capacity page.
-      </p>
-      <div className="su-body">
-        <div className="su-sub">Productive · {on.length}</div>
-        <ul className="pc-list">
-          {on.map((u) => item(u, true))}
-          {on.length === 0 && <li className="su-empty">None yet: switch cost centers on below.</li>}
-        </ul>
-        <div className="su-sub pc-others">
-          Other cost centers
-          <input
-            className="su-input pc-filter"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Filter"
-            aria-label="Filter cost centers"
-          />
-        </div>
-        <ul className="pc-list pc-scroll">{off.map((u) => item(u, false))}</ul>
-      </div>
-    </section>
-  )
-}
-
 const MONTH = new Intl.DateTimeFormat('en', { month: 'short', timeZone: 'UTC' })
 const PRESETS: { preset: ProfilePreset; label: string }[] = [
   { preset: 'working_days', label: 'Working days' },
@@ -719,7 +634,7 @@ function Profiles({
   return (
     <section className="su-card">
       <h3>
-        <span className="su-step">7</span> Seasonality profiles
+        <span className="su-step">5</span> Seasonality profiles
       </h3>
       <p className="su-hint">Shared by all rounds. Entered as percentages (summing to 100) or as any relative numbers.</p>
       <div className="su-body">
@@ -854,6 +769,32 @@ function profileCode(name: string): string {
   return name.toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 20)
 }
 
+const CARRY: { key: keyof Omit<CarryOver, 'uplift'>; label: string; hint: string }[] = [
+  { key: 'setup', label: 'Entry forms and comparisons', hint: 'default form, exceptions, comparison columns' },
+  { key: 'compare_with_source', label: 'Compare with the source round', hint: 'adds it as a comparison column' },
+  { key: 'scope', label: 'Cost center scope', hint: 'cost centers not planned stay so' },
+  { key: 'accounts', label: 'Accounts', hint: 'accounts not planned, account sets and where they are assigned' },
+  { key: 'capacity', label: 'Capacity', hint: 'productive cost centers and their plan rates and lines' },
+  { key: 'sheets', label: 'Sheets', hint: 'accounts added to sheets, line spreads' },
+  { key: 'values', label: 'Plan values', hint: 'moved to the new year month by month, with an uplift' },
+]
+const NO_CARRY: CarryOver = {
+  setup: true,
+  compare_with_source: true,
+  scope: true,
+  accounts: true,
+  capacity: true,
+  sheets: true,
+  values: false,
+  uplift: '0',
+}
+
+/** The latest round of a kind: the usual source, so budgets follow budgets and forecasts follow
+ * forecasts. Rounds come newest first. */
+function latestOf(rounds: Version[], kind: string): string | null {
+  return (rounds.find((v) => v.kind === kind) ?? rounds[0])?.code ?? null
+}
+
 function NewRoundCard({
   rounds,
   onCancel,
@@ -871,18 +812,26 @@ function NewRoundCard({
       kind: 'budget',
       fiscal_year: nextYear,
       deadline: null,
-      copy_from: rounds[0]?.code ?? null,
+      copy_from: latestOf(rounds, 'budget'),
+      carry: NO_CARRY,
     }
   })
+  const carry = r.carry ?? NO_CARRY
+  const source = rounds.find((v) => v.code === r.copy_from)
   const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
   async function create() {
+    setBusy(true)
     try {
       await setupApi.createRound(r)
       onCreated(r.code)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setBusy(false)
     }
   }
+  const uplift = Number(carry.uplift ?? 0)
   return (
     <section className="su-card" style={{ marginBottom: 14 }}>
       <h3>New planning round</h3>
@@ -896,7 +845,7 @@ function NewRoundCard({
               { value: 'budget', label: 'Budget' },
               { value: 'forecast', label: 'Forecast' },
             ]}
-            onChange={(kind) => setR({ ...r, kind })}
+            onChange={(kind) => setR({ ...r, kind, copy_from: latestOf(rounds, kind) })}
           />
         </div>
         <label className="su-field">
@@ -927,12 +876,50 @@ function NewRoundCard({
           />
         </div>
       </div>
+      {source && (
+        <div className="su-carry">
+          <div className="su-sub">Carry over from {source.name}</div>
+          <ul>
+            {CARRY.map((c) => (
+              <li key={c.key}>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={!!carry[c.key]}
+                    onChange={(e) => setR({ ...r, carry: { ...carry, [c.key]: e.target.checked } })}
+                  />
+                  <span>
+                    {c.label} <span className="ink-3">· {c.hint}</span>
+                  </span>
+                </label>
+                {c.key === 'values' && carry.values && (
+                  <label className="su-uplift">
+                    Uplift
+                    <input
+                      className="su-input"
+                      type="number"
+                      step="0.1"
+                      value={carry.uplift ?? '0'}
+                      onChange={(e) => setR({ ...r, carry: { ...carry, uplift: e.target.value || '0' } })}
+                      aria-label="Uplift in percent"
+                    />
+                    %
+                    <span className="ink-3">
+                      {source.fiscal_year} → {r.fiscal_year}: 1,000 becomes {(1000 * (1 + uplift / 100)).toLocaleString('en-US', { maximumFractionDigits: 2 })}
+                    </span>
+                  </label>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       <div className="su-row" style={{ marginTop: 12, justifyContent: 'flex-end' }}>
         <button type="button" className="su-btn ghost" onClick={onCancel}>
           Cancel
         </button>
-        <button type="button" className="su-btn primary" onClick={() => void create()}>
-          Create round
+        <button type="button" className="su-btn primary" disabled={busy} onClick={() => void create()}>
+          {busy ? 'Creating…' : 'Create round'}
         </button>
       </div>
       {error && <div className="su-note error" style={{ marginTop: 8 }}>{error}</div>}

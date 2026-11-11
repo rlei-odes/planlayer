@@ -67,7 +67,7 @@ function spread(total: number, weights: number[]): number[] {
 export default function PlannerPreview(p: Props) {
   const byCode = new Map(p.accounts.map((a) => [a.code, a]))
   const rules = new Map(p.draft.entry_forms.map((r) => [r.account_code, r]))
-  const hidden = new Set(p.draft.hidden_accounts)
+  const hidden = new Set(p.draft.not_planned_accounts)
 
   function resolve(code: string): Resolved {
     for (let c: string | null = code; c; c = byCode.get(c)?.parent ?? null) {

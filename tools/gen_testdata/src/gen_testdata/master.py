@@ -292,6 +292,12 @@ CLOSED_CC = "Legacy Assembly"  # closed at the end of the prior fiscal year
 RENAMED_DEPARTMENT = "DEP_PUMP_PL"  # renamed at the start of the current fiscal year
 RENAMED_TO = "Pump Plant Wrocław"
 NO_OWNER = ("Digital Service", "Tooling", "Legal")
+# The next fiscal year, for preparing its round (ADR 0014): a cost center created ahead of it
+# (added after all others, so existing codes stay), one closed at the end of the current year,
+# and an account no one has booked on yet.
+NEXT_NEW_CC = ("Additive Manufacturing", "DE", "DEP_PUMP_PROD")
+NEXT_CLOSED_CC = "Shift Management"
+NEW_ACCOUNT = ("6950", "Cloud subscriptions", "IT")
 UNMATCHED_OWNER_CC = "Test Bench"
 
 
@@ -495,6 +501,8 @@ def _cost_centers(
                     valid_from = add_months(prior, 6)
                 if name == CLOSED_CC:
                     valid_to = current - ONE_DAY
+                if name == NEXT_CLOSED_CC:
+                    valid_to = add_months(current, 12) - ONE_DAY
                 cc_owner = owner
                 if name in NO_OWNER:
                     cc_owner = None
@@ -520,6 +528,19 @@ def _cost_centers(
                 else:
                     assignments.append(Tranche(code, full_name, parent, valid_from, valid_to))
 
+    name, entity, parent = NEXT_NEW_CC
+    if entity in variant.entities and variant.max_cc_per_department is None:
+        counters[entity] = counters.get(entity, 0) + 1
+        code = f"{entity}{1000 + 10 * counters[entity]}"
+        start = add_months(current, 12)
+        dep = next(d for d in DEPARTMENTS if d.code == parent)
+        cost_centers.append(
+            CostCenter(
+                code, name, f"{name} ({entity})", entity, dep.function, dep.owner, start, OPEN_END
+            )
+        )
+        assignments.append(Tranche(code, name, parent, start, OPEN_END))
+
     # The moved cost center's target department must exist even in the small variant.
     if any(a.parent == MOVED_TO for a in assignments) and not any(
         n.code == MOVED_TO for n in nodes
@@ -544,6 +565,9 @@ def _accounts(variant: Variant) -> list[Account]:
             if group == "CREDITS":
                 label = CREDIT_ACCOUNT_NAMES[code]
             accounts.append(Account(code, label, group, kind, functions, monthly))
+    if variant.max_accounts_per_group is None:
+        code, label, group = NEW_ACCOUNT
+        accounts.append(Account(code, label, group, "cost", (), 0))  # no functions: no actuals
     return accounts
 
 

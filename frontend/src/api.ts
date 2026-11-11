@@ -107,9 +107,10 @@ export const api = {
   deleteMapping: (d: Dataset) => send('DELETE', `/api/datasets/${d}/mapping`).then((res) => json<null>(res)),
   preview: (d: Dataset, m: Mapping, mapped: boolean) =>
     post(`/api/datasets/${d}/preview`, { ...m, mapped }).then((res) => json<Preview>(res)),
-  syncPlan: (entity: string | null) => post('/api/sync/plan', { entity }).then((res) => json<SyncPlan>(res)),
-  syncRun: (entity: string | null, confirm: string[]) =>
-    post('/api/sync/run', { entity, confirm }).then((res) =>
+  syncPlan: (entity: string | null, years: S.YearsIO | null) =>
+    post('/api/sync/plan', { entity, years }).then((res) => json<SyncPlan>(res)),
+  syncRun: (entity: string | null, confirm: string[], years: S.YearsIO | null) =>
+    post('/api/sync/run', { entity, confirm, years }).then((res) =>
       json<S.SyncRunOut>(res),
     ),
   members: (d: MemberDataset) => fetch(`/api/members/${d}`).then((res) => json<MemberRow[]>(res)),
@@ -159,7 +160,8 @@ export const api = {
     if (response.status === 409) throw new ConflictError((await response.json()) as Conflict[])
     return json<Grid>(response)
   },
-  accounts: (version: string) => fetch(`${v(version)}/accounts`).then((r) => json<Account[]>(r)),
+  /** Accounts a planner may add to the cost center's sheet: those it plans. */
+  accounts: (version: string, code: string) => fetch(`${cc(version, code)}/accounts`).then((r) => json<Account[]>(r)),
   addAccount: (version: string, code: string, account: string) =>
     post(`${cc(version, code)}/accounts`, { account_code: account }).then((r) => json<Grid>(r)),
   /** How one line spreads the year totals typed from now on; null: as the round is set up. */

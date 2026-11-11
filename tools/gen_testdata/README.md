@@ -26,14 +26,14 @@ Each run replaces the generator's own tables and views; nothing else in the sche
 | Variant | Entities | Cost centers | Accounts | SKUs | Periods | Fact rows | Time |
 |---|---|---|---|---|---|---|---|
 | `small` | DE | 15 | 31 | 30 | 1 year + YTD | ~7k | <1 s |
-| `standard` | DE, CH, PL, US | 62 | 154 | 400 | 3 years + YTD | ~310k | ~2 s |
-| `large` | DE, CH, PL, US | 1,240 | 154 | 8,000 | 5 years + YTD | ~10.4M | ~1 min |
+| `standard` | DE, CH, PL, US | 63 | 155 | 400 | 3 years + YTD | ~310k | ~2 s |
+| `large` | DE, CH, PL, US | 1,241 | 155 | 8,000 | 5 years + YTD | ~10.4M | ~1 min |
 
 ## The company
 
 - **Entities:** DE (parent, EUR), CH (CHF), PL (PLN), US (USD). Bronze holds local currency and a monthly rate table, and gold converts to EUR.
 - **Cost centers:** company → division → department → cost center, ragged: corporate cost centers hang directly under their division. There's an alternate hierarchy by function (production, sales, admin). Each cost center has an owner, the department head.
-- **Accounts:** a P&L tree, root → 5 sections → 13 groups (the aggregate planning lines) → 154 leaves. Accounts are typed `revenue` (credit side) or `cost`. The section *Internal activity allocation* holds the four accounts capacity planning credits; nothing is booked on them.
+- **Accounts:** a P&L tree, root → 5 sections → 13 groups (the aggregate planning lines) → 155 leaves (one, 6950, without bookings). Accounts are typed `revenue` (credit side) or `cost`. The section *Internal activity allocation* holds the four accounts capacity planning credits; nothing is booked on them.
 - **Products:** 5 lines → 40 groups → 400 SKUs. Each SKU sells in 3–9 of the 12 countries.
 - **Countries:** 12 countries in 4 regions. Each country is served by one entity and booked on one sales cost center.
 - **Capacity (ADR 0013):** four activity types (machine hours, measurement and quality control, repair work, engineering hours), each crediting one of those accounts, and 32 work centers on 27 production and engineering cost centers with an hourly rate per activity type they output (a few output two). Gold views: `v_activity_types`, `v_work_centers`, `v_work_center_rates`, `v_capacity_actuals`.
@@ -58,6 +58,9 @@ The tests rely on these; their names are constants in `master.py`.
 | Renamed department | *Pump Plant Poland* → *Pump Plant Wrocław* at the start of the current fiscal year |
 | No owner | *Digital Service*, *Tooling*, *Legal* |
 | Owner without a user | *Test Bench*: `k.weber@nordwerk.example` is not in `USERS` |
+| Created for the next year | *Additive Manufacturing* (DE1290, Pump Production): valid from the start of the next fiscal year, so it has no actuals; the hierarchy view shows it under its first parent. Standard and large only. |
+| Closed at the end of the current year | *Shift Management*: valid to the end of the current fiscal year, so the next year's round doesn't include it |
+| Account without bookings | *6950 Cloud subscriptions* in IT and software: new, nothing booked on it. Standard and large only. |
 
 The `small` variant keeps the moved and the new cost center.
 

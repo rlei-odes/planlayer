@@ -5,8 +5,8 @@ safe cast turns values that don't fit (extra decimals, wrong types) into errors.
 """
 
 from collections.abc import Iterator, Mapping, Sequence
-from dataclasses import dataclass
-from typing import Protocol
+from dataclasses import dataclass, field
+from typing import Any, Protocol
 
 import pyarrow as pa
 from sqlalchemy import (
@@ -30,7 +30,12 @@ class Relation:
 
 @dataclass(frozen=True)
 class Query:
+    """A query, with values for the ``:name`` parameters it may use. ``between`` keeps only rows
+    whose contract field lies in a range: (field, lowest, highest), both included."""
+
     sql: str
+    params: Mapping[str, Any] = field(default_factory=dict)
+    between: tuple[str, Any, Any] | None = None
 
 
 Source = Relation | Query
@@ -83,10 +88,14 @@ class PostgresSource:
         stmt = select(  # type: ignore[var-annotated]
             *[column(mapped.get(n, n)).label(n) for n in names]
         ).select_from(self._origin(source))
+        params = source.params if isinstance(source, Query) else {}
+        if isinstance(source, Query) and source.between is not None:
+            name, lowest, highest = source.between
+            stmt = stmt.where(column(mapped.get(name, name)).between(lowest, highest))
         with self.engine.begin() as conn:
             self._read_only(conn, self.timeout_s)
             result = conn.execution_options(stream_results=True, yield_per=self.batch_rows).execute(
-                stmt
+                stmt, dict(params)
             )
             for chunk in result.partitions():
                 by_column = list(zip(*chunk, strict=True))
@@ -105,7 +114,7 @@ class PostgresSource:
         stmt = select(text("*")).select_from(self._origin(source)).limit(limit)
         with self.engine.begin() as conn:
             self._read_only(conn, 30)
-            result = conn.execute(stmt)
+            result = conn.execute(stmt, dict(source.params) if isinstance(source, Query) else {})
             names = list(result.keys())
             rows = [[None if v is None else str(v) for v in row] for row in result]
         return names, rows

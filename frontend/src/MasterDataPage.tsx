@@ -29,8 +29,28 @@ const DATASET_LABEL: Record<Dataset, string> = {
   activity_types: 'Activity types',
   work_centers: 'Work centers',
   work_center_rates: 'Work center rates',
-  capacity_actuals: 'Actual hours',
+  capacity_actuals: 'Work center actual hours',
 }
+// Datasets grouped by the module that needs them, so the admin sees what a setup requires.
+const DATASET_GROUPS: { title: string; hint: string; datasets: Dataset[] }[] = [
+  {
+    title: 'Master data',
+    hint: 'Every planning module plans on these. Members only grow: one the source stops delivering is kept.',
+    datasets: ['entities', 'cost_centers', 'accounts'],
+  },
+  {
+    title: 'Cost center planning',
+    hint: 'Actuals for the comparison columns and as the reference for spreading year totals.',
+    datasets: ['actuals'],
+  },
+  {
+    title: 'Capacity planning',
+    hint: 'Only needed when productive cost centers plan their work centers’ hours.',
+    datasets: ['activity_types', 'work_centers', 'work_center_rates', 'capacity_actuals'],
+  },
+]
+// Values per period: synced for a window of fiscal years, chosen on Sync.
+const PERIOD_DATASETS: Dataset[] = ['actuals', 'capacity_actuals']
 const DIMENSIONS: Option<MemberDataset>[] = [
   { value: 'cost_centers', label: 'Cost centers' },
   { value: 'accounts', label: 'Accounts' },
@@ -110,8 +130,18 @@ function Sources() {
         Name which result column is which field. Every dataset is optional: without a source, enter members by hand
         under Members.
       </div>
-      {datasets.map((d) => (
-        <DatasetEditor key={d.dataset} info={d} onSaved={load} />
+      {DATASET_GROUPS.map((g) => (
+        <div className="md-group" key={g.title}>
+          <div className="md-group-head">
+            <h3>{g.title}</h3>
+            <span className="ink-3">{g.hint}</span>
+          </div>
+          {datasets
+            .filter((d) => g.datasets.includes(d.dataset))
+            .map((d) => (
+              <DatasetEditor key={d.dataset} info={d} onSaved={load} />
+            ))}
+        </div>
       ))}
     </div>
   )
@@ -184,6 +214,13 @@ function DatasetEditor({ info, onSaved }: { info: DatasetInfo; onSaved: () => vo
               onChange={(e) => setM({ ...m, query: e.target.value })}
             />
           </label>
+          {PERIOD_DATASETS.includes(info.dataset) && (
+            <p className="su-hint md-period-hint">
+              Synced for a window of fiscal years, chosen on Sync; years outside it stay as they are. To filter in the
+              warehouse, the query may use <code>:period_from</code> and <code>:period_to</code>, e.g.{' '}
+              <code>WHERE period BETWEEN :period_from AND :period_to</code>. Don’t name a fixed year here.
+            </p>
+          )}
           <div className="su-row">
             <button type="button" className="su-btn" disabled={!m.query.trim()} onClick={() => void run(false)}>
               Show columns
@@ -342,8 +379,19 @@ function Working({ text, since }: { text: string; since: number }) {
   )
 }
 
+/** The years typed in, or null for the default window; an error text when they don't parse. */
+function yearsOf(first: string, last: string): { years: { first: number; last: number } | null; error?: string } {
+  if (!first.trim() && !last.trim()) return { years: null }
+  const a = Number(first || last)
+  const b = Number(last || first)
+  if (!Number.isInteger(a) || !Number.isInteger(b) || a < 1900 || b < 1900) return { years: null, error: 'Enter fiscal years, e.g. 2025 to 2027.' }
+  return a <= b ? { years: { first: a, last: b } } : { years: null, error: 'The first year comes after the last one.' }
+}
+
 function Sync() {
   const [entity, setEntity] = useState('')
+  const [first, setFirst] = useState('')
+  const [last, setLast] = useState('')
   const [plan, setPlan] = useState<SyncPlan | null>(null)
   const [confirmed, setConfirmed] = useState<Set<string>>(new Set())
   const [note, setNote] = useState<Note | null>(null)
@@ -352,11 +400,19 @@ function Sync() {
   const [working, setWorking] = useState<{ text: string; since: number } | null>(null)
 
   async function preview() {
+    const asked = yearsOf(first, last)
+    if (asked.error) {
+      setNote({ kind: 'error', text: asked.error })
+      return
+    }
     setBusy(true)
     setWorking({ text: 'Reading every mapped dataset from the source…', since: Date.now() })
     try {
-      const p = await api.syncPlan(entity || null)
+      const p = await api.syncPlan(entity || null, asked.years)
       setPlan(p)
+      // Show the window the preview used, so a run syncs exactly what was previewed.
+      setFirst(p.years ? String(p.years.first) : '')
+      setLast(p.years ? String(p.years.last) : '')
       setConfirmed(new Set())
       setNote(null)
     } catch (e) {
@@ -379,7 +435,7 @@ function Sync() {
     })
     setNote(null)
     try {
-      const r = await api.syncRun(entity || null, [...confirmed])
+      const r = await api.syncRun(entity || null, [...confirmed], plan?.years ?? null)
       setNote({
         kind: 'ok',
         text: `Synced ${r.members.toLocaleString('en-US')} members and ${r.actual_rows.toLocaleString('en-US')} actual cells in ${Math.max(1, Math.round(r.seconds))} s.`,
@@ -400,7 +456,11 @@ function Sync() {
         <h3>
           <span className="su-step">1</span> Preview
         </h3>
-        <p className="su-hint">Reads every mapped dataset and shows what would change. Nothing is written.</p>
+        <p className="su-hint">
+          Reads every mapped dataset and shows what would change. Nothing is written. Actuals and work center hours
+          are replaced for the fiscal years given, and stay as they are for every other year. Left empty, the years
+          are those the rounds in setup or open compare with: their own year and the year before.
+        </p>
         <div className="su-body su-row">
           <label className="su-field">
             Actuals of entity
@@ -410,6 +470,34 @@ function Sync() {
               onChange={(e) => setEntity(e.target.value)}
               placeholder="all entities"
             />
+          </label>
+          <label className="su-field">
+            Actuals of fiscal years
+            <span className="md-years">
+              <input
+                className="su-input md-year"
+                inputMode="numeric"
+                aria-label="First fiscal year"
+                value={first}
+                onChange={(e) => {
+                  setFirst(e.target.value)
+                  setPlan(null)
+                }}
+                placeholder="from"
+              />
+              <span className="ink-3">to</span>
+              <input
+                className="su-input md-year"
+                inputMode="numeric"
+                aria-label="Last fiscal year"
+                value={last}
+                onChange={(e) => {
+                  setLast(e.target.value)
+                  setPlan(null)
+                }}
+                placeholder="to"
+              />
+            </span>
           </label>
           <button type="button" className="su-btn md-push" disabled={busy} onClick={() => void preview()}>
             {busy && !plan ? 'Reading the source…' : plan ? 'Preview again' : 'Preview sync'}
@@ -433,6 +521,7 @@ function Sync() {
               <Tile label="no longer delivered" value={plan.gone.length} tone="rem" />
               <Tile label="actual cells" value={plan.actual_cells ?? 0} tone="same" />
             </div>
+            {plan.actual_cells !== null && <ActualYears plan={plan} />}
             {plan.problems.length > 0 && (
               <div className="su-note error md-gap">
                 <strong>
@@ -489,6 +578,52 @@ function Sync() {
             </div>
           </div>
         </section>
+      )}
+    </div>
+  )
+}
+
+/** Actual cells per fiscal year of the window: stored now and delivered, with years the run would empty. */
+function ActualYears({ plan }: { plan: SyncPlan }) {
+  const emptied = plan.actual_years.filter((y) => y.stored > 0 && y.delivered === 0)
+  const fmt = (n: number) => n.toLocaleString('en-US')
+  return (
+    <div className="md-gap">
+      <p className="md-window">
+        {plan.years
+          ? `Actuals of fiscal years ${plan.years.first} to ${plan.years.last} are replaced; other years stay as they are.`
+          : 'No round in setup or open: actuals of every year are replaced.'}
+      </p>
+      {plan.actual_years.length > 0 && (
+        <div className="tbl-card md-years-table">
+          <table className="tbl">
+            <thead>
+              <tr>
+                <th>Fiscal year</th>
+                <th className="num">Stored now</th>
+                <th className="num">From the source</th>
+                <th className="num">Difference</th>
+              </tr>
+            </thead>
+            <tbody>
+              {plan.actual_years.map((y) => (
+                <tr key={y.fiscal_year} className={y.stored > 0 && y.delivered === 0 ? 'md-emptied' : undefined}>
+                  <td>{y.fiscal_year}</td>
+                  <td className="num">{fmt(y.stored)}</td>
+                  <td className="num">{fmt(y.delivered)}</td>
+                  <td className="num">{y.delivered - y.stored > 0 ? '+' : ''}{fmt(y.delivered - y.stored)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {emptied.length > 0 && (
+        <div className="su-note warn">
+          The source delivers no actuals for {emptied.map((y) => y.fiscal_year).join(', ')}: the sync would remove the{' '}
+          {fmt(emptied.reduce((n, y) => n + y.stored, 0))} cells stored. If the query names a fixed year, narrow the
+          years above instead.
+        </div>
       )}
     </div>
   )

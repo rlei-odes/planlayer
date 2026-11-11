@@ -177,12 +177,31 @@ def _text(value: object) -> str | None:
 # --- Sync -----------------------------------------------------------------------------------------
 
 
+class YearsIO(BaseModel):
+    """Fiscal years ``first`` to ``last``, both included."""
+
+    first: int
+    last: int
+
+
 class SyncIn(BaseModel):
     entity: str | None = None
+    # Fiscal years whose actuals and actual hours are replaced; None: the default window, the
+    # years the setup and open rounds compare with.
+    years: YearsIO | None = None
+
+    def window(self) -> tuple[int, int] | None:
+        return (self.years.first, self.years.last) if self.years else None
 
 
 class SyncRunIn(SyncIn):
     confirm: list[str] = []
+
+
+class YearCountOut(BaseModel):
+    fiscal_year: int
+    stored: int  # actual cells stored now
+    delivered: int  # actual cells the source delivers
 
 
 class MatchOut(BaseModel):
@@ -200,6 +219,8 @@ class PlanOut(BaseModel):
     gone: list[str]
     matches: list[MatchOut]
     actual_cells: int | None
+    years: YearsIO | None  # the window used; None: every year
+    actual_years: list[YearCountOut]
 
 
 class SyncRunOut(BaseModel):
@@ -214,9 +235,9 @@ def sync_plan(request: Request, user: CurrentUser, body: SyncIn) -> PlanOut:
     """What a sync would do; writes nothing."""
     try:
         _syncer(user)
+        p = sync.plan(engine_of(request), _source(request), body.entity, body.window())
     except HANDLED as e:
         raise _http(e) from None
-    p = sync.plan(engine_of(request), _source(request), body.entity)
     return PlanOut(
         datasets=p.datasets,
         problems=p.problems,
@@ -227,6 +248,11 @@ def sync_plan(request: Request, user: CurrentUser, body: SyncIn) -> PlanOut:
             MatchOut(key=m.key, dimension=m.dimension, code=m.code, name=m.name) for m in p.matches
         ],
         actual_cells=p.actual_cells,
+        years=YearsIO(first=p.window.first, last=p.window.last) if p.window else None,
+        actual_years=[
+            YearCountOut(fiscal_year=y.fiscal_year, stored=y.stored, delivered=y.delivered)
+            for y in p.years
+        ],
     )
 
 
@@ -234,7 +260,9 @@ def sync_plan(request: Request, user: CurrentUser, body: SyncIn) -> PlanOut:
 def sync_run(request: Request, user: CurrentUser, body: SyncRunIn) -> SyncRunOut:
     try:
         _syncer(user)
-        r = sync.run(engine_of(request), _source(request), user, body.entity, body.confirm)
+        r = sync.run(
+            engine_of(request), _source(request), user, body.entity, body.confirm, body.window()
+        )
     except HANDLED as e:
         raise _http(e) from None
     return SyncRunOut(

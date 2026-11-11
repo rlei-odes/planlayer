@@ -108,15 +108,21 @@ def act(client: TestClient, action: str, comment: str | None = None, **target: o
 # --- Rounds and the lock trigger ------------------------------------------------------------------
 
 
-def test_new_round_is_in_setup_and_refuses_edits(engine: Engine, client: TestClient) -> None:
+def test_a_round_in_setup_is_prepared_by_controllers(engine: Engine, client: TestClient) -> None:
+    """Controllers write into a round in setup without moving its workflow status; planners
+    can't write until it opens (ADR 0014)."""
     rounds.create_round(engine, system(engine), "F2026", "Forecast 2026", "forecast", 2026)
-    grid = client.get("/api/versions/F2026/cost-centers/CC1/grid").json()
-    assert grid["round_status"] == "setup"
+    url = "/api/versions/F2026/cost-centers/CC1"
+    grid = client.get(f"{url}/grid").json()
+    assert grid["round_status"] == "setup" and grid["lock_reason"] is None
+    assert client.post(f"{url}/edits", json={"edits": [month("6000", 0, "1")]}).status_code == 200
+    assert client.get(f"{url}/grid").json()["status"] == "not_started"
+    log_in(client, OWNER)
+    grid = client.get(f"{url}/grid").json()
     assert grid["lock_reason"] == "the planning round is setup"
     assert not rows(grid)["6000"]["total_editable"]
-    edit = month("6000", 0, "1")
-    response = client.post("/api/versions/F2026/cost-centers/CC1/edits", json={"edits": [edit]})
-    assert response.status_code == 423
+    edit = month("6000", 1, "1")
+    assert client.post(f"{url}/edits", json={"edits": [edit]}).status_code == 423
 
 
 def test_lock_trigger_refuses_writes_past_the_api(engine: Engine, client: TestClient) -> None:
@@ -253,7 +259,7 @@ def test_comparisons_in_order(engine: Engine, client: TestClient) -> None:
     assert rows(grid)["6000"]["comparisons"][0] == BLANK
 
 
-def test_added_account_appears_and_hidden_ones_cannot_be_added(
+def test_added_account_appears_and_not_planned_ones_cannot_be_added(
     engine: Engine, client: TestClient
 ) -> None:
     cc2 = "/api/versions/B2026/cost-centers/CC2"
@@ -261,25 +267,29 @@ def test_added_account_appears_and_hidden_ones_cannot_be_added(
     grid = client.post(f"{cc2}/accounts", json={"account_code": "7000"}).json()
     assert [r["code"] for r in grid["rows"]] == ["A", "6000", "B", "7000"]
     assert plan(grid, "7000") == BLANK
-    rounds.hide_account(engine, system(engine), R, "6010")
+    rounds.set_account_planned(engine, system(engine), R, "6010", False)
     assert client.post(f"{cc2}/accounts", json={"account_code": "6010"}).status_code == 422
-    codes = [a["code"] for a in client.get(f"/api/versions/{R}/accounts").json()]
+    codes = [a["code"] for a in client.get(f"{cc2}/accounts").json()]
     assert codes == ["4900", "6000", "7000"]
 
 
-def test_hidden_account(engine: Engine, client: TestClient) -> None:
+def test_account_not_planned(engine: Engine, client: TestClient) -> None:
     post(client, month("6010", 0, "5"))
     with pytest.raises(rounds.RoundError, match="still has plan values on CC1"):
-        rounds.hide_account(engine, system(engine), R, "6010")
+        rounds.set_account_planned(engine, system(engine), R, "6010", False)
     post(client, month("6010", 0, None, versions_of(client.get(f"{URL}/grid").json(), "6010")))
-    rounds.hide_account(engine, system(engine), R, "6010")
+    rounds.set_account_planned(engine, system(engine), R, "6010", False)
     grid = client.get(f"{URL}/grid").json()
-    assert "6010" not in rows(grid)  # even with prior-year actuals
+    # Shown read only for its prior-year actuals, and counted in the group's total.
+    row = rows(grid)["6010"]
+    assert row["not_planned"] == "round" and not row["total_editable"]
+    assert row["comparisons"][0][0] == "50.00"
+    assert rows(grid)["A"]["comparisons"][0][0] == "150.00"
     assert post(client, month("6010", 0, "5")).status_code == 422  # type: ignore[attr-defined]
-    with pytest.raises(DBAPIError, match="the account is hidden"):
+    with pytest.raises(DBAPIError, match="the account is not planned"):
         raw_insert(engine, account="6010")
-    rounds.unhide_account(engine, system(engine), R, "6010")
-    assert "6010" in rows(client.get(f"{URL}/grid").json())
+    rounds.set_account_planned(engine, system(engine), R, "6010", True)
+    assert rows(client.get(f"{URL}/grid").json())["6010"]["not_planned"] is None
 
 
 # --- Entry forms ----------------------------------------------------------------------------------
@@ -338,13 +348,13 @@ def test_reference_version_and_fallback(engine: Engine, client: TestClient) -> N
 
 def test_copy_setup_from_round(engine: Engine, client: TestClient) -> None:
     rounds.set_entry_form(engine, system(engine), R, "A", "annual_even")
-    rounds.hide_account(engine, system(engine), R, "7000")
+    rounds.set_account_planned(engine, system(engine), R, "7000", False)
     rounds.set_member_enabled(engine, system(engine), R, "CC2", False)
     rounds.create_round(engine, system(engine), "F2026", "Forecast", "forecast", 2026, copy_from=R)
     rounds.set_round_status(engine, system(engine), "F2026", "open")
     grid = client.get("/api/versions/F2026/cost-centers/CC1/grid").json()
     assert rows(grid)["6000"]["entry_form"] == "annual_even"
-    assert "7000" not in rows(grid)
+    assert rows(grid)["7000"]["not_planned"] == "round"  # carried over, shown for its actuals
     units = client.get("/api/versions/F2026/cost-centers").json()
     assert [u["code"] for u in units] == ["CC1"]
     with engine.connect() as conn:

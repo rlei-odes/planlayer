@@ -8,6 +8,12 @@ A run applies the plan in one transaction, refusing while there are problems or 
 matches. Re-running a sync gives the same result.
 
 Members and edges keep effective values (the controller's overrides win) next to the source's.
+Master data only grows: a member the source stops delivering keeps its values and its place in
+the hierarchy.
+
+Actuals and actual hours are synced for a window of fiscal years. Only the window's periods are
+replaced; periods outside it stay as they are. The default window is what the setup and open
+rounds compare with: their fiscal years and the years before.
 """
 
 import json
@@ -24,21 +30,20 @@ import pyarrow as pa
 from sqlalchemy import (
     Connection,
     Engine,
-    Table,
-    column,
     delete,
     func,
     insert,
     literal,
-    or_,
     select,
-    text,
     update,
 )
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import DBAPIError
 
+from planlayer.access import system_user
 from planlayer.adapters.source import Query, SourceAdapter
+from planlayer.domain.periods import fiscal_year_of, fiscal_year_periods
+from planlayer.store.bulk import insert_all
 from planlayer.store.schema import (
     ACCOUNT,
     ACTIVITY_TYPE,
@@ -58,9 +63,11 @@ from planlayer.store.schema import (
     fact_cost_center,
     hier_edge,
     hierarchy,
+    installation,
     member,
     member_override,
     member_shadow,
+    planning_round,
     sync_run,
     version,
     work_center_rate,
@@ -257,11 +264,71 @@ def delete_mapping(engine: Engine, actor: Actor, dataset: str) -> None:
         conn.execute(delete(dataset_mapping).where(dataset_mapping.c.dataset == dataset))
 
 
-def read(adapter: SourceAdapter, m: Mapping, limit: int | None = None) -> list[dict[str, Any]]:
-    """The mapped dataset's rows, cast to its contract."""
+# Datasets of values per period: synced for a window of fiscal years.
+PERIOD_DATASETS = ("actuals", "capacity_actuals")
+
+
+@dataclass(frozen=True)
+class Window:
+    """Fiscal years ``first`` to ``last``, both included, as the periods they span."""
+
+    first: int
+    last: int
+    start_month: int = 1
+
+    @property
+    def period_from(self) -> date:
+        return fiscal_year_periods(self.first, self.start_month)[0]
+
+    @property
+    def period_to(self) -> date:
+        return fiscal_year_periods(self.last, self.start_month)[-1]
+
+    def params(self) -> dict[str, date]:
+        """The values of the parameters a query may use to read only the window."""
+        return {"period_from": self.period_from, "period_to": self.period_to}
+
+
+def start_month(conn: Connection) -> int:
+    return int(conn.execute(select(installation.c.fiscal_year_start_month)).scalar_one())
+
+
+def default_window(conn: Connection) -> Window | None:
+    """The fiscal years the setup and open rounds compare with: each round's year and the year
+    before. None without such rounds: every year the source delivers."""
+    years = set(
+        conn.execute(
+            select(planning_round.c.fiscal_year).where(planning_round.c.status != "closed")
+        ).scalars()
+    )
+    if not years:
+        return None
+    return Window(min(years) - 1, max(years), start_month(conn))
+
+
+def window_of(conn: Connection, years: tuple[int, int] | None) -> Window | None:
+    """The window for the years asked for, or the default one."""
+    if years is None:
+        return default_window(conn)
+    first, last = years
+    if first > last:
+        raise SyncError([f"the window's first year {first} is after its last year {last}"])
+    return Window(first, last, start_month(conn))
+
+
+def read(
+    adapter: SourceAdapter, m: Mapping, limit: int | None = None, window: Window | None = None
+) -> list[dict[str, Any]]:
+    """The mapped dataset's rows, cast to its contract. A dataset of values per period reads only
+    the window's periods; its query may use ``:period_from`` and ``:period_to`` to filter early."""
     sql = m.query if limit is None else f"SELECT * FROM ({m.query}) q LIMIT {int(limit)}"
+    query = Query(sql)
+    if m.dataset in PERIOD_DATASETS and window is not None:
+        query = Query(sql, window.params(), ("period", window.period_from, window.period_to))
+    elif m.dataset in PERIOD_DATASETS:
+        query = Query(sql, {"period_from": date.min, "period_to": date.max})
     contract = m.contract()
-    batches = list(adapter.read(Query(sql), contract, m.columns()))
+    batches = list(adapter.read(query, contract, m.columns()))
     rows: list[dict[str, Any]] = pa.Table.from_batches(batches, schema=contract).to_pylist()
     return rows
 
@@ -371,7 +438,18 @@ class Match:
 
 
 @dataclass
+class YearCount:
+    """Actual cells of one fiscal year: stored now, and delivered by the source."""
+
+    fiscal_year: int
+    stored: int
+    delivered: int
+
+
+@dataclass
 class SyncPlan:
+    window: Window | None = None  # None: every year
+    years: list[YearCount] = field(default_factory=list)  # actuals per fiscal year in the window
     problems: list[str] = field(default_factory=list)
     new: list[str] = field(default_factory=list)
     changed: list[str] = field(default_factory=list)
@@ -468,9 +546,21 @@ def _failed(dataset: str, e: Exception) -> str:
     return f"{dataset}: reading failed: {detail}"
 
 
-def plan(engine: Engine, adapter: SourceAdapter, entity: str | None = None) -> SyncPlan:
+def plan(
+    engine: Engine,
+    adapter: SourceAdapter,
+    entity: str | None = None,
+    years: tuple[int, int] | None = None,
+) -> SyncPlan:
+    """``years``: the window of fiscal years for actuals and actual hours; None for the
+    default window."""
     p = SyncPlan()
-    with engine.connect() as conn:
+    # Actuals are counted as the system user, the sync's writer: row-level security shows the
+    # admin no actuals (ADR 0009), and the preview compares what is stored with what comes.
+    with unit_of_work(engine, system_user(engine)) as conn:
+        p.window = window_of(conn, years)
+        fy_start = start_month(conn)
+        stored_by_year = _stored_actuals(conn, p.window, fy_start, entity)
         maps = mappings(conn)
         p.datasets = [d for d in DATASETS if d in maps]
         existing = {
@@ -559,7 +649,7 @@ def plan(engine: Engine, adapter: SourceAdapter, entity: str | None = None) -> S
 
     if "actuals" in maps:
         try:
-            rows = read(adapter, maps["actuals"])
+            rows = read(adapter, maps["actuals"], window=p.window)
         except SOURCE_ERRORS as e:
             p.problems.append(_failed("actuals", e))
             rows = []
@@ -584,6 +674,13 @@ def plan(engine: Engine, adapter: SourceAdapter, entity: str | None = None) -> S
             cells[key] += cast(Decimal, r["amount"])
         p.actuals = dict(cells)
         p.actual_cells = len(cells)
+        by_year: dict[int, int] = defaultdict(int)
+        for period, *_ in cells:
+            by_year[fiscal_year_of(period, fy_start)] += 1
+        p.years = [
+            YearCount(y, stored_by_year.get(y, 0), by_year.get(y, 0))
+            for y in sorted(set(stored_by_year) | set(by_year))
+        ]
 
     work_centers = _leaves(existing, p, WORK_CENTER)
     activity_types = _leaves(existing, p, ACTIVITY_TYPE)
@@ -615,7 +712,7 @@ def plan(engine: Engine, adapter: SourceAdapter, entity: str | None = None) -> S
             p.rates[pair] = cast(Decimal, r["rate"])
     if "capacity_actuals" in maps:
         try:
-            rows = read(adapter, maps["capacity_actuals"])
+            rows = read(adapter, maps["capacity_actuals"], window=p.window)
         except SOURCE_ERRORS as e:
             p.problems.append(_failed("capacity_actuals", e))
             rows = []
@@ -679,11 +776,14 @@ def run(
     actor: Actor,
     entity: str | None = None,
     confirm: Iterable[str] = (),
+    years: tuple[int, int] | None = None,
 ) -> SyncResult:
-    """Plan and apply. ``confirm`` lists the matches (``Match.key``) the user confirmed; a run
-    refuses while there are problems or unconfirmed matches."""
+    """Plan and apply. ``actor`` is who asked for the run; the system user writes it, as for
+    every job (ADR 0009), so an admin without access to cost centers can sync. ``confirm`` lists
+    the matches (``Match.key``) the user confirmed; a run refuses while there are problems or
+    unconfirmed matches. ``years`` is the window of fiscal years for actuals (see ``plan``)."""
     steps = _Steps()
-    p = plan(engine, adapter, entity)
+    p = plan(engine, adapter, entity, years)
     steps.done("read the source", f"{len(p.datasets)} datasets")
     if p.problems:
         raise SyncError(p.problems)
@@ -691,7 +791,7 @@ def run(
     if unconfirmed:
         raise SyncError([f"confirm the match with the source: {k}" for k in unconfirmed])
 
-    with unit_of_work(engine, actor) as conn:
+    with unit_of_work(engine, system_user(engine)) as conn:
         run_id = conn.execute(
             insert(sync_run)
             .values(actor=actor.login, entity_filter=entity)
@@ -711,14 +811,19 @@ def run(
                 _write_hierarchy(conn, hier_id, dim, p.members[dim], ids)
         rebuild_closure(conn)
         steps.done("write members and hierarchies", f"{members_written} members")
-        n = _write_actuals(conn, p.actuals, ids, entity) if p.actual_cells is not None else 0
+        n = (
+            _write_actuals(conn, p.actuals, ids, entity, p.window)
+            if p.actual_cells is not None
+            else 0
+        )
         steps.done("write actuals", f"{n} cells")
         if p.rates is not None:
             _write_rates(conn, p.rates, ids)
         if p.capacity is not None:
-            hours = _write_capacity_actuals(conn, p.capacity, ids, entity)
+            hours = _write_capacity_actuals(conn, p.capacity, ids, entity, p.window)
             steps.done("write rates and actual hours", f"{hours} cells")
         summary = {
+            "window": [p.window.first, p.window.last] if p.window else None,
             "datasets": p.datasets,
             "new": len(p.new),
             "changed": len(p.changed),
@@ -808,10 +913,24 @@ def _write_members(conn: Connection, dim: int, members: list[SourceMember]) -> N
         stmt.on_conflict_do_update(
             index_elements=[member.c.dim_id, member.c.code],
             set_={
-                c: stmt.excluded[c]
-                for c in ("name", "source_name", "is_group", "origin", *ATTRIBUTES)
+                **{
+                    c: stmt.excluded[c]
+                    for c in ("name", "source_name", "is_group", "origin", *ATTRIBUTES)
+                },
+                "missing_since": None,
             },
         )
+    )
+    # Synced members the source no longer delivers are kept, and marked since when.
+    conn.execute(
+        update(member)
+        .where(
+            member.c.dim_id == dim,
+            member.c.origin == "source",
+            member.c.missing_since.is_(None),
+            member.c.code.not_in([sm.code for sm in members]),
+        )
+        .values(missing_since=func.now())
     )
 
 
@@ -823,11 +942,11 @@ def _write_hierarchy(
     ids: dict[tuple[int, str], int],
 ) -> None:
     delivered = [ids[(dim, sm.code)] for sm in members]
-    # The source's edges are replaced; a taken-over member's manual edge too.
+    # The delivered members' edges are replaced, a taken-over member's manual edge too. A member
+    # the source no longer delivers keeps its last edge, so its values still roll up.
     conn.execute(
         delete(hier_edge).where(
-            hier_edge.c.hier_id == hier_id,
-            or_(hier_edge.c.origin == "source", hier_edge.c.member_id.in_(delivered)),
+            hier_edge.c.hier_id == hier_id, hier_edge.c.member_id.in_(delivered)
         )
     )
     moved = {
@@ -894,18 +1013,46 @@ def actuals_version_id(conn: Connection) -> int:
     )
 
 
+def _stored_actuals(
+    conn: Connection, window: Window | None, fy_start: int, entity: str | None
+) -> dict[int, int]:
+    """Stored actual cells per fiscal year in the window."""
+    f = fact_cost_center
+    query = (
+        select(f.c.period, func.count())
+        .join(version, version.c.version_id == f.c.version_id)
+        .where(version.c.code == ACTUALS_CODE)
+        .group_by(f.c.period)
+    )
+    if window is not None:
+        query = query.where(f.c.period.between(window.period_from, window.period_to))
+    if entity is not None:
+        ent = member.alias("ent")
+        query = query.join(ent, ent.c.member_id == f.c.dim_entity).where(
+            ent.c.dim_id == ENTITY, ent.c.code == entity
+        )
+    out: dict[int, int] = defaultdict(int)
+    for period, n in conn.execute(query):
+        out[fiscal_year_of(period, fy_start)] += n
+    return dict(out)
+
+
 def _write_actuals(
     conn: Connection,
     cells: dict[tuple[date, str, str, str], Decimal],
     ids: dict[tuple[int, str], int],
     entity: str | None,
+    window: Window | None,
 ) -> int:
+    """The source's actuals replace the stored ones of the window's periods."""
     vid = actuals_version_id(conn)
     stmt = delete(fact_cost_center).where(fact_cost_center.c.version_id == vid)
     if entity is not None:
         stmt = stmt.where(fact_cost_center.c.dim_entity == ids[(ENTITY, entity)])
+    if window is not None:
+        stmt = stmt.where(fact_cost_center.c.period.between(window.period_from, window.period_to))
     conn.execute(stmt)
-    _insert_all(
+    insert_all(
         conn,
         fact_cost_center,
         [
@@ -923,28 +1070,6 @@ def _write_actuals(
         ],
     )
     return len(cells)
-
-
-CHUNK = 50_000
-
-
-def _insert_all(conn: Connection, table: Table, rows: list[dict[str, Any]]) -> None:
-    """Insert rows with one statement per chunk: the columns go as parallel arrays and are
-    unnested. Row-level security checks and statement triggers then run once per chunk, not once
-    per row, which makes a full sync of actuals several times faster than a row-wise insert."""
-    if not rows:
-        return
-    columns = list(rows[0])
-    dialect = conn.dialect
-    types = {c: table.c[c].type.compile(dialect=dialect) for c in columns}
-    arrays = ", ".join(f"CAST(:{c} AS {types[c]}[])" for c in columns)
-    source = text(f"unnest({arrays}) AS t({', '.join(columns)})")
-    stmt = insert(table).from_select(
-        columns, select(*(column(c) for c in columns)).select_from(source)
-    )
-    for start in range(0, len(rows), CHUNK):
-        chunk = rows[start : start + CHUNK]
-        conn.execute(stmt, {c: [r[c] for r in chunk] for c in columns})
 
 
 def _write_rates(
@@ -971,9 +1096,10 @@ def _write_capacity_actuals(
     cells: dict[tuple[date, str, str], Decimal],
     ids: dict[tuple[int, str], int],
     entity: str | None,
+    window: Window | None,
 ) -> int:
-    """Actual hours, booked on each work center's cost center as it is now. A work center
-    without a cost center is skipped."""
+    """Actual hours of the window's periods, booked on each work center's cost center as it is
+    now. A work center without a cost center is skipped."""
     vid = actuals_version_id(conn)
     cost_centers = {
         code: (ids.get((COST_CENTER, cc or "")), ids.get((ENTITY, ent or NO_ENTITY)))
@@ -986,6 +1112,8 @@ def _write_capacity_actuals(
     stmt = delete(fact_capacity).where(fact_capacity.c.version_id == vid)
     if entity is not None:
         stmt = stmt.where(fact_capacity.c.dim_entity == ids[(ENTITY, entity)])
+    if window is not None:
+        stmt = stmt.where(fact_capacity.c.period.between(window.period_from, window.period_to))
     conn.execute(stmt)
     rows = []
     for (p, w, t), hours in cells.items():
@@ -1005,7 +1133,7 @@ def _write_capacity_actuals(
                 "amount": hours,
             }
         )
-    _insert_all(conn, fact_capacity, rows)
+    insert_all(conn, fact_capacity, rows)
     return len(rows)
 
 

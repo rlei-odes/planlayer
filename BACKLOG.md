@@ -100,11 +100,11 @@ Each item lists the options and how to decide. Items marked ⚙ are decided by a
 - [x] **D-11 Logical datasets and source mapping (T-16).** Decided: [ADR 0012](docs/adr/0012-datasets-and-master-data.md). Datasets entities, cost centers, accounts and actuals; one query per dataset with named columns, typed by the dataset's contract; hierarchies by parent column or level columns; read-only preview before saving. Still to write: `docs/data-contract.md` for admins.
 - [x] **D-12 Write-back / export shape.** Decided: [ADR 0011](docs/adr/0011-publishing.md). Scope chosen per run (approved only by default, or the whole round); one row per cost center × account × month with codes, status and publish time; a run replaces the round's rows in `planlayer_out` after a preview of rows added, changed and removed, and is refused if the result changed since the preview; the same rows as CSV or Parquet downloads.
 - [ ] **D-13 Master data changes between syncs.** Roll-up restates under the current tree (T-19). Still to define, for a member that is renamed, moved, new, or no longer delivered by the source:
-  - what happens to plan values keyed on a member that disappeared (kept and flagged as orphaned, not deleted);
+  - what happens to plan values keyed on a member that disappeared (kept and flagged as orphaned, not deleted): members only grow; one the source no longer delivers keeps its values and place and is marked since when ([ADR 0014](docs/adr/0014-preparing-a-round.md));
   - how the sync report shows each kind of change to the controller;
   - whether a new member is enabled for planning automatically or waits for the controller (T-17): decided in [ADR 0007](docs/adr/0007-planning-rounds.md) for running rounds; a new cost center waits for the controller.
 - [x] **D-31 Master data in Planlayer's tables.** Decided: [ADR 0012](docs/adr/0012-datasets-and-master-data.md). Master data lives in Planlayer's tables, fed by sync or entered by hand on the same page; manual members the source later delivers are matched and confirmed, their manual data kept as a shadow record; synced members can be renamed and moved locally, and the override survives syncs.
-- [ ] **D-27 Sync discipline.** Done in [ADR 0012](docs/adr/0012-datasets-and-master-data.md): resolve everything before writing, list every unknown code, idempotent re-runs, a preview (dry run), confirmation of matches, a sync-run record with actor and counts. Open: no silent overwrite of changed actuals in closed periods without an explicit flag, and a source hash per run.
+- [ ] **D-27 Sync discipline.** Done in [ADR 0012](docs/adr/0012-datasets-and-master-data.md): resolve everything before writing, list every unknown code, idempotent re-runs, a preview (dry run), confirmation of matches, a sync-run record with actor and counts. [ADR 0014](docs/adr/0014-preparing-a-round.md): actuals replaced only for a window of fiscal years, stored against delivered cells per year in the preview. Open: a flag before changed actuals inside the window's closed months are overwritten, and a source hash per run.
 
 ### Application
 - [x] **D-14 Where totals and spreading run.** Decided: [ADR 0003](docs/adr/0003-totals-and-spreading.md). Spreading and grid subtotals in Python, roll-ups over unseen subtrees in SQL through the closure table; the spread is recorded in the change log.
@@ -165,6 +165,7 @@ Mid-size manufacturer of industrial pumps and valves, ~400 employees.
 - [x] **TD-18 Capacity data** (ADR 0013): four activity types (machine hours, measurement and quality control, repair work, engineering hours), each crediting its own account; 32 work centers on 27 production and engineering cost centers with hourly rates (a few output two activity types); monthly actual hours with the production season (August shutdown) and noise. The credit accounts are never booked directly.
 - [x] **TD-19 Plan values in progress** (`planlayer seed-dev-plans`, development only): ten cost centers of a round planned by their owners as year totals near last year's actuals, five in progress, three submitted, two approved by their approver. Cost centers that already have plan values or a status are left alone.
 - [ ] **TD-17 Seasonality profiles:** a set covering the edge cases: even; retail (Q4 peak); manufacturing with an August shutdown (a zero month); one entered as percentages summing to exactly 100; one entered as raw unit counts; one derived from prior-year actuals; and invalid ones (percentages summing to 99.9 or 100.1, a negative value, all zeros, 11 values instead of 12).
+- [x] **TD-20 Next-year scenario** ([docs/scenarios/next-round-2027.md](docs/scenarios/next-round-2027.md)): a cost center created ahead of the next fiscal year (DE1290), one closed at the end of the current year (DE1100), an account without bookings (6950), and the walkthrough for preparing Budget 2027 from Budget 2026.
 - [ ] **TD-16 Documented demo defects.** The `standard` dataset contains a deliberate, listed set of process problems for the demo and smoke tests to find: a cost center with no submitted plan, a plan above the prior year by >50%, unexplained variances, a forecast not rolled after a close, and a version past its start date that isn't approved. The list lives in the generator's README, and the smoke test asserts exactly these are flagged.
 - [ ] **TD-12 Dirty-data fixtures** (each a small, separate dataset with a known expected error): actuals on unmapped accounts; a duplicate member code; a circular parent reference; an orphan parent code; source-provided subtotals that **don't** reconcile with leaves; Unicode/umlaut names and codes with leading zeros (`0420`); a period outside the open range; mixed decimal separators in CSV.
 - [ ] **TD-13 Grid input fixtures:** clipboard payloads as copied from Excel and LibreOffice (TSV, locale-formatted numbers, empty cells, trailing newline, a 2,000-cell block) for S-04 and later end-to-end tests.
@@ -188,6 +189,11 @@ Mid-size manufacturer of industrial pumps and valves, ~400 employees.
 - [ ] **E-01** Connections & sync: configure a source; map each dataset to a view, table or query and its columns to fields (T-16), with validation and preview; sync members and actuals; show a reconciliation report.
     - [x] A running sync shows what it writes and for how long; each run records its duration per step, also in the server log.
     - [ ] Real progress for long syncs (current step, rows written), once a sync can run as a background job (D-24).
+    - [x] Actuals and work center actual hours are synced for a window of fiscal years (default: what the setup and open rounds compare with); older years stay. Queries may use `:period_from` and `:period_to`; the preview compares stored and delivered cells per year and warns when a year would be emptied ([ADR 0014](docs/adr/0014-preparing-a-round.md)).
+    - [x] The system user writes syncs, so an admin without cost centers can sync; the run records who asked.
+    - [x] Members no longer delivered keep their place in the hierarchy and are marked since when.
+    - [x] Sources grouped by the module that needs them; "Work center actual hours".
+    - [ ] The Members page shows *no longer delivered* (`missing_since`) next to each member.
 - [ ] **E-12** Setup pages (admin): one place for the settings a new installation needs before planning starts. It covers:
   - **Sign rules (T-7):** how the source delivers signs (natural or ledger) and how the export target expects them. The flip is defined per account type or account group, with per-account overrides. A preview shows sample accounts with their raw source value, the stored value and the exported value.
   - **Fiscal calendar:** the fiscal year's start month (T-18).
@@ -204,15 +210,22 @@ Mid-size manufacturer of industrial pumps and valves, ~400 employees.
     - **Medium:** plan only, with seasonality profiles and the full cost center hierarchies.
     - **Full:** adds source queries that pull in actuals (E-01) as comparisons and spread references.
   - Built: rounds, starting points, entry forms and exceptions, comparisons, hidden accounts, seasonality profiles, the live preview (suggested order, step 11). Still open:
-    - [ ] Hiding an account offers to clear its remaining plan values first, as an audited change batch (ADR 0007); today the save is refused and names the cost centers.
+    - [x] Accounts not planned replace hidden accounts: shown read only where they have values, counted in totals ([ADR 0014](docs/adr/0014-preparing-a-round.md)). In a round in setup, marking one clears its values in the same save.
+    - [ ] In an open round, marking an account not planned (or assigning a set) still refuses while values exist: offer to clear them as an audited change batch.
     - [ ] Open periods per round: which months planners may still edit (e.g. a forecast after six closed months); ties in with D-03's closed periods.
-    - [ ] Restricting a module to account groups, so a cost center's "add account" offers only the module's accounts (ADR 0007).
-    - [ ] Enabling and disabling cost centers on the setup page too (today on the status page).
+    - [x] Account sets per round, assigned to cost center nodes or cost centers (nearest wins): sheets list the set's accounts, "add account" offers only them, the store refuses values outside ([ADR 0014](docs/adr/0014-preparing-a-round.md)).
+    - [x] The setup page's *Cost centers* tab: planned, account set, productive, prior-year actuals and the source round's plan per cost center; new and no longer delivered marked.
+    - [x] New rounds carry over by a checklist from a chosen round (default: the latest of the same kind), plan values optionally with an uplift, as one change batch; controllers prepare a round in setup without moving its workflow status.
+    - [ ] Uplift per account group (today one percentage for all carried values).
+    - [ ] Carry planned hours (capacity) with the values.
+    - [ ] Lines listed by an account set without values show the "even ⚠" fallback badge; for empty lines the warning is noise.
+    - [ ] An account set's own accounts and groups could be edited from the cost center tab too; today the Accounts tab holds the matrix.
 - [ ] **E-04** Versions: create, copy with shift + uplift, compare.
 - [ ] **E-05** Planning grid (RevoGrid, ADR 0006) for one planning unit at a time (T-25), with a unit switcher: edit, paste, fill-drag, subtotals, keyboard flow, percentage mode, and cells editable as the entry form allows. Built: editing, paste from Excel and LibreOffice (the trailing newline they copy is dropped, so it never blanks the cell below), one copied value pasted over a selection fills it, fill-drag, subtotals, keyboard flow (E-13).
     - [x] Undo and redo of change batches, several steps per visit to a sheet, refused when someone else changed a cell since ([ADR 0010](docs/adr/0010-grid-api-and-concurrency.md)).
     - [x] A line's own spread, chosen from the line's badge (ADR 0007).
     - [ ] Copy with row and column headers.
+    - [ ] A full-year view of a cost center: one value per account, no months, for planners who plan year totals only.
     - [ ] Reach the spread menu from the keyboard: the badge sits inside the grid, which keeps Tab to itself.
     - [ ] Decide whether a new round copies line spreads from the round it is set up like (today it starts without them, like sheet accounts).
 - [ ] **E-06** Top-down spreading from totals (proportional / equal / profile) and spread profiles.

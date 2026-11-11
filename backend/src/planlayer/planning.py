@@ -1,16 +1,19 @@
 """The planning grid for one cost center in a planning round (T-25): read it, and apply edits.
 
-Rows are the accounts with comparison values or plan values for the cost center, plus the
-accounts the planner added, minus the accounts hidden in the round (ADR 0007). They are grouped
-by their parent in the account hierarchy, with group subtotals computed here (ADR 0003).
+Rows are the accounts with comparison values or plan values for the cost center, the accounts
+the planner added, and the accounts of the cost center's account set (ADR 0007, ADR 0014). An
+account not planned in the round, or outside the cost center's set, shows read only where it
+has values, so every total includes it. Rows are grouped by their parent in the account
+hierarchy, with group subtotals computed here (ADR 0003).
 
 Each account row carries its entry form, which decides the editable cells and how a year total
 is spread. Each plan cell carries its ``row_version``; an edit states the versions it was made
 against, and a cell changed by someone else in the meantime is a conflict (D-19). Blank and
 zero stay distinct: a blank cell has no row.
 
-Whether the cost center can be edited at all (round open, cost center enabled, status not
-submitted or approved) is checked here for a clear message, and enforced by the lock trigger.
+Whether the cost center can be edited at all (round open, or in setup for a controller; cost
+center enabled; status not submitted or approved) is checked here for a clear message, and
+enforced by the lock trigger.
 """
 
 import uuid
@@ -29,7 +32,7 @@ from planlayer.access import User, cost_center_rights
 from planlayer.domain.entry_forms import Basis, EntryForm, Form, resolve, weights
 from planlayer.domain.spreading import Profile, spread
 from planlayer.domain.workflow import EDITABLE, RoundStatus, Status
-from planlayer.rounds import NotFoundError, RoundRef, fiscal_periods, get_round
+from planlayer.rounds import NotFoundError, RoundRef, account_scopes, fiscal_periods, get_round
 from planlayer.store.schema import (
     ACCOUNT,
     AMOUNT,
@@ -45,10 +48,10 @@ from planlayer.store.schema import (
     credit_account,
     entry_form,
     fact_cost_center,
-    hidden_account,
     hier_edge,
     line_spread,
     member,
+    not_planned_account,
     planning_round,
     round_member,
     round_module,
@@ -127,6 +130,8 @@ class Row:
     months_editable: bool = False
     total_editable: bool = False
     capacity: bool = False  # credited by capacity planning: read only (ADR 0013)
+    # Why the line takes no plan values in this round (ADR 0014); None: it is planned.
+    not_planned: Literal["round", "set"] | None = None
 
 
 @dataclass
@@ -205,7 +210,7 @@ def _context(conn: Connection, user: User, version_code: str, cc_code: str) -> _
     ).scalar()
     status = status_of(conn, r.version_id, cc.member_id)
     enabled = enabled_members(conn, r.version_id).get(cc.member_id, False)
-    if r.status != "open":
+    if r.status != "open" and not (r.status == "setup" and user.is_controller):
         reason: str | None = f"the planning round is {r.status}"
     elif not enabled:
         reason = "the cost center is not enabled in this round"
@@ -288,15 +293,50 @@ def _comparisons(
     return columns, values
 
 
-def _hidden(conn: Connection, version_id: int) -> set[int]:
+def _not_planned(conn: Connection, version_id: int) -> set[int]:
     return set(
         conn.execute(
-            select(hidden_account.c.account_id).where(
-                hidden_account.c.version_id == version_id,
-                hidden_account.c.module == MODULE_COST_CENTER,
+            select(not_planned_account.c.account_id).where(
+                not_planned_account.c.version_id == version_id,
+                not_planned_account.c.module == MODULE_COST_CENTER,
             )
         ).scalars()
     )
+
+
+@dataclass
+class _Scope:
+    """Which accounts the cost center plans in the round (ADR 0014)."""
+
+    not_planned: set[int]  # not planned in the round
+    account_set: set[int] | None  # the leaves of its account set; None: every account
+    credited: set[int]  # written by capacity planning, outside any set
+
+    def why_not(self, account_id: int) -> Literal["round", "set"] | None:
+        if account_id in self.not_planned:
+            return "round"
+        if (
+            self.account_set is not None
+            and account_id not in self.account_set
+            and account_id not in self.credited
+        ):
+            return "set"
+        return None
+
+    def offered(self, account_id: int) -> bool:
+        """Whether a planner may add the account to the sheet."""
+        return self.why_not(account_id) is None and account_id not in self.credited
+
+
+def _scope(conn: Connection, ctx: _Context) -> _Scope:
+    return _Scope(
+        _not_planned(conn, ctx.version_id),
+        account_scopes(conn, ctx.version_id, [ctx.cost_center_id])[ctx.cost_center_id],
+        _credited(conn, ctx),
+    )
+
+
+_WHY = {"round": "not planned in this round", "set": "not in this cost center's accounts"}
 
 
 def _added(conn: Connection, ctx: _Context) -> set[int]:
@@ -438,11 +478,14 @@ def read_grid(engine: Engine, user: User, version_code: str, cc_code: str) -> Gr
         ctx = _context(conn, user, version_code, cc_code)
         columns, compared = _comparisons(conn, ctx)
         plan = _values(conn, ctx.version_id, ctx.cost_center_id, ctx.periods)
-        shown = set(plan) | _added(conn, ctx)
+        scope = _scope(conn, ctx)
+        # Accounts with values always show; added and set accounts only while planned.
+        listed = _added(conn, ctx) | (scope.account_set or set())
+        shown = set(plan) | {a for a in listed if scope.why_not(a) is None}
         for values in compared:
             shown |= set(values)
-        lines = _lines(conn, ctx, shown - _hidden(conn, ctx.version_id))
-        credited = _credited(conn, ctx)
+        lines = _lines(conn, ctx, shown)
+        credited = scope.credited
 
     r = ctx.round
     grid = Grid(
@@ -474,6 +517,8 @@ def read_grid(engine: Engine, user: User, version_code: str, cc_code: str) -> Gr
             grid.rows.append(group_row)
         w = weights(line.form.basis, MONTHS, line.profile, line.reference)
         from_capacity = line.account_id in credited
+        why_not = scope.why_not(line.account_id)
+        planned = why_not is None
         row = Row(
             "account",
             line.code,
@@ -489,9 +534,13 @@ def read_grid(engine: Engine, user: User, version_code: str, cc_code: str) -> Gr
             reference_version=line.reference_code,
             profile=line.profile_code,
             months_visible=line.form.months_visible or from_capacity,
-            months_editable=editable and line.form.months_editable and not from_capacity,
-            total_editable=editable and not from_capacity,
+            months_editable=editable
+            and planned
+            and line.form.months_editable
+            and not from_capacity,
+            total_editable=editable and planned and not from_capacity,
             capacity=from_capacity,
+            not_planned=why_not,
         )
         grid.rows.append(row)
         for i, months in enumerate(row.comparisons):
@@ -649,10 +698,12 @@ def _apply(
     if ctx.lock_reason is not None:
         raise LockedError(ctx.lock_reason)
     accounts = _leaf_accounts(conn, {e.account_code for e in edits})
-    hidden = sorted(c for c, a in accounts.items() if a in _hidden(conn, ctx.version_id))
-    if hidden:
-        raise EditError(f"hidden in this round: {', '.join(hidden)}")
-    credited = sorted(c for c, a in accounts.items() if a in _credited(conn, ctx))
+    scope = _scope(conn, ctx)
+    for why in ("round", "set"):
+        refused = sorted(c for c, a in accounts.items() if scope.why_not(a) == why)
+        if refused:
+            raise EditError(f"{_WHY[why]}: {', '.join(refused)}")
+    credited = sorted(c for c, a in accounts.items() if a in scope.credited)
     if credited:
         raise EditError(f"credited by capacity planning: {', '.join(credited)}")
     lines = {line.account_id: line for line in _lines(conn, ctx, accounts.values())}
@@ -744,14 +795,15 @@ def _write(
 def add_account(
     engine: Engine, actor: User, version_code: str, cc_code: str, account_code: str
 ) -> None:
-    """Add an account to a cost center's sheet (ADR 0007); hidden accounts can't be added."""
+    """Add an account to a cost center's sheet (ADR 0007): one the cost center plans."""
     with unit_of_work(engine, actor) as conn:
         ctx = _context(conn, actor, version_code, cc_code)
         if ctx.lock_reason is not None:
             raise LockedError(ctx.lock_reason)
         account_id = _leaf_accounts(conn, {account_code})[account_code]
-        if account_id in _hidden(conn, ctx.version_id):
-            raise EditError(f"{account_code} is hidden in this round")
+        why = _scope(conn, ctx).why_not(account_id)
+        if why is not None:
+            raise EditError(f"{account_code} is {_WHY[why]}")
         conn.execute(
             pg_insert(sheet_account)
             .values(
@@ -781,8 +833,9 @@ def set_line_spread(
             if ctx.lock_reason is not None:
                 raise LockedError(ctx.lock_reason)
             account_id = _leaf_accounts(conn, {account_code})[account_code]
-            if account_id in _hidden(conn, ctx.version_id):
-                raise EditError(f"{account_code} is hidden in this round")
+            why = _scope(conn, ctx).why_not(account_id)
+            if why is not None:
+                raise EditError(f"{account_code} is {_WHY[why]}")
             (line,) = _lines(conn, ctx, [account_id])
             if not line.form.spreads:
                 raise EditError(f"{account_code} is entered as a year total only")
@@ -823,17 +876,20 @@ def set_line_spread(
         raise locked from None
 
 
-def addable_accounts(engine: Engine, version_code: str) -> list[dict[str, object]]:
-    """Leaf accounts a planner may add in the round: every account not hidden."""
-    with engine.connect() as conn:
-        r = get_round(conn, version_code)
-        hidden = _hidden(conn, r.version_id)
+def addable_accounts(
+    engine: Engine, user: User, version_code: str, cc_code: str
+) -> list[dict[str, object]]:
+    """Leaf accounts a planner may add to the cost center's sheet: those it plans, i.e. not
+    excluded from the round, inside its account set and not credited by capacity planning."""
+    with unit_of_work(engine, user) as conn:
+        ctx = _context(conn, user, version_code, cc_code)
+        scope = _scope(conn, ctx)
         rows = conn.execute(
             select(member.c.member_id, member.c.code, member.c.name)
             .where(member.c.dim_id == ACCOUNT, member.c.is_group.is_(False))
             .order_by(member.c.code)
         ).all()
-    return [{"code": c, "name": n} for m, c, n in rows if m not in hidden]
+    return [{"code": c, "name": n} for m, c, n in rows if scope.offered(m)]
 
 
 def planning_units(engine: Engine, user: User, version_code: str) -> list[dict[str, object]]:

@@ -84,6 +84,9 @@ class RowOut(BaseModel):
     months_editable: bool
     total_editable: bool
     capacity: bool  # credited by capacity planning, read only
+    # Why the line takes no plan values (ADR 0014): not planned in the round, or outside the
+    # cost center's account set; it shows read only for its comparison values.
+    not_planned: Literal["round", "set"] | None = None
 
 
 class GridOut(BaseModel):
@@ -224,6 +227,7 @@ def _grid_out(grid: planning.Grid, batch_id: str | None = None) -> GridOut:
                 months_editable=r.months_editable,
                 total_editable=r.total_editable,
                 capacity=r.capacity,
+                not_planned=r.not_planned,
             )
             for r in grid.rows
         ],
@@ -344,11 +348,13 @@ def _conflict(e: planning.ConflictError) -> JSONResponse:
     )
 
 
-@router.get("/versions/{version_code}/accounts")
-def accounts(request: Request, user: CurrentUser, version_code: str) -> list[AccountOut]:
-    """Accounts a planner may add to a sheet."""
+@router.get("/versions/{version_code}/cost-centers/{cc_code}/accounts", responses={404: {}})
+def accounts(
+    request: Request, user: CurrentUser, version_code: str, cc_code: str
+) -> list[AccountOut]:
+    """Accounts a planner may add to the cost center's sheet: those it plans (ADR 0014)."""
     try:
-        found = planning.addable_accounts(_engine(request), version_code)
+        found = planning.addable_accounts(_engine(request), user, version_code, cc_code)
     except HANDLED as e:
         raise _errors(e) from None
     return [AccountOut.model_validate(a) for a in found]

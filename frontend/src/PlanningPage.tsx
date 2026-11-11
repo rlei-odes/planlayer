@@ -61,6 +61,7 @@ function spreadChoosable(row: Row): boolean {
 /** How the line is entered, then what a year total typed there does: "Monthly · actuals". A
  * line whose reference has no values spreads evenly, and the badge says so (with ⚠). */
 function badgeLabel(row: Row): string {
+  if (row.not_planned) return 'Not planned'
   if (row.capacity) return 'From capacity'
   if (!row.entry_form) return ''
   if (row.entry_form === 'annual') return 'Year only'
@@ -96,6 +97,10 @@ function spreadText(row: Row): string {
 }
 
 function basisText(row: Row): string {
+  if (row.not_planned === 'round')
+    return 'Not planned in this round. Shown for its comparison values, which count in the totals.'
+  if (row.not_planned === 'set')
+    return 'Not among this cost center’s accounts in this round. Shown for its comparison values, which count in the totals.'
   if (row.capacity) return 'Credited by capacity planning: planned hours × rate of the work centers. Change it on the Capacity page.'
   const text =
     row.entry_form === 'monthly'
@@ -171,9 +176,13 @@ export default function PlanningPage({
 
   useEffect(() => {
     loadUnits()
-    api.accounts(version).then(setAccounts, showError)
     api.profiles().then(setProfiles, showError)
   }, [version, loadUnits, showError])
+
+  // What can be added depends on the cost center's account set (ADR 0014).
+  useEffect(() => {
+    if (unit) api.accounts(version, unit).then(setAccounts, showError)
+  }, [version, unit, showError])
 
   // The cost center shown here is the one the capacity page shows next, where it is productive.
   useEffect(() => {
@@ -581,7 +590,9 @@ function accountCell(h: H, row: Row | undefined, profiles: ProfileRef[]) {
   if (row.kind === 'group') return h('span', { class: 'pl-acc-name' }, row.name)
   const form = row.entry_form
   const label = badgeLabel(row) + (row.fallback && !row.capacity ? ' ⚠' : '')
-  const classes = row.capacity
+  const classes = row.not_planned
+    ? 'pv-form off'
+    : row.capacity
     ? 'pv-form capacity'
     : `pv-form${form === 'monthly' ? ' monthly' : ''}${row.fallback ? ' fallback' : ''}${row.chosen_spread ? ' chosen' : ''}`
   const profile = row.spread === 'profile' ? profiles.find((p) => p.code === row.profile) : undefined

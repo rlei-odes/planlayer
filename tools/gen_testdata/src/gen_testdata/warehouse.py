@@ -73,7 +73,8 @@ GOLD_VIEWS = {
         FROM {b}.kostenstelle
         ORDER BY kostl, gueltig_ab DESC""",
     # Parent-child, groups and leaves, as valid at the anchor date (closed leaves: their last
-    # parent). Shape shared by all hierarchy views: member, name, parent, is_group, sort.
+    # parent; leaves created ahead of time: their first). Shape shared by all hierarchy views:
+    # member, name, parent, is_group, sort.
     "v_cost_center_hierarchy": """
         WITH run AS (SELECT anchor FROM {b}.generator_run),
         nodes AS (
@@ -85,8 +86,9 @@ GOLD_VIEWS = {
             SELECT DISTINCT ON (a.kostl) a.kostl, k.cost_center_name AS ktext, a.node_id
             FROM {b}.cc_hierarchy_assignment a
             JOIN {g}.v_cost_centers k ON k.cost_center_code = a.kostl, run
-            WHERE a.valid_from <= run.anchor
-            ORDER BY a.kostl, a.valid_from DESC)
+            ORDER BY a.kostl, a.valid_from <= run.anchor DESC,
+                     CASE WHEN a.valid_from <= run.anchor THEN a.valid_from END DESC,
+                     a.valid_from)
         SELECT node_id AS member_code, node_text AS member_name, parent_node AS parent_code,
                true AS is_group, row_number() OVER (ORDER BY node_id)::int AS sort_order
         FROM nodes

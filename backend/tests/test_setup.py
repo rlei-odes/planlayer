@@ -18,9 +18,11 @@ def test_read_defaults(client: TestClient) -> None:
         "default_form": "monthly",
         "entry_forms": [],
         "comparisons": [{"kind": "prior_year_actuals", "version_code": None}],
-        "hidden_accounts": [],
+        "not_planned_accounts": [],
         "deadline": None,
         "productive_cost_centers": [],
+        "planned_cost_centers": ["CC1", "CC2"],
+        "account_sets": [],
     }
     assert v["actuals_available"] is True and v["enabled_cost_centers"] == 2
     assert v["sample_cost_center"] == "Machining"
@@ -41,7 +43,7 @@ def test_save_whole_setup(client: TestClient) -> None:
             {"account_code": "6010", "form": "monthly"},
         ],
         "comparisons": [{"kind": "actuals"}, {"kind": "prior_year_actuals"}],
-        "hidden_accounts": ["7000"],
+        "not_planned_accounts": ["7000"],
         "deadline": "2026-12-15",
     }
     assert client.put(S, json=body).status_code == 200
@@ -60,18 +62,20 @@ def test_save_whole_setup(client: TestClient) -> None:
             "reference_version_code": None,
         },
     ]
-    assert saved["hidden_accounts"] == ["7000"] and saved["deadline"] == "2026-12-15"
+    assert saved["not_planned_accounts"] == ["7000"] and saved["deadline"] == "2026-12-15"
     grid = client.get(f"{URL}/grid").json()
     r = rows(grid)
     assert (r["6000"]["entry_form"], r["6010"]["entry_form"]) == ("annual_profile", "monthly")
-    assert "7000" not in r and grid["comparisons"][0]["label"] == "Actual 2026"
+    # Not planned, but shown read only for its prior-year actuals (ADR 0014).
+    assert r["7000"]["not_planned"] == "round"
+    assert grid["comparisons"][0]["label"] == "Actual 2026"
 
 
 def test_invalid_setup_changes_nothing(client: TestClient) -> None:
     edit = {"account_code": "7000", "month": 0, "value": "1", "expected": BLANK}
     client.post(f"{URL}/edits", json={"edits": [edit]})
     before = setup(client)["setup"]
-    bad = {**before, "default_form": "annual", "hidden_accounts": ["7000"]}
+    bad = {**before, "default_form": "annual", "not_planned_accounts": ["7000"]}
     response = client.put(S, json=bad)
     assert (
         response.status_code == 422 and "still has plan values on CC1" in response.json()["detail"]

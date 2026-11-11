@@ -3,6 +3,7 @@
 - **Status:** Accepted
 - **Closes:** D-04
 - **Date:** 2026-11-08
+- **Amended by:** [0014](0014-preparing-a-round.md): hidden accounts become accounts not planned, shown read only where they have values; account sets; new rounds carry over by a checklist
 
 ## Context
 
@@ -21,7 +22,7 @@ The controller sets up each fiscal year's planning from modules (T-24): what is 
 | **Comparison columns** | The reference columns shown next to the plan, per module, in order: prior-year actuals (default), another version (e.g. the last budget), or the current year's actuals to date. |
 | **Seasonality profiles** | Named, installation-wide profiles (D-28, TD-17), entered as percentages or relative numbers, chosen by entry forms. A new profile can start from the working days (Monday to Friday) or the calendar days of each month of a chosen fiscal year, which the controller then adjusts for holidays and shutdowns. |
 | **Sheet accounts** | Accounts a planner added to a cost center's sheet in a round. |
-| **Hidden accounts** | Accounts the controller excludes from a module in a round, e.g. an account being phased out that still has actuals. |
+| **Accounts not planned** | Accounts the controller excludes from a module in a round, e.g. an account being phased out that still has actuals ([ADR 0014](0014-preparing-a-round.md)). |
 | **Line spreads** | How one cost center's line spreads its year totals, chosen on the sheet instead of the entry form's basis: evenly, like prior-year actuals, or by a seasonality profile. |
 
 ### Entry forms
@@ -48,14 +49,11 @@ The entry form sets a line's spread for every cost center in the round. On the s
 
 A cost center's sheet shows the accounts of the module's account groups that have comparison values or plan values for that cost center, plus the sheet accounts the planner added. The planner can add any account of the module's account groups.
 
-Hidden accounts are the exception:
-- They appear on no sheet, even with comparison values, and planners can't add them. The store refuses edits to them.
-- An account can only be hidden while it has no plan values in the round. The setup page shows which cost centers still have values, and offers to clear them (an audited change batch), so no invisible values reach the published plan.
-- Hiding applies to one round. A copied round inherits the hidden accounts, and the controller can unhide them.
+Accounts not planned and account sets narrow this ([ADR 0014](0014-preparing-a-round.md)): an account not planned in the round, or outside the cost center's account set, takes no plan values and shows read only where it has values; a cost center with an account set lists the set's accounts even without values.
 
 ### Defaults
 
-- **New rounds:** a new round copies its setup (modules, entry forms, comparisons, disabled members) from a chosen earlier round, or starts from the module defaults: every group `monthly`, prior-year actuals as the only comparison.
+- **New rounds:** a new round is set up like a chosen earlier round, carrying what a checklist says ([ADR 0014](0014-preparing-a-round.md)), or starts from the module defaults: every group `monthly`, prior-year actuals as the only comparison.
 - **Spreading fallbacks** (D-28): a negative reference value counts as 0. A line whose reference is all zero or missing is spread evenly, and the grid marks the line ("spread evenly: no reference values").
 - **Changing an entry form during a round** changes how new input is entered. Stored values stay until a line is entered again.
 - **Changing a seasonality profile** changes how year totals typed from then on are spread. Months already stored keep their values, as with a changed entry form. A profile can't be deleted while an entry form or a line spread in any round uses it.
@@ -66,7 +64,7 @@ Hidden accounts are the exception:
 - **Storing months for every form** keeps one fact grain and one publish shape. Full-year-only lines still give BI monthly values.
 - **Short sheets:** comparison values, plan values and manual additions cover what a cost center actually uses. Showing all ~150 accounts would bury the relevant 20.
 - **New cost centers wait for the controller:** what is planned in a running round stays the controller's decision; the status page keeps a new cost center from being overlooked.
-- **Hiding:** accounts are phased out while their actuals stay in history. Hiding keeps them off the sheets without touching the source.
+- **Not planned:** accounts are phased out while their actuals stay in history. Marking them not planned stops new values without touching the source.
 - **Copying the previous round's setup** makes a new year's preparation a review, not a rebuild.
 - **Line spreads on the sheet:** planners know their cost center's own seasonality (a plant's local shutdown, a site that bills quarterly), which a setting per account group for all cost centers can't express. Keeping the choice on the line, rather than as a one-off action, means the next year total typed there spreads the same way.
 - **Profile edits don't re-spread:** stored months are what planners entered and may have submitted or had approved. A profile edit that rewrote them would change approved plans without anyone entering anything.
@@ -75,6 +73,6 @@ Hidden accounts are the exception:
 ## Consequences
 
 - The grid API (D-18) returns per row its entry form, editable columns, spread basis, and whether a fallback was used. The planning page (E-05) renders and enforces that. The store refuses edits a form doesn't allow.
-- New tables in `planlayer_app`: `planning_round`, `round_module`, `round_member`, `entry_form`, `comparison`, `seasonality_profile`, `sheet_account`, `hidden_account`, `line_spread`. The current single `version.fiscal_year` becomes the round's.
+- New tables in `planlayer_app`: `planning_round`, `round_module`, `round_member`, `entry_form`, `comparison`, `seasonality_profile`, `sheet_account`, `hidden_account` (now `not_planned_account`), `line_spread`. The current single `version.fiscal_year` becomes the round's.
 - The yearly setup page (E-03) edits these objects, with copy-from-round. Seasonality profiles get their page in E-12.
 - Headcount planning (later) is a new module with its own planning area and entry forms. It plugs into rounds, enabled members, comparisons and workflow without changes to them.
