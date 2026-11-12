@@ -20,6 +20,23 @@ def fiscal_year_periods(year: int, start_month: int) -> list[date]:
     return periods
 
 
+QUARTERS = 4
+
+
+def quarter_months(quarter: int) -> range:
+    """The fiscal months (0-based) of a quarter (0-based): Q1 is the year's first three."""
+    if not 0 <= quarter < QUARTERS:
+        raise ValueError("quarters run from 0 to 3")
+    return range(3 * quarter, 3 * quarter + 3)
+
+
+def closed_months(periods: list[date], actuals_through: date | None) -> int:
+    """How many of the fiscal year's months are closed by ``actuals_through`` (ADR 0015)."""
+    if actuals_through is None:
+        return 0
+    return sum(1 for p in periods if p <= actuals_through)
+
+
 def fiscal_year_of(period: date, start_month: int) -> int:
     return period.year if period.month >= start_month else period.year - 1
 

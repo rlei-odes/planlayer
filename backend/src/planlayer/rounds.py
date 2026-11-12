@@ -29,7 +29,12 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from planlayer.access import User
 from planlayer.domain.entry_forms import FORMS, Form
-from planlayer.domain.periods import calendar_days, fiscal_year_periods, working_days
+from planlayer.domain.periods import (
+    calendar_days,
+    closed_months,
+    fiscal_year_periods,
+    working_days,
+)
 from planlayer.domain.spreading import Profile
 from planlayer.domain.workflow import RoundStatus, round_transition
 from planlayer.store.bulk import insert_all
@@ -67,6 +72,8 @@ from planlayer.store.schema import (
 from planlayer.store.uow import unit_of_work
 
 ComparisonKind = Literal["prior_year_actuals", "actuals", "version"]
+Grain = Literal["month", "quarter"]  # how a round is planned (ADR 0015)
+GRAINS: tuple[Grain, ...] = ("month", "quarter")
 
 
 @dataclass
@@ -96,6 +103,9 @@ class RoundRef:
     fiscal_year: int
     status: RoundStatus
     deadline: date | None
+    grain: Grain = "month"
+    # A forecast's last closed month (ADR 0015); None: no month is closed.
+    actuals_through: date | None = None
 
 
 _ROUNDS = select(
@@ -106,6 +116,8 @@ _ROUNDS = select(
     planning_round.c.fiscal_year,
     planning_round.c.status,
     planning_round.c.deadline,
+    planning_round.c.grain,
+    planning_round.c.actuals_through,
 ).join(planning_round, planning_round.c.version_id == version.c.version_id)
 
 
@@ -158,6 +170,54 @@ def _version_id(conn: Connection, code: str) -> int:
     return int(found)
 
 
+def closed_periods(conn: Connection, r: RoundRef) -> list[date]:
+    """The round's closed months (ADR 0015): a forecast's months up to its actuals through."""
+    periods = fiscal_periods(conn, r.fiscal_year)
+    return periods[: closed_months(periods, r.actuals_through)]
+
+
+def _check_periods(
+    conn: Connection, kind: str, fiscal_year: int, grain: str, actuals_through: date | None
+) -> None:
+    """A round's grain and closed months as ADR 0015 allows them."""
+    if grain not in GRAINS:
+        raise RoundError(f"unknown grain {grain}")
+    if actuals_through is None:
+        return
+    if kind != "forecast":
+        raise RoundError("only a forecast closes months")
+    periods = fiscal_periods(conn, fiscal_year)
+    if actuals_through not in periods[:-1]:
+        raise RoundError(
+            "actuals through must be a month of the fiscal year before its last, "
+            "as the first day of the month"
+        )
+    if grain == "quarter" and closed_months(periods, actuals_through) % 3:
+        raise RoundError(
+            "a forecast planned by quarter closes whole quarters; plan it by month to close "
+            f"{closed_months(periods, actuals_through)} months"
+        )
+
+
+def start_month(engine: Engine) -> int:
+    """The installation's first fiscal month (T-18)."""
+    with engine.connect() as conn:
+        return int(conn.execute(select(installation.c.fiscal_year_start_month)).scalar_one())
+
+
+def latest_actuals(engine: Engine, user: User) -> date | None:
+    """The latest month holding synced actuals the user may read: what a forecast proposes as
+    its actuals through (ADR 0015)."""
+    f = fact_cost_center
+    with unit_of_work(engine, user) as conn:
+        found: date | None = conn.execute(
+            select(func.max(f.c.period))
+            .join(version, version.c.version_id == f.c.version_id)
+            .where(version.c.kind == "actuals", f.c.measure_id == AMOUNT)
+        ).scalar()
+    return found
+
+
 @dataclass
 class CarryOver:
     """What a new round takes from the round it is set up like (ADR 0014)."""
@@ -193,6 +253,8 @@ def create_round(
     deadline: date | None = None,
     copy_from: str | None = None,
     carry: CarryOver | None = None,
+    grain: Grain = "month",
+    actuals_through: date | None = None,
 ) -> int:
     """A plan version and its round, in status ``setup``.
 
@@ -200,13 +262,15 @@ def create_round(
     prior-year actuals as the only comparison, every cost center valid in the fiscal year
     planned. With it, ``carry`` says what the new round takes from that round; cost centers
     valid in the fiscal year that the source round didn't know start planned. Everything is
-    written in one transaction, plan values as one change batch.
+    written in one transaction, plan values as one change batch. A forecast closes the months
+    up to ``actuals_through``; carried plan values go into its open months only (ADR 0015).
     """
     actor.require_controller()
     carry = carry or CarryOver()
     with unit_of_work(engine, actor) as conn:
         if conn.execute(select(version.c.version_id).where(version.c.code == code)).first():
             raise RoundError(f"a round or version {code} exists")
+        _check_periods(conn, kind, fiscal_year, grain, actuals_through)
         source = get_round(conn, copy_from) if copy_from is not None else None
         vid = int(
             conn.execute(
@@ -223,6 +287,8 @@ def create_round(
                 copied_from=source.version_id if source else None,
                 created_by=actor.login,
                 created_at=func.now(),
+                grain=grain,
+                actuals_through=actuals_through,
             )
         )
         if source is not None and carry.setup:
@@ -279,7 +345,7 @@ def create_round(
                     )
                 )
         cells = (
-            _copy_values(conn, source, vid, fiscal_year, planned, carry.uplift)
+            _copy_values(conn, source, vid, fiscal_year, planned, carry.uplift, actuals_through)
             if carry.values
             else None
         )
@@ -410,16 +476,22 @@ def _copy_values(
     fiscal_year: int,
     planned: set[int],
     uplift: Decimal,
+    actuals_through: date | None = None,
 ) -> int:
     """The source round's plan values in the new year, month by month, times 1 + uplift %.
     Only cells the new round plans: a planned cost center, an account planned in the round,
-    inside the cost center's account set and not credited by capacity planning. Returns the
-    number of cells written."""
+    inside the cost center's account set and not credited by capacity planning, in a month the
+    new round hasn't closed. Returns the number of cells written."""
     if not planned:
         return 0
     old_periods = fiscal_periods(conn, source.fiscal_year)
     new_periods = fiscal_periods(conn, fiscal_year)
-    moved = dict(zip(old_periods, new_periods, strict=True))
+    moved = {
+        old: new
+        for old, new in zip(old_periods, new_periods, strict=True)
+        if actuals_through is None or new > actuals_through
+    }
+    old_periods = list(moved)
     excluded = set(
         conn.execute(
             select(not_planned_account.c.account_id).where(
@@ -824,6 +896,8 @@ class Setup:
     # Cost centers planned in the round, by code; None leaves them as they are.
     planned_cost_centers: list[str] | None = None
     account_sets: list[AccountSet] = field(default_factory=list)
+    grain: Grain = "month"
+    actuals_through: date | None = None  # forecasts: the last closed month (ADR 0015)
 
 
 @dataclass
@@ -836,6 +910,7 @@ class SetupView:
     sample_cost_center: str | None  # a name for the preview
     periods: list[date]
     created: "Created | None" = None
+    latest_actuals: date | None = None  # the latest month with synced actuals
 
 
 @dataclass
@@ -960,12 +1035,15 @@ def setup_of(engine: Engine, user: User, code: str) -> SetupView:
             productive,
             [c for c, _ in enabled],
             sets,
+            r.grain,
+            r.actuals_through,
         ),
         actuals,
         len(enabled),
         enabled[0][1] if enabled else None,
         periods,
         created,
+        latest_actuals(engine, user),
     )
 
 
@@ -1043,11 +1121,45 @@ def save_setup(engine: Engine, actor: User, code: str, setup: Setup) -> None:
         _set_account_sets(conn, r, setup.account_sets)
         _clear_outside_sets(conn, r)
         _set_productive(conn, r, setup.productive_cost_centers)
+        _set_periods(conn, r, setup.grain, setup.actuals_through)
         conn.execute(
             update(planning_round)
             .where(planning_round.c.version_id == r.version_id)
             .values(deadline=setup.deadline)
         )
+
+
+def _set_periods(conn: Connection, r: RoundRef, grain: Grain, actuals_through: date | None) -> None:
+    """The round's grain and closed months (ADR 0015). Months it closes now may hold plan values:
+    in a round in setup they are cleared in the same save; in an open round the save is refused
+    and names the cost centers."""
+    _check_periods(conn, r.kind, r.fiscal_year, grain, actuals_through)
+    periods = fiscal_periods(conn, r.fiscal_year)
+    before = closed_months(periods, r.actuals_through)
+    closing = periods[before : closed_months(periods, actuals_through)]
+    if closing:
+        f = fact_cost_center
+        in_closing = (f.c.version_id == r.version_id) & f.c.period.in_(closing)
+        if r.status == "setup":
+            conn.execute(delete(f).where(in_closing))
+        with_values = list(
+            conn.execute(
+                select(member.c.code)
+                .distinct()
+                .join(f, f.c.dim_cost_center == member.c.member_id)
+                .where(in_closing)
+                .order_by(member.c.code)
+            ).scalars()
+        )
+        if with_values:
+            raise RoundError(
+                "the months to close still have plan values on " + ", ".join(with_values)
+            )
+    conn.execute(
+        update(planning_round)
+        .where(planning_round.c.version_id == r.version_id)
+        .values(grain=grain, actuals_through=actuals_through)
+    )
 
 
 def _set_planned(conn: Connection, r: RoundRef, codes: list[str]) -> None:

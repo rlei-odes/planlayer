@@ -3,6 +3,7 @@
 - **Status:** Accepted
 - **Closes:** D-12; the `planlayer_out` naming part of F-05
 - **Date:** 2026-11-08
+- **Amended by:** [0015](0015-forecasts-and-quarters.md): a forecast's closed months are published as its actuals, marked by an `origin` column
 
 ## Context
 

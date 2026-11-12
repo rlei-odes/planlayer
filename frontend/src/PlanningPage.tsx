@@ -23,33 +23,60 @@ import { pickUnit } from './units'
 // tinted, months of full-year-only lines are hatched, comparisons are muted, and every line carries
 // its entry form (⚠ when its spread fell back to even). The server decides what is editable.
 // Clicking a line's badge chooses how that line spreads its year totals (ADR 0007).
+// A round planned by quarter shows Q1–Q4 instead of months; a forecast's closed months show
+// actuals, read only, and its year column is actuals to date plus the forecast (ADR 0015).
 
 const COL_ACCOUNT = 'account'
 const COL_FY = 'fy'
 const comparisonProp = (i: number) => `c${i}`
 const monthProp = (m: number) => `m${m}`
-const isMonth = (prop: string) => /^m\d+$/.test(prop)
+const quarterProp = (q: number) => `q${q}`
 const MONTH_LABEL = new Intl.DateTimeFormat('en', { month: 'short', timeZone: 'UTC' })
+const MONTH_YEAR_SHORT = new Intl.DateTimeFormat('en', { month: 'short', year: 'numeric', timeZone: 'UTC' })
 
 type GridRow = Record<string, string>
 type Message = { kind: 'error' | 'info' | 'ok'; text: string }
+/** How the sheet's period columns are laid out: by month or by quarter, and the months closed. */
+type Layout = { quarters: boolean; closed: number }
 
-function editable(row: Row | undefined, prop: string): boolean {
+/** The months a period column covers: one month, or a quarter's three; null for other columns. */
+function monthsOf(prop: string): number[] | null {
+  const n = Number(prop.slice(1))
+  if (/^m\d+$/.test(prop)) return [n]
+  if (/^q\d+$/.test(prop)) return [3 * n, 3 * n + 1, 3 * n + 2]
+  return null
+}
+
+/** A forecast's closed months hold actuals (ADR 0015). */
+function isClosed(prop: string, layout: Layout): boolean {
+  const months = monthsOf(prop)
+  return months !== null && months[0] < layout.closed
+}
+
+function editable(row: Row | undefined, prop: string, layout: Layout): boolean {
   if (!row || row.kind !== 'account') return false
   if (prop === COL_FY) return row.total_editable
-  return isMonth(prop) && row.months_editable
+  return monthsOf(prop) !== null && row.months_editable && !isClosed(prop, layout)
 }
 
 /** The class that gives a cell its look; one per kind of cell. */
-function cellKind(row: Row | undefined, prop: string, locked: boolean): string {
+function cellKind(row: Row | undefined, prop: string, locked: boolean, layout: Layout): string {
   if (!row) return ''
-  if (row.kind === 'group') return 'pl-group'
+  if (row.kind === 'group') return isClosed(prop, layout) ? 'pl-group pl-act' : 'pl-group'
   if (/^c\d+$/.test(prop)) return 'pl-cmp'
-  if (prop === COL_FY) return editable(row, prop) ? 'pl-edit pl-total' : 'pl-plain pl-total'
-  if (!isMonth(prop)) return ''
+  if (prop === COL_FY) return editable(row, prop, layout) ? 'pl-edit pl-total' : 'pl-plain pl-total'
+  if (monthsOf(prop) === null) return ''
+  if (isClosed(prop, layout)) return 'pl-act'
   if (!row.months_visible) return 'pl-hidden'
-  if (editable(row, prop)) return 'pl-edit'
+  if (editable(row, prop, layout)) return 'pl-edit'
   return locked ? 'pl-plain' : 'pl-calc'
+}
+
+/** "Jan–Jun 2026": a run of the year's months, for the forecast's year column. */
+function span(periods: string[], from: number, to: number): string {
+  const first = MONTH_LABEL.format(new Date(periods[from]))
+  const last = MONTH_YEAR_SHORT.format(new Date(periods[to]))
+  return from === to ? last : `${first}–${last}`
 }
 
 
@@ -219,6 +246,10 @@ export default function PlanningPage({
   useEffect(load, [load])
 
   const locked = grid?.lock_reason != null
+  const quarters = grid?.grain === 'quarter'
+  const closed = grid?.closed_months ?? 0
+  const layout = useMemo<Layout>(() => ({ quarters, closed }), [quarters, closed])
+  const forecast = grid?.version_kind === 'forecast'
 
   const columns = useMemo(() => {
     const periods = grid?.periods ?? []
@@ -227,7 +258,7 @@ export default function PlanningPage({
       (prop: string) =>
       ({ rowIndex }: { rowIndex: number }) => {
         const row = grid?.rows[rowIndex]
-        const classes = [prop === COL_ACCOUNT ? 'pl-acc' : 'pl-num', cellKind(row, prop, locked)]
+        const classes = [prop === COL_ACCOUNT ? 'pl-acc' : 'pl-num', cellKind(row, prop, locked, layout)]
         if (prop === comparisonProp(nComp - 1)) classes.push('pl-cmp-last')
         return { class: classes.join(' ') }
       }
@@ -236,9 +267,18 @@ export default function PlanningPage({
       name,
       size,
       columnProperties: () => ({ class: `pl-head ${headerClass}${title ? ' pl-head-noted' : ''}`, title }),
-      readonly: ({ rowIndex }: { rowIndex: number }) => !editable(grid?.rows[rowIndex], prop),
+      readonly: ({ rowIndex }: { rowIndex: number }) => !editable(grid?.rows[rowIndex], prop, layout),
       cellProperties: cellProperties(prop),
     })
+    const act = (prop: string) => (isClosed(prop, layout) ? ' · Act' : '')
+    const actHead = (prop: string) => (isClosed(prop, layout) ? 'pl-head-act' : '')
+    const periodColumns = layout.quarters
+      ? [0, 1, 2, 3].map((q) => column(quarterProp(q), `Q${q + 1}${act(quarterProp(q))}`, 112, actHead(quarterProp(q))))
+      : periods.map((p, m) => column(monthProp(m), MONTH_LABEL.format(new Date(p)) + act(monthProp(m)), 92, actHead(monthProp(m))))
+    const yearTitle =
+      layout.closed > 0 && periods.length === 12
+        ? `Actuals ${span(periods, 0, layout.closed - 1)} + forecast ${span(periods, layout.closed, 11)}. A year total typed here is the full year: the open months take what the actuals leave.`
+        : undefined
     return [
       {
         ...column(COL_ACCOUNT, 'Account', 390, 'pl-head-acc'),
@@ -249,10 +289,10 @@ export default function PlanningPage({
       ...(grid?.comparisons ?? []).map((c, i) =>
         column(comparisonProp(i), c.label, 112, 'pl-head-cmp', comparisonTitle(c)),
       ),
-      column(COL_FY, `Plan ${grid?.fiscal_year ?? ''}`, 116, 'pl-head-plan'),
-      ...periods.map((p, m) => column(monthProp(m), MONTH_LABEL.format(new Date(p)), 92)),
+      column(COL_FY, `${forecast ? 'Forecast' : 'Plan'} ${grid?.fiscal_year ?? ''}`, 124, 'pl-head-plan', yearTitle),
+      ...periodColumns,
     ]
-  }, [grid, locked, profiles])
+  }, [grid, locked, profiles, layout, forecast])
 
   // The page is as wide as its columns (plus the sheet's border), so nothing stretches past them.
   const sheetWidth = columns.reduce((n, c) => n + c.size, 0) + 2 + SCROLLBAR
@@ -267,10 +307,16 @@ export default function PlanningPage({
       (grid?.rows ?? []).map((row) => {
         const out: GridRow = { [COL_ACCOUNT]: row.name, [COL_FY]: format(sum(row.plan.map((c) => c.value))) }
         row.comparisons.forEach((values, i) => (out[comparisonProp(i)] = format(sum(values))))
-        row.plan.forEach((c, m) => (out[monthProp(m)] = row.months_visible ? format(c.value) : ''))
+        const shown = (m: number) => row.months_visible || m < closed
+        if (quarters) {
+          for (let q = 0; q < 4; q++) {
+            const months = row.plan.slice(3 * q, 3 * q + 3)
+            out[quarterProp(q)] = shown(3 * q) ? format(sum(months.map((c) => c.value))) : ''
+          }
+        } else row.plan.forEach((c, m) => (out[monthProp(m)] = shown(m) ? format(c.value) : ''))
         return out
       }),
-    [grid],
+    [grid, quarters, closed],
   )
 
   async function save(changes: { rowIndex: number; prop: string; raw: unknown }[]) {
@@ -279,15 +325,17 @@ export default function PlanningPage({
     const refused: string[] = []
     for (const { rowIndex, prop, raw } of changes) {
       const row: Row | undefined = grid.rows[rowIndex]
-      if (!row || !editable(row, prop)) continue
+      if (!row || !editable(row, prop, layout)) continue
       const value = parse(String(raw ?? ''))
       if (value === undefined) {
         refused.push(`${row.code}: “${String(raw)}” is not a number`)
         continue
       }
+      const n = prop === COL_FY ? null : Number(prop.slice(1))
       edits.push({
         account_code: row.code,
-        month: prop === COL_FY ? null : Number(prop.slice(1)),
+        month: prop.startsWith('m') ? n : null,
+        quarter: prop.startsWith('q') ? n : null,
         value,
         expected: row.plan.map((c) => c.row_version),
       })
@@ -461,6 +509,8 @@ export default function PlanningPage({
           <div className="pl-sub">
             {current?.owner ? `Owner ${current.owner}` : 'No owner'}
             {grid && ` · fiscal year ${grid.fiscal_year}`}
+            {grid && forecast && closed > 0 && ` · forecast ${closed}+${12 - closed}`}
+            {grid && quarters && ' · by quarter'}
             {saving && <span className="pl-saving"> · Saving…</span>}
           </div>
         </div>
@@ -548,6 +598,11 @@ export default function PlanningPage({
               <span className="pv-key">
                 <i className="k-edit" /> typed in
               </span>
+              {closed > 0 && (
+                <span className="pv-key">
+                  <i className="k-act" /> actuals (closed months)
+                </span>
+              )}
               <span className="pv-key">
                 <i className="k-calc" /> calculated from the year total
               </span>
@@ -559,8 +614,11 @@ export default function PlanningPage({
               </span>
               {open && (
                 <span className="pl-help">
-                  Type in a cell and press Enter. A year total in “Plan” spreads as the line’s badge says; click the
-                  badge to change it. Paste from Excel works; Ctrl+Z undoes. Empty is not 0.
+                  Type in a cell and press Enter.{' '}
+                  {closed > 0
+                    ? 'A year total in “Forecast” is the full year: the open months take what the actuals leave, spread as the line’s badge says.'
+                    : `A year total in “Plan”${quarters ? ' or a quarter' : ''} spreads as the line’s badge says.`}{' '}
+                  Click the badge to change it. Paste from Excel works; Ctrl+Z undoes. Empty is not 0.
                 </span>
               )}
             </div>

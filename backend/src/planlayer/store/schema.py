@@ -158,6 +158,10 @@ planning_round = Table(
     Column("created_by", Text),
     Column("created_at", DateTime(timezone=True)),
     Column("carried", JSONB),
+    # How the round is planned (ADR 0015): by month or by quarter; values are months either way.
+    Column("grain", Text, nullable=False, server_default="month"),
+    # A forecast's last closed month: months up to it show actuals and take no plan values.
+    Column("actuals_through", Date),
 )
 
 round_module = Table(

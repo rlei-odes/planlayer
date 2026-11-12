@@ -321,6 +321,12 @@ revo-grid.pl-revo revogr-header .rgHeaderCell.pl-head-plan {
   color: var(--accent-ink);
 }
 
+/* A forecast's closed month or quarter: it shows actuals (ADR 0015). */
+revo-grid.pl-revo revogr-header .rgHeaderCell.pl-head-act {
+  color: var(--actual-ink);
+  font-weight: 500;
+}
+
 revo-grid.pl-revo revogr-data .rgCell.pl-num {
   text-align: right;
 }
@@ -460,6 +466,15 @@ revo-grid.pl-revo .rgCell.pl-calc {
 
 revo-grid.pl-revo .rgCell.pl-plain {
   color: var(--ink-2);
+}
+
+revo-grid.pl-revo .rgCell.pl-act {
+  background: var(--actual);
+  color: var(--actual-ink);
+}
+
+revo-grid.pl-revo .rgCell.pl-group.pl-act {
+  background: var(--actual);
 }
 
 revo-grid.pl-revo .rgCell.pl-hidden {

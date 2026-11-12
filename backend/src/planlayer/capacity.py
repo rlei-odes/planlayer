@@ -23,6 +23,7 @@ from sqlalchemy.exc import DBAPIError
 
 from planlayer.access import User, capacity_rights
 from planlayer.domain.entry_forms import Basis, weights
+from planlayer.domain.periods import closed_months
 from planlayer.domain.spreading import Profile, spread
 from planlayer.domain.workflow import EDITABLE, RoundStatus, Status
 from planlayer.planning import (
@@ -142,6 +143,11 @@ class _Context:
     @property
     def version_id(self) -> int:
         return self.round.version_id
+
+    @property
+    def closed(self) -> int:
+        """A forecast's closed months (ADR 0015): capacity writes only the months after them."""
+        return closed_months(self.periods, self.round.actuals_through)
 
 
 @dataclass
@@ -568,8 +574,11 @@ def apply_edits(
                 raise EditError(f"{label} is inactive in this round")
             if e.month is not None and not 0 <= e.month < MONTHS:
                 raise EditError(f"month {e.month} out of range")
+            if e.month is not None and e.month < ctx.closed:
+                raise EditError(f"{label}: month {e.month + 1} is closed in this forecast")
             key = (line.work_center_id, line.activity_type_id)
-            for m in range(MONTHS) if e.month is None else [e.month]:
+            open_months = list(range(ctx.closed, MONTHS))
+            for m in open_months if e.month is None else [e.month]:
                 cell = (key, ctx.periods[m])
                 if cell not in writes and current.get(cell) != e.expected[m]:
                     conflicts.append(Conflict(label, m))
@@ -580,14 +589,15 @@ def apply_edits(
             if e.month is not None:
                 writes[(key, ctx.periods[e.month])] = value
             elif value is None:
-                for p in ctx.periods:
-                    writes[(key, p)] = None
+                for m in open_months:
+                    writes[(key, ctx.periods[m])] = None
             else:
+                # In a forecast, the year's hours spread over the open months.
                 before = [c.value for c in prior.get(key, [Cell(None, None)] * MONTHS)]
                 basis, _, profile = _spread_of(line, profiles, before)
-                w = weights(basis, MONTHS, profile, before)
-                for p, hours in zip(ctx.periods, spread(value, w.weights), strict=True):
-                    writes[(key, p)] = hours
+                w = weights(basis, MONTHS, profile, before, open_months)
+                for m, hours in zip(open_months, spread(value, w.weights), strict=True):
+                    writes[(key, ctx.periods[m])] = hours
         if conflicts:
             raise ConflictError(conflicts)
         _write_hours(conn, ctx, writes, current)
@@ -681,7 +691,11 @@ def _write_credits(conn: Connection, ctx: _Context) -> None:
             for p, c in zip(ctx.periods, cells, strict=True):
                 if c.value is not None:
                     credit[(account_ids[code], p)] += c.value * rate
-    wanted = {k: v.quantize(CENT, ROUND_HALF_UP) for k, v in credit.items()}
+    wanted = {
+        k: v.quantize(CENT, ROUND_HALF_UP)
+        for k, v in credit.items()
+        if k[1] in ctx.periods[ctx.closed :]
+    }
 
     f = fact_cost_center
     scope = and_(
@@ -689,7 +703,7 @@ def _write_credits(conn: Connection, ctx: _Context) -> None:
         f.c.layer_id == BASE_LAYER,
         f.c.measure_id == AMOUNT,
         f.c.dim_cost_center == ctx.cost_center_id,
-        f.c.period.in_(ctx.periods),
+        f.c.period.in_(ctx.periods[ctx.closed :]),  # a forecast's closed months hold actuals
     )
     stored = {
         (a, p): v

@@ -3,6 +3,7 @@
 - **Status:** Accepted
 - **Closes:** part of D-13 and D-27; amends ADR 0007 (hidden accounts, new rounds) and ADR 0012 (sync of actuals, members no longer delivered)
 - **Date:** 2026-11-11
+- **Amended by:** [0015](0015-forecasts-and-quarters.md): a forecast's carried plan values go into its open months only
 
 ## Context
 

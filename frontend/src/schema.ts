@@ -163,6 +163,7 @@ export type DevUser = {
 export type EditIn = {
   account_code: string
   month?: number | null
+  quarter?: number | null
   value: string | null
   expected: (number | null)[]
 }
@@ -194,6 +195,10 @@ export type GridOut = {
   periods: string[]
   comparisons: ComparisonOut[]
   rows: RowOut[]
+  version_kind: string
+  grain: "month" | "quarter"
+  actuals_through: string | null
+  closed_months: number
   batch_id?: string | null
 }
 
@@ -224,6 +229,12 @@ export type InactiveLineOut = {
   work_center_name: string
   activity_type_code: string
   activity_type_name: string
+}
+
+export type LatestActualsOut = {
+  month: string | null
+  fiscal_year: number | null
+  start_month: number
 }
 
 export type LineChangeIn = {
@@ -442,6 +453,8 @@ export type RoundIn = {
   deadline?: string | null
   copy_from?: string | null
   carry?: CarryOverInInput
+  grain?: "month" | "quarter"
+  actuals_through?: string | null
 }
 
 export type RoundStatusIn = {
@@ -504,6 +517,8 @@ export type SetupIO = {
   productive_cost_centers?: string[]
   planned_cost_centers?: string[] | null
   account_sets?: AccountSetIO[]
+  grain?: "month" | "quarter"
+  actuals_through?: string | null
 }
 
 export type SetupOut = {
@@ -515,6 +530,7 @@ export type SetupOut = {
   enabled_cost_centers: number
   sample_cost_center: string | null
   periods: string[]
+  latest_actuals: string | null
 }
 
 export type SpreadIn = {
@@ -606,6 +622,8 @@ export type Version = {
   fiscal_year: number
   status: "setup" | "open" | "closed"
   deadline: string | null
+  grain?: "month" | "quarter"
+  actuals_through?: string | null
 }
 
 export type WindowOut = {

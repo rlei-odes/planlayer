@@ -1019,6 +1019,16 @@
   color: var(--ink-2);
 }
 
+/* A forecast's closed months: actuals, read only (ADR 0015). */
+.pv-act {
+  background: var(--actual);
+  color: var(--actual-ink);
+}
+
+.pv-table th.act {
+  color: var(--actual-ink);
+}
+
 .pv-hidden {
   background:
     repeating-linear-gradient(-45deg, transparent 0 6px, rgb(24 32 44 / 4.5%) 6px 7px),
@@ -1091,6 +1101,11 @@
 
 .pv-key .k-calc {
   background: var(--calc);
+  border: 1px solid var(--line);
+}
+
+.pv-key .k-act {
+  background: var(--actual);
   border: 1px solid var(--line);
 }
 
@@ -1392,6 +1407,16 @@ a.su-btn {
 .sc-foot {
   padding: 10px 18px 14px;
   margin-bottom: 0;
+}
+
+/* A forecast's closed months and the refresh of their actuals. */
+.su-forecast {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line-2);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .su-carry {

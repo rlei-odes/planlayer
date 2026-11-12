@@ -52,6 +52,8 @@ fact_plan_cost_center = Table(
     Column("status", Text, nullable=False),  # the cost center's workflow status at publish
     Column("published_at", DateTime(timezone=True), nullable=False),
     Column("publish_run_id", BigInteger, nullable=False),
+    # ``plan``: the round's value; ``actual``: a forecast's closed month at publish (ADR 0015).
+    Column("origin", Text, nullable=False, server_default="plan"),
     PrimaryKeyConstraint(
         "version_code", "period", "entity_code", "cost_center_code", "account_code", "measure"
     ),
@@ -66,6 +68,7 @@ dim_version = Table(
     Column("fiscal_year", Integer, nullable=False),
     Column("published_at", DateTime(timezone=True), nullable=False),
     Column("scope", Text, nullable=False),
+    Column("actuals_through", Date),  # a forecast's last closed month
 )
 
 dim_cost_center = Table(
@@ -101,12 +104,20 @@ def ensure(conn: Connection, schema: str) -> None:
     schema, a validated plain identifier (``Settings``); the view's raw SQL needs it."""
     out_metadata.create_all(conn, checkfirst=True)
     s = conn.dialect.identifier_preparer.quote_schema(schema)
+    # Columns added since the tables were first created (ADR 0015).
+    conn.exec_driver_sql(
+        f"ALTER TABLE {s}.fact_plan_cost_center"
+        " ADD COLUMN IF NOT EXISTS origin text NOT NULL DEFAULT 'plan'"
+    )
+    conn.exec_driver_sql(
+        f"ALTER TABLE {s}.dim_version ADD COLUMN IF NOT EXISTS actuals_through date"
+    )
     conn.exec_driver_sql(f"""
         CREATE OR REPLACE VIEW {s}.v_plan_cost_center AS
         SELECT f.version_code, v.name AS version_name, f.fiscal_year, f.period,
                f.entity_code, f.cost_center_code, cc.name AS cost_center_name,
                f.account_code, a.name AS account_name, a.account_type,
-               f.measure, f.amount, f.status, f.published_at
+               f.measure, f.amount, f.status, f.published_at, f.origin
         FROM {s}.fact_plan_cost_center f
         LEFT JOIN {s}.dim_version v ON v.code = f.version_code
         LEFT JOIN {s}.dim_cost_center cc ON cc.code = f.cost_center_code

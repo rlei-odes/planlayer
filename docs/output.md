@@ -21,8 +21,11 @@ One row per round × cost center × account × month × measure.
 | `status` | text | the cost center's workflow status at publish: `not_started`, `in_progress`, `submitted`, `approved` |
 | `published_at` | timestamptz | when the run wrote the row |
 | `publish_run_id` | bigint | the run, as recorded in Planlayer |
+| `origin` | text | `plan`: the round's own value; `actual`: a forecast's closed month, as the actuals stood at publish ([ADR 0015](adr/0015-forecasts-and-quarters.md)) |
 
 Key: `version_code, period, entity_code, cost_center_code, account_code, measure`. A blank plan cell has no row; a zero is a row with `amount = 0`.
+
+A forecast's rows cover the whole year: its closed months as `actual` rows (every account with actuals, for the cost centers in the publish scope), its open months as `plan` rows. The sum over a version is the full-year forecast; filter `origin = 'plan'` for the forecast months only. Budgets have only `plan` rows. Values are stored by month in every round, also in rounds planned by quarter.
 
 A run replaces all rows of its round. With the scope "approved cost centers", only approved cost centers are present; with "whole round", every current value is, and `status` tells them apart.
 
@@ -33,6 +36,7 @@ A run replaces all rows of its round. With the scope "approved cost centers", on
 | `code`, `name`, `kind` | the round (`budget` or `forecast`) |
 | `fiscal_year` | its fiscal year |
 | `published_at`, `scope` | the last publish of the round and its scope (`approved` or `all`) |
+| `actuals_through` | a forecast's last closed month (first day of the month); empty for budgets |
 
 ## `dim_cost_center`, `dim_account`
 
@@ -48,7 +52,7 @@ Members of the main hierarchy as Planlayer holds them at the last publish, inclu
 
 ## `v_plan_cost_center`
 
-The fact table joined with the names of round, cost center and account, for tools that want one flat view.
+The fact table joined with the names of round, cost center and account, for tools that want one flat view, with `origin` as its last column.
 
 ## Rebuilding
 

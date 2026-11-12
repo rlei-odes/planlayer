@@ -75,17 +75,30 @@ class Weights:
 
 
 def weights(
-    basis: Basis, months: int, profile: Profile | None, reference: Sequence[Decimal | None]
+    basis: Basis,
+    months: int,
+    profile: Profile | None,
+    reference: Sequence[Decimal | None],
+    only: Sequence[int] | None = None,
 ) -> Weights:
     """Spread weights for a line (ADR 0007 fallbacks: negative reference values count as 0, an
-    all-zero or missing reference spreads evenly)."""
+    all-zero or missing reference spreads evenly).
+
+    ``only`` restricts the spread to some of the months (0-based), e.g. a forecast's open months
+    or one quarter (ADR 0015): the weights are those months' own, renormalised by ``spread``, and
+    a basis that is zero in all of them spreads evenly over them."""
+    picked = list(range(months)) if only is None else list(only)
     match basis:
         case "even":
-            return Weights(equal(months), fallback=False)
+            return Weights(equal(len(picked)), fallback=False)
         case "profile":
             if profile is None:
                 raise ValueError("a profile basis needs a profile")
-            return Weights(profile.weights(), fallback=False)
+            values = profile.weights([m + 1 for m in picked])
+            if sum(values) == 0:  # e.g. a quarter that is all shutdown
+                return Weights(equal(len(picked)), fallback=True)
+            return Weights(values, fallback=False)
         case "reference":
-            fallback = sum(max(v, Decimal(0)) for v in reference if v is not None) == 0
-            return Weights(from_reference(reference, negative="zero", if_zero="equal"), fallback)
+            part = [reference[m] for m in picked]
+            fallback = sum(max(v, Decimal(0)) for v in part if v is not None) == 0
+            return Weights(from_reference(part, negative="zero", if_zero="equal"), fallback)

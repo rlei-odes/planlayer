@@ -30,9 +30,17 @@ from sqlalchemy.exc import DBAPIError
 
 from planlayer.access import User, cost_center_rights
 from planlayer.domain.entry_forms import Basis, EntryForm, Form, resolve, weights
+from planlayer.domain.periods import closed_months, quarter_months
 from planlayer.domain.spreading import Profile, spread
 from planlayer.domain.workflow import EDITABLE, RoundStatus, Status
-from planlayer.rounds import NotFoundError, RoundRef, account_scopes, fiscal_periods, get_round
+from planlayer.rounds import (
+    Grain,
+    NotFoundError,
+    RoundRef,
+    account_scopes,
+    fiscal_periods,
+    get_round,
+)
 from planlayer.store.schema import (
     ACCOUNT,
     AMOUNT,
@@ -66,6 +74,7 @@ from planlayer.workflow import enabled_members, status_of
 __all__ = ["NotFoundError"]
 
 MONTHS = 12
+MONTH_NAME = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 LOCKED_SQLSTATE = "PL001"  # raised by the lock trigger
 
 
@@ -153,14 +162,20 @@ class Grid:
     periods: list[date]
     comparisons: list[ComparisonColumn]
     rows: list[Row] = field(default_factory=list)
+    version_kind: str = "budget"
+    grain: Grain = "month"
+    # A forecast's closed months (ADR 0015): the first ``closed_months`` plan cells hold actuals.
+    actuals_through: date | None = None
+    closed_months: int = 0
 
 
 @dataclass
 class Edit:
     account_code: str
-    month: int | None  # 0-11, or None for the full year (spread by the line's basis)
+    month: int | None  # 0-11; None with no quarter: the full year (spread by the line's basis)
     value: str | None  # canonical decimal string ("1234.5", "-3"); None = blank
     expected: list[int | None]  # row_version of each month as the client saw it
+    quarter: int | None = None  # 0-3 in a round planned by quarter: spread over its months
 
 
 @dataclass
@@ -178,6 +193,15 @@ class _Context:
     @property
     def version_id(self) -> int:
         return self.round.version_id
+
+    @property
+    def closed(self) -> int:
+        """How many months, from the year's first, are closed (ADR 0015)."""
+        return closed_months(self.periods, self.round.actuals_through)
+
+    @property
+    def open_months(self) -> range:
+        return range(self.closed, MONTHS)
 
 
 @dataclass
@@ -262,11 +286,28 @@ def _amounts(cells: dict[int, list[Cell]]) -> dict[int, list[Decimal | None]]:
     return {a: [c.value for c in row] for a, row in cells.items()}
 
 
-def _round_periods(conn: Connection, version_id: int, fallback: list[date]) -> list[date]:
-    fy = conn.execute(
-        select(planning_round.c.fiscal_year).where(planning_round.c.version_id == version_id)
-    ).scalar()
-    return fallback if fy is None else fiscal_periods(conn, fy)
+def _version_values(
+    conn: Connection, ctx: _Context, version_id: int
+) -> dict[int, list[Decimal | None]]:
+    """Another version's values for the cost center over its round's year. A forecast's closed
+    months are its actuals, so it reads as its full year: actuals to date plus forecast (ADR
+    0015)."""
+    found = conn.execute(
+        select(planning_round.c.fiscal_year, planning_round.c.actuals_through).where(
+            planning_round.c.version_id == version_id
+        )
+    ).first()
+    if found is None:
+        return _amounts(_values(conn, version_id, ctx.cost_center_id, ctx.periods))
+    periods = fiscal_periods(conn, found.fiscal_year)
+    values = _amounts(_values(conn, version_id, ctx.cost_center_id, periods))
+    closed = closed_months(periods, found.actuals_through)
+    if closed:
+        actuals = _amounts(_values(conn, ctx.actuals_id, ctx.cost_center_id, periods[:closed]))
+        for account in set(values) | set(actuals):
+            months = values.get(account, [None] * MONTHS)
+            values[account] = actuals.get(account, [None] * MONTHS)[:closed] + months[closed:]
+    return values
 
 
 def _comparisons(
@@ -285,21 +326,38 @@ def _comparisons(
         .order_by(comparison.c.position)
     ):
         match kind:
+            case "actuals" if ctx.closed:
+                # A forecast's actuals of the year stop at its closed months (ADR 0015).
+                periods = ctx.periods[: ctx.closed]
+                amounts = _amounts(_values(conn, ctx.actuals_id, ctx.cost_center_id, periods))
+                column = ComparisonColumn(
+                    kind,
+                    f"YTD {_period_name(ctx)} {ctx.round.fiscal_year}",
+                    note,
+                    _actuals_until(conn, ctx.actuals_id, periods),
+                    True,
+                )
             case "prior_year_actuals" | "actuals":
                 year = ctx.round.fiscal_year - (1 if kind == "prior_year_actuals" else 0)
                 periods = ctx.prior_periods if kind == "prior_year_actuals" else ctx.periods
-                cells = _values(conn, ctx.actuals_id, ctx.cost_center_id, periods)
+                amounts = _amounts(_values(conn, ctx.actuals_id, ctx.cost_center_id, periods))
                 until = _actuals_until(conn, ctx.actuals_id, periods)
                 column = ComparisonColumn(
                     kind, f"Actual {year}", note, until, until is not None and until < periods[-1]
                 )
             case _:
-                periods = _round_periods(conn, other_id, ctx.periods)
-                cells = _values(conn, other_id, ctx.cost_center_id, periods)
+                amounts = _version_values(conn, ctx, other_id)
                 column = ComparisonColumn(kind, other_name, note)
         columns.append(column)
-        values.append(_amounts(cells))
+        values.append(amounts)
     return columns, values
+
+
+def _period_name(ctx: _Context) -> str:
+    """The last closed month or quarter, as in "YTD Jun" or "YTD Q2"."""
+    if ctx.round.grain == "quarter":
+        return f"Q{ctx.closed // 3}"
+    return MONTH_NAME[ctx.periods[ctx.closed - 1].month - 1]
 
 
 def _actuals_until(conn: Connection, actuals_id: int, periods: list[date]) -> date | None:
@@ -455,8 +513,7 @@ def _lines(conn: Connection, ctx: _Context, account_ids: Iterable[int]) -> list[
     codes: dict[int | None, str | None] = {None: None}
     for ref_id in {f.reference_version_id for f in forms.values()} - {None}:
         assert ref_id is not None
-        periods = _round_periods(conn, ref_id, ctx.periods)
-        references[ref_id] = _amounts(_values(conn, ref_id, ctx.cost_center_id, periods))
+        references[ref_id] = _version_values(conn, ctx, ref_id)
         names[ref_id], codes[ref_id] = conn.execute(
             select(version.c.name, version.c.code).where(version.c.version_id == ref_id)
         ).one()
@@ -502,6 +559,12 @@ def read_grid(engine: Engine, user: User, version_code: str, cc_code: str) -> Gr
         ctx = _context(conn, user, version_code, cc_code)
         columns, compared = _comparisons(conn, ctx)
         plan = _values(conn, ctx.version_id, ctx.cost_center_id, ctx.periods)
+        # A forecast's closed months show actuals in the plan cells, read only (ADR 0015).
+        closed = ctx.periods[: ctx.closed]
+        actual = _values(conn, ctx.actuals_id, ctx.cost_center_id, closed) if closed else {}
+        for account, booked in actual.items():
+            for m in range(ctx.closed):
+                plan[account][m] = Cell(booked[m].value, None)
         scope = _scope(conn, ctx)
         # Accounts with values always show; added and set accounts only while planned.
         listed = _added(conn, ctx) | (scope.account_set or set())
@@ -524,6 +587,10 @@ def read_grid(engine: Engine, user: User, version_code: str, cc_code: str) -> Gr
         ctx.lock_reason,
         ctx.periods,
         columns,
+        version_kind=r.kind,
+        grain=r.grain,
+        actuals_through=r.actuals_through,
+        closed_months=ctx.closed,
     )
     editable = ctx.lock_reason is None
     blank: list[Decimal | None] = [None] * MONTHS
@@ -539,7 +606,7 @@ def read_grid(engine: Engine, user: User, version_code: str, cc_code: str) -> Gr
                 [Cell(None, None) for _ in range(MONTHS)],
             )
             grid.rows.append(group_row)
-        w = weights(line.form.basis, MONTHS, line.profile, line.reference)
+        w = weights(line.form.basis, MONTHS, line.profile, line.reference, ctx.open_months)
         from_capacity = line.account_id in credited
         why_not = scope.why_not(line.account_id)
         planned = why_not is None
@@ -742,34 +809,69 @@ def _apply(
         if c.row_version is not None
     }
 
+    # A year total typed in a forecast is the full year: the open months take what the closed
+    # months' actuals leave (ADR 0015).
+    to_date: dict[int, Decimal] = defaultdict(Decimal)
+    if ctx.closed:
+        for account, cells in _values(
+            conn, ctx.actuals_id, ctx.cost_center_id, ctx.periods[: ctx.closed]
+        ).items():
+            to_date[account] = sum((c.value for c in cells if c.value is not None), Decimal(0))
+
     conflicts: list[Conflict] = []
     writes: dict[tuple[int, date], Decimal | None] = {}
     for e in edits:
         if len(e.expected) != MONTHS:
             raise EditError("expected must list 12 row versions")
         line = lines[accounts[e.account_code]]
-        if e.month is not None and not 0 <= e.month < MONTHS:
-            raise EditError(f"month {e.month} out of range")
-        if e.month is not None and not line.form.months_editable:
-            raise EditError(f"{e.account_code} is entered as a year total")
-        months = range(MONTHS) if e.month is None else [e.month]
+        months = _targets(ctx, line, e)
         for m in months:
             key = (line.account_id, ctx.periods[m])
             if key not in writes and current.get(key) != e.expected[m]:
                 conflicts.append(Conflict(e.account_code, m))
         value = _parse(e.value)
-        if e.month is not None:
-            writes[(line.account_id, ctx.periods[e.month])] = value
-        elif value is None:
-            for p in ctx.periods:
-                writes[(line.account_id, p)] = None
-        else:
-            w = weights(line.form.basis, MONTHS, line.profile, line.reference)
-            for p, amount in zip(ctx.periods, spread(value, w.weights), strict=True):
-                writes[(line.account_id, p)] = amount
+        if value is None or e.month is not None:
+            for m in months:
+                writes[(line.account_id, ctx.periods[m])] = value
+            continue
+        if e.month is None and e.quarter is None:
+            value -= to_date[line.account_id]
+        w = weights(line.form.basis, MONTHS, line.profile, line.reference, months)
+        for m, amount in zip(months, spread(value, w.weights), strict=True):
+            writes[(line.account_id, ctx.periods[m])] = amount
     if conflicts:
         raise ConflictError(conflicts)
     _write(conn, ctx, writes, current)
+
+
+def _targets(ctx: _Context, line: _Line, e: Edit) -> list[int]:
+    """The months an edit writes: one month, a quarter's three, or the year's open months. A
+    round planned by quarter takes quarters, not single months (ADR 0015)."""
+    grain = ctx.round.grain
+    if e.month is not None and e.quarter is not None:
+        raise EditError("an edit names a month or a quarter, not both")
+    if e.month is not None:
+        if not 0 <= e.month < MONTHS:
+            raise EditError(f"month {e.month} out of range")
+        if grain == "quarter":
+            raise EditError("this round is planned by quarter")
+        months = [e.month]
+    elif e.quarter is not None:
+        if not 0 <= e.quarter < 4:
+            raise EditError(f"quarter {e.quarter} out of range")
+        if grain != "quarter":
+            raise EditError("this round is planned by month")
+        months = list(quarter_months(e.quarter))
+    else:
+        return list(ctx.open_months)
+    if not line.form.months_editable:
+        raise EditError(f"{e.account_code} is entered as a year total")
+    if months[0] < ctx.closed:
+        raise EditError(
+            f"{MONTH_NAME[ctx.periods[months[0]].month - 1]} {ctx.periods[months[0]].year}"
+            " is closed: it shows actuals"
+        )
+    return months
 
 
 def _write(

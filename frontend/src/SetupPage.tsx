@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { api, type EntryForm, type MemberRow, type Version } from './api'
+import { api, type EntryForm, type MemberRow, type SyncPlan, type Version } from './api'
+import { closable, closedCount, fiscalPeriods, fitThrough, monthName, type Grain } from './periods'
 import PlannerPreview, { Bars } from './PlannerPreview'
+import type { LatestActualsOut } from './schema'
 import Select, { type Option } from './Select'
 import { AccountsTab, CostCentersTab } from './ScopeTabs'
 import type { CarryOver, ComparisonColumn, NewRound, Profile, Rule, Scope, SetupDraft, SetupView } from './setupTypes'
@@ -49,6 +51,7 @@ const setupApi = {
   deleteProfile: (code: string) => request<null>(`/api/profiles/${encodeURIComponent(code)}`, { method: 'DELETE' }),
   preset: (preset: ProfilePreset, fiscalYear: number) =>
     request<string[]>(`/api/profile-presets/${preset}?fiscal_year=${fiscalYear}`),
+  latestActuals: () => request<LatestActualsOut>('/api/actuals/latest'),
 }
 
 function levelOf(d: SetupDraft): Level | null {
@@ -240,12 +243,27 @@ export default function SetupPage({
                     onChange={(e) => setDraft({ ...draft, deadline: e.target.value || null })}
                   />
                 </label>
+                <PeriodFields
+                  kind={round.kind}
+                  periods={view.periods}
+                  grain={draft.grain ?? 'month'}
+                  through={draft.actuals_through ?? null}
+                  latest={view.latest_actuals}
+                  onChange={(grain, actuals_through) => setDraft({ ...draft, grain, actuals_through })}
+                />
                 {round.status === 'setup' && (
                   <span className="su-note warn" style={{ alignSelf: 'flex-end' }}>
                     Planners can’t enter values until the round is opened on the status page.
                   </span>
                 )}
               </div>
+              {round.kind === 'forecast' && (
+                <ForecastActuals
+                  view={view}
+                  through={draft.actuals_through ?? null}
+                  onRefreshed={() => void setupApi.get(view.round.code).then(setView)}
+                />
+              )}
             </section>
 
             <section className="su-card">
@@ -304,6 +322,7 @@ export default function SetupPage({
             periods={view.periods}
             sampleCostCenter={view.sample_cost_center}
             actualsAvailable={view.actuals_available}
+            forecast={round.kind === 'forecast'}
           />
         </div>
       )}
@@ -866,9 +885,153 @@ const NO_CARRY: CarryOver = {
 }
 
 /** The latest round of a kind: the usual source, so budgets follow budgets and forecasts follow
- * forecasts. Rounds come newest first. */
-function latestOf(rounds: Version[], kind: string): string | null {
+ * forecasts. Rounds come newest first. A forecast follows the year's last forecast, else the
+ * year's budget (ADR 0015). */
+function latestOf(rounds: Version[], kind: string, fiscalYear?: number): string | null {
+  if (kind === 'forecast' && fiscalYear !== undefined) {
+    const ofYear = rounds.filter((v) => v.fiscal_year === fiscalYear)
+    const found = ofYear.find((v) => v.kind === 'forecast') ?? ofYear.find((v) => v.kind === 'budget')
+    if (found) return found.code
+  }
   return (rounds.find((v) => v.kind === kind) ?? rounds[0])?.code ?? null
+}
+
+/** How the round is planned: by month or by quarter; a forecast also closes months up to its
+ * actuals through (ADR 0015). By quarter, only quarter ends can be closed. */
+function PeriodFields({
+  kind,
+  periods,
+  grain,
+  through,
+  latest,
+  onChange,
+}: {
+  kind: string
+  periods: string[]
+  grain: Grain
+  through: string | null
+  latest: string | null
+  onChange: (grain: Grain, through: string | null) => void
+}) {
+  const months: Option[] = [
+    { value: '', label: 'None', hint: 'plans the whole year' },
+    ...closable(periods, grain).map((p) => {
+      const n = closedCount(periods, p)
+      return { value: p, label: monthName(p), hint: `${n}+${12 - n}${p === latest ? ' · latest actuals' : ''}` }
+    }),
+  ]
+  return (
+    <>
+      <div className="su-field su-w-select">
+        Planned by
+        <Select<Grain>
+          label="Planned by"
+          value={grain}
+          options={[
+            { value: 'month', label: 'Month' },
+            { value: 'quarter', label: 'Quarter', hint: 'Q1–Q4' },
+          ]}
+          onChange={(g) => onChange(g, fitThrough(periods, g, through))}
+        />
+      </div>
+      {kind === 'forecast' && (
+        <div className="su-field su-w-select">
+          Actuals through
+          <Select label="Actuals through" value={through ?? ''} options={months} onChange={(p) => onChange(grain, p || null)} />
+        </div>
+      )}
+    </>
+  )
+}
+
+/** A forecast's closed months and the actuals they show: up to when they are synced, and a
+ * refresh that syncs the round's fiscal year (ADR 0015), with the sync's preview first. */
+function ForecastActuals({
+  view,
+  through,
+  onRefreshed,
+}: {
+  view: SetupView
+  through: string | null
+  onRefreshed: () => void
+}) {
+  const [plan, setPlan] = useState<SyncPlan | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [note, setNote] = useState<{ kind: 'ok' | 'error' | 'warn'; text: string } | null>(null)
+  const year = view.round.fiscal_year
+  const years = { first: year, last: year }
+  const n = closedCount(view.periods, through)
+  const latest = view.latest_actuals
+  const short = n > 0 && (!latest || latest < view.periods[n - 1])
+
+  async function check() {
+    setBusy(true)
+    setNote(null)
+    try {
+      setPlan(await api.syncPlan(null, years))
+    } catch (e) {
+      setNote({ kind: 'error', text: e instanceof Error ? e.message : String(e) })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function refresh() {
+    setBusy(true)
+    try {
+      const done = await api.syncRun(null, [], years)
+      setPlan(null)
+      setNote({ kind: 'ok', text: `Actuals of ${year} refreshed: ${done.actual_rows.toLocaleString('en-US')} rows in ${done.seconds} s. The sheets show them on their next load.` })
+      onRefreshed()
+    } catch (e) {
+      setNote({ kind: 'error', text: e instanceof Error ? e.message : String(e) })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const counts = plan?.actual_years.find((y) => y.fiscal_year === year)
+  const blocked = plan !== null && (plan.problems.length > 0 || plan.matches.length > 0)
+  return (
+    <div className="su-forecast">
+      <p className="su-hint">
+        {n > 0
+          ? `${n}+${12 - n}: ${monthName(view.periods[0])} to ${monthName(view.periods[n - 1])} show actuals on the sheets, read only, as synced; planners forecast the rest. A year total typed is the full year.`
+          : 'No month is closed: the forecast plans the whole year.'}{' '}
+        Latest synced actuals: <strong>{latest ? monthName(latest) : 'none'}</strong>.
+        {short && ' The closed months go further than the synced actuals: refresh once they are booked.'}
+      </p>
+      <div className="su-row">
+        {plan === null ? (
+          <button type="button" className="su-btn" disabled={busy} onClick={() => void check()}>
+            {busy ? 'Checking the source…' : `Refresh actuals ${year}`}
+          </button>
+        ) : (
+          <>
+            <span className="su-hint">
+              {counts
+                ? `The source delivers ${counts.delivered.toLocaleString('en-US')} actual cells for ${year}; ${counts.stored.toLocaleString('en-US')} are stored now.`
+                : `No actuals for ${year} in the source.`}
+              {plan.new.length > 0 && ` New members: ${plan.new.length}.`}
+              {plan.changed.length > 0 && ` Changed members: ${plan.changed.length}.`}
+            </span>
+            <button type="button" className="su-btn ghost" disabled={busy} onClick={() => setPlan(null)}>
+              Cancel
+            </button>
+            <button type="button" className="su-btn primary" disabled={busy || blocked} onClick={() => void refresh()}>
+              {busy ? 'Refreshing…' : 'Refresh now'}
+            </button>
+          </>
+        )}
+      </div>
+      {blocked && (
+        <div className="su-note warn">
+          The sync needs attention first ({[...plan.problems, ...plan.matches.map((m) => `confirm ${m.dimension} ${m.code}`)].slice(0, 3).join('; ')}). Run it on Master data → Sync.
+        </div>
+      )}
+      {note && <div className={`su-note ${note.kind}`}>{note.text}</div>}
+    </div>
+  )
 }
 
 function NewRoundCard({
@@ -890,12 +1053,41 @@ function NewRoundCard({
       deadline: null,
       copy_from: latestOf(rounds, 'budget'),
       carry: NO_CARRY,
+      grain: 'month',
+      actuals_through: null,
     }
   })
   const carry = r.carry ?? NO_CARRY
   const source = rounds.find((v) => v.code === r.copy_from)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [latest, setLatest] = useState<LatestActualsOut | null>(null)
+  useEffect(() => {
+    setupApi.latestActuals().then(setLatest, (e: unknown) => setError(e instanceof Error ? e.message : String(e)))
+  }, [])
+  const startMonth = latest?.start_month ?? 1
+  const periods = fiscalPeriods(r.fiscal_year, startMonth)
+  const grain = r.grain ?? 'month'
+
+  /** A forecast is named by its closed months, e.g. "Forecast 6+6 2026" (F2026-6). */
+  function named(next: NewRound): NewRound {
+    if (next.kind !== 'forecast') return next
+    const n = closedCount(fiscalPeriods(next.fiscal_year, startMonth), next.actuals_through)
+    const year = next.fiscal_year
+    return { ...next, code: n ? `F${year}-${n}` : `F${year}`, name: n ? `Forecast ${n}+${12 - n} ${year}` : `Forecast ${year}` }
+  }
+
+  function chooseKind(kind: NewRound['kind']) {
+    if (kind === 'budget') {
+      const year = (rounds[0]?.fiscal_year ?? new Date().getFullYear()) + 1
+      setR({ ...r, kind, fiscal_year: year, code: `B${year}`, name: `Budget ${year}`, actuals_through: null, copy_from: latestOf(rounds, kind), carry: { ...carry, values: false } })
+      return
+    }
+    // A forecast re-plans the year of the latest actuals, closed up to them, from its budget.
+    const year = latest?.fiscal_year ?? r.fiscal_year
+    const through = latest?.month ? fitThrough(fiscalPeriods(year, startMonth), grain, latest.month) : null
+    setR(named({ ...r, kind, fiscal_year: year, actuals_through: through, copy_from: latestOf(rounds, kind, year), carry: { ...carry, values: true } }))
+  }
   async function create() {
     setBusy(true)
     try {
@@ -927,7 +1119,7 @@ function NewRoundCard({
               { value: 'budget', label: 'Budget' },
               { value: 'forecast', label: 'Forecast' },
             ]}
-            onChange={(kind) => setR({ ...r, kind, copy_from: latestOf(rounds, kind) })}
+            onChange={chooseKind}
           />
         </div>
         <label className="su-field">
@@ -936,7 +1128,10 @@ function NewRoundCard({
             className="su-input"
             type="number"
             value={r.fiscal_year}
-            onChange={(e) => setR({ ...r, fiscal_year: Number(e.target.value) })}
+            onChange={(e) => {
+              const year = Number(e.target.value)
+              setR(named({ ...r, fiscal_year: year, actuals_through: null, copy_from: r.kind === 'forecast' ? latestOf(rounds, r.kind, year) : r.copy_from }))
+            }}
             style={{ width: 90 }}
           />
         </label>
@@ -948,6 +1143,14 @@ function NewRoundCard({
           Name
           <input className="su-input" value={r.name} onChange={(e) => setR({ ...r, name: e.target.value })} />
         </label>
+        <PeriodFields
+          kind={r.kind}
+          periods={periods}
+          grain={grain}
+          through={r.actuals_through ?? null}
+          latest={latest?.month ?? null}
+          onChange={(g, actuals_through) => setR(named({ ...r, grain: g, actuals_through }))}
+        />
         <div className="su-field su-w-select">
           Set up like
           <Select
@@ -988,6 +1191,7 @@ function NewRoundCard({
                     %
                     <span className="ink-3">
                       {source.fiscal_year} → {r.fiscal_year}: 1,000 becomes {(1000 * (1 + uplift / 100)).toLocaleString('en-US', { maximumFractionDigits: 2 })}
+                      {closedCount(periods, r.actuals_through) > 0 && ' · into the open months only'}
                     </span>
                   </label>
                 )}

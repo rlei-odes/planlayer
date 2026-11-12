@@ -1,10 +1,12 @@
 import { Fragment } from 'react'
 import type { EntryForm, MemberRow } from './api'
+import { closedCount } from './periods'
 import type { Profile, SetupDraft } from './setupTypes'
 
 // A designed mock-up of the sheet a planner gets with the draft setup (E-03): the forms decide
 // which cells are typed in, which are calculated and which months are hidden; the comparison
-// columns come first. Values are examples, derived from the account code, not real data.
+// columns come first. Values are examples, derived from the account code, not real data. A round
+// planned by quarter shows Q1–Q4; a forecast's closed months show actuals (ADR 0015).
 
 // Example values in thousands, so the account column, comparisons, plan and all twelve months fit
 // beside the settings.
@@ -22,6 +24,7 @@ type Props = {
   periods: string[]
   sampleCostCenter: string | null
   actualsAvailable: boolean
+  forecast: boolean
 }
 
 type Resolved = { form: EntryForm; profile: string | null; reference: string | null }
@@ -89,6 +92,17 @@ export default function PlannerPreview(p: Props) {
   groups.sort((a, b) => p.accounts.findIndex((x) => x.code === a) - p.accounts.findIndex((x) => x.code === b))
 
   const months = p.periods.length === 12 ? p.periods.map((d) => MONTH.format(new Date(d))) : []
+  const closed = p.forecast ? closedCount(p.periods, p.draft.actuals_through) : 0
+  const quarters = p.draft.grain === 'quarter'
+  // The period columns: twelve months, or four quarters of three months each.
+  const cols =
+    months.length === 0
+      ? []
+      : quarters
+        ? [0, 1, 2, 3].map((q) => ({ label: `Q${q + 1}`, ms: [3 * q, 3 * q + 1, 3 * q + 2] }))
+        : months.map((label, m) => ({ label, ms: [m] }))
+  const isClosed = (c: { ms: number[] }) => c.ms[0] < closed
+  const openCols = cols.filter((c) => !isClosed(c)).length
   const profileOf = (code: string | null) => p.profiles.find((x) => x.code === code)
 
   type Line = {
@@ -126,6 +140,11 @@ export default function PlannerPreview(p: Props) {
       default:
         values = spread(total, py.map(() => 1))
     }
+    if (closed > 0) {
+      // A forecast's closed months show actuals; the year is actuals plus the forecast.
+      values = values.map((v, m) => (m < closed ? Math.round(py[m] * 1.01) : v))
+      return { code: a.code, name: a.name, r, compare, total: sum(values), months: values, fallback }
+    }
     return { code: a.code, name: a.name, r, compare, total: r.form === 'monthly' ? sum(values) : total, months: values, fallback }
   }
 
@@ -134,7 +153,8 @@ export default function PlannerPreview(p: Props) {
   const compareLabel = (i: number) => {
     const c = p.draft.comparisons[i]
     if (c.kind === 'prior_year_actuals') return `Actual ${p.fiscalYear - 1}`
-    if (c.kind === 'actuals') return `Actual ${p.fiscalYear} · YTD`
+    if (c.kind === 'actuals')
+      return closed > 0 ? `YTD ${quarters ? `Q${closed / 3}` : months[closed - 1]} ${p.fiscalYear}` : `Actual ${p.fiscalYear} · YTD`
     return p.versionNames[c.version_code ?? ''] ?? c.version_code ?? 'Version'
   }
   const usesActualsWithoutSource =
@@ -164,15 +184,15 @@ export default function PlannerPreview(p: Props) {
         </div>
       </div>
       <div className="pv-scroll">
-        <table className="pv-table" style={{ minWidth: 160 + 48 * (nComp + 1) + 36 * months.length }}>
+        <table className="pv-table" style={{ minWidth: 160 + 48 * (nComp + 1) + (quarters ? 52 : 36) * cols.length }}>
           <colgroup>
             <col className="acc" />
             {p.draft.comparisons.map((_, i) => (
               <col key={i} className="year" />
             ))}
             <col className="year" />
-            {months.map((m) => (
-              <col key={m} />
+            {cols.map((c) => (
+              <col key={c.label} />
             ))}
           </colgroup>
           <thead>
@@ -183,9 +203,13 @@ export default function PlannerPreview(p: Props) {
                   {compareLabel(i)}
                 </th>
               ))}
-              <th className="plan">Plan {p.fiscalYear}</th>
-              {months.map((m) => (
-                <th key={m}>{m}</th>
+              <th className="plan">
+                {p.forecast ? 'Forecast' : 'Plan'} {p.fiscalYear}
+              </th>
+              {cols.map((c) => (
+                <th key={c.label} className={isClosed(c) ? 'act' : undefined}>
+                  {c.label}
+                </th>
               ))}
             </tr>
           </thead>
@@ -193,7 +217,7 @@ export default function PlannerPreview(p: Props) {
             {sheet.map(({ group, lines }) => renderGroup(group?.code ?? '?', group?.name ?? '', lines))}
             {sheet.length === 0 && (
               <tr>
-                <td className="acc" colSpan={2 + nComp + 12}>
+                <td className="acc" colSpan={2 + nComp + cols.length}>
                   No accounts yet: sync them or add them under Master data.
                 </td>
               </tr>
@@ -209,6 +233,19 @@ export default function PlannerPreview(p: Props) {
             them in.
           </div>
         )}
+        {closed > 0 && (
+          <div className="su-note">
+            {closed}+{12 - closed}: the first {quarters ? `${closed / 3} quarter${closed === 3 ? '' : 's'}` : `${closed} months`} show
+            actuals, read only. A year total typed is the full year; the open {quarters ? 'quarters' : 'months'} take what
+            the actuals leave.
+          </div>
+        )}
+        {quarters && (
+          <div className="su-note">
+            Planned by quarter: a quarter typed in spreads over its three months like a year total does; months are
+            stored as before.
+          </div>
+        )}
         {hidden.size > 0 && (
           <div className="su-note">
             {hidden.size} account{hidden.size === 1 ? '' : 's'} hidden from every sheet in this round.
@@ -219,6 +256,11 @@ export default function PlannerPreview(p: Props) {
         <span className="pv-key">
           <i className="k-edit" /> typed in
         </span>
+        {closed > 0 && (
+          <span className="pv-key">
+            <i className="k-act" /> actuals
+          </span>
+        )}
         <span className="pv-key">
           <i className="k-calc" /> calculated from the year total
         </span>
@@ -234,7 +276,7 @@ export default function PlannerPreview(p: Props) {
 
   function renderGroup(key: string, name: string, lines: Line[]) {
     const compare = Array.from({ length: nComp }, (_, i) => sum(lines.map((l) => l.compare[i])))
-    const monthTotals = Array.from({ length: 12 }, (_, m) => sum(lines.map((l) => l.months[m])))
+    const colTotals = cols.map((c) => sum(lines.map((l) => sum(c.ms.map((m) => l.months[m])))))
     return (
       <Fragment key={key}>
         <tr className="pv-group">
@@ -245,7 +287,11 @@ export default function PlannerPreview(p: Props) {
             </td>
           ))}
           <td className="pv-num">{FMT.format(sum(lines.map((l) => l.total)))}</td>
-          {months.length > 0 && monthTotals.map((v, m) => <td key={m} className="pv-num">{FMT.format(v)}</td>)}
+          {colTotals.map((v, i) => (
+            <td key={i} className={`pv-num${isClosed(cols[i]) ? ' pv-act' : ''}`}>
+              {FMT.format(v)}
+            </td>
+          ))}
         </tr>
         {lines.map(renderRow)}
       </Fragment>
@@ -292,17 +338,24 @@ export default function PlannerPreview(p: Props) {
           </td>
         ))}
         <td className="pv-num pv-edit total">{FMT.format(l.total)}</td>
-        {months.length > 0 &&
+        {cols.filter(isClosed).map((c) => (
+          <td key={c.label} className="pv-num pv-act">
+            {FMT.format(sum(c.ms.map((m) => l.months[m])))}
+          </td>
+        ))}
+        {openCols > 0 &&
           (l.r.form === 'annual' ? (
-            <td className="pv-hidden" colSpan={12}>
+            <td className="pv-hidden" colSpan={openCols}>
               entered as a full-year value
             </td>
           ) : (
-            l.months.map((v, m) => (
-              <td key={m} className={`pv-num ${l.r.form === 'monthly' ? 'pv-edit' : 'pv-calc'}`}>
-                {FMT.format(v)}
-              </td>
-            ))
+            cols
+              .filter((c) => !isClosed(c))
+              .map((c) => (
+                <td key={c.label} className={`pv-num ${l.r.form === 'monthly' ? 'pv-edit' : 'pv-calc'}`}>
+                  {FMT.format(sum(c.ms.map((m) => l.months[m])))}
+                </td>
+              ))
           ))}
       </tr>
     )

@@ -8,6 +8,9 @@ and a run refuses when the fingerprint no longer matches, so it does exactly wha
 The output may live in another database, so a run is two transactions: the output is replaced,
 then the run is recorded in the app store. Repeating a run is harmless. Values are published
 natural-positive until the export sign rules exist (E-12).
+
+A forecast's closed months go out as its actuals at the moment of the run, marked ``origin``
+``actual``; its own values are ``plan`` (ADR 0015). The sum over a version is its full year.
 """
 
 import csv
@@ -26,7 +29,7 @@ from sqlalchemy import Connection, Engine, delete, func, insert, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from planlayer.access import User
-from planlayer.rounds import RoundRef, get_round
+from planlayer.rounds import RoundRef, closed_periods, get_round
 from planlayer.store.output import (
     LEVELS,
     dim_account,
@@ -42,10 +45,12 @@ from planlayer.store.schema import (
     COST_CENTER,
     H_ACCOUNT,
     H_COST_CENTER,
+    MODULE_COST_CENTER,
     fact_cost_center,
     hier_edge,
     member,
     publish_run,
+    round_member,
     version,
     workflow_status,
 )
@@ -64,7 +69,9 @@ COLUMNS = (
     "measure",
     "amount",
     "status",
+    "origin",
 )
+Origin = Literal["plan", "actual"]
 
 
 class PublishError(ValueError):
@@ -76,6 +83,7 @@ class OutRow:
     key: Key
     amount: Decimal
     status: str
+    origin: Origin = "plan"
 
 
 def plan_rows(engine: Engine, user: User, code: str, scope: Scope) -> tuple[RoundRef, list[OutRow]]:
@@ -99,23 +107,68 @@ def plan_rows(engine: Engine, user: User, code: str, scope: Scope) -> tuple[Roun
                 f.c.version_id == r.version_id, f.c.layer_id == BASE_LAYER, f.c.measure_id == AMOUNT
             )
         )
+        closed = closed_periods(conn, r)
+        if closed:
+            query = query.where(f.c.period > closed[-1])
         if scope == "approved":
             query = query.where(workflow_status.c.status == "approved")
         rows = [
             OutRow((p, ent, c, a, MEASURE), amount, s)
             for p, ent, c, a, amount, s in conn.execute(query)
         ]
+        if closed:
+            rows += _actual_rows(conn, r, closed, scope)
     rows.sort(key=lambda row: row.key)
     return r, rows
 
 
-def _published(output: Engine, schema: str, version_code: str) -> dict[Key, tuple[Decimal, str]]:
+def _actual_rows(conn: Connection, r: RoundRef, closed: list[date], scope: Scope) -> list[OutRow]:
+    """A forecast's closed months: the actuals of the cost centers it plans, on every account."""
+    f, e, cc, acc = fact_cost_center, member.alias("e"), member.alias("cc"), member.alias("acc")
+    status = func.coalesce(workflow_status.c.status, "not_started")
+    query = (
+        select(f.c.period, e.c.code, cc.c.code, acc.c.code, f.c.amount, status)
+        .join(e, e.c.member_id == f.c.dim_entity)
+        .join(cc, cc.c.member_id == f.c.dim_cost_center)
+        .join(acc, acc.c.member_id == f.c.dim_account)
+        .join(
+            round_member,
+            (round_member.c.version_id == r.version_id)
+            & (round_member.c.module == MODULE_COST_CENTER)
+            & (round_member.c.member_id == f.c.dim_cost_center)
+            & round_member.c.enabled.is_(True),
+        )
+        .join(version, version.c.version_id == f.c.version_id)
+        .outerjoin(
+            workflow_status,
+            (workflow_status.c.version_id == r.version_id)
+            & (workflow_status.c.cost_center_id == f.c.dim_cost_center),
+        )
+        .where(
+            version.c.kind == "actuals",
+            f.c.layer_id == BASE_LAYER,
+            f.c.measure_id == AMOUNT,
+            f.c.period.in_(closed),
+        )
+    )
+    if scope == "approved":
+        query = query.where(workflow_status.c.status == "approved")
+    return [
+        OutRow((p, ent, c, a, MEASURE), amount, s, "actual")
+        for p, ent, c, a, amount, s in conn.execute(query)
+    ]
+
+
+Published = dict[Key, tuple[Decimal, str, str]]  # amount, status, origin
+
+
+def _published(output: Engine, schema: str, version_code: str) -> Published:
     t = fact_plan_cost_center
     with output.begin() as conn:
         ensure(conn, schema)
         return {
-            (p, ent, c, a, m): (amount, s)
-            for p, ent, c, a, m, amount, s in conn.execute(
+            (p, ent, c, a, m): (amount, s, o)
+            for p, ent, c, a, m, amount, s, o in conn.execute(
                 select(
                     t.c.period,
                     t.c.entity_code,
@@ -124,18 +177,19 @@ def _published(output: Engine, schema: str, version_code: str) -> dict[Key, tupl
                     t.c.measure,
                     t.c.amount,
                     t.c.status,
+                    t.c.origin,
                 ).where(t.c.version_code == version_code)
             )
         }
 
 
-def _fingerprint(rows: list[OutRow], current: dict[Key, tuple[Decimal, str]]) -> str:
+def _fingerprint(rows: list[OutRow], current: Published) -> str:
     h = hashlib.sha256()
     for row in rows:
-        h.update(f"+{row.key}|{row.amount}|{row.status}\n".encode())
+        h.update(f"+{row.key}|{row.amount}|{row.status}|{row.origin}\n".encode())
     for key in sorted(current):
-        amount, status = current[key]
-        h.update(f"={key}|{amount}|{status}\n".encode())
+        amount, status, origin = current[key]
+        h.update(f"={key}|{amount}|{status}|{origin}\n".encode())
     return h.hexdigest()
 
 
@@ -180,9 +234,7 @@ def preview(
     return _compare(r, scope, rows, current)
 
 
-def _compare(
-    r: RoundRef, scope: Scope, rows: list[OutRow], current: dict[Key, tuple[Decimal, str]]
-) -> Preview:
+def _compare(r: RoundRef, scope: Scope, rows: list[OutRow], current: Published) -> Preview:
     counts: dict[str, CostCenterCounts] = {}
     total: Counter[str] = Counter()
     changes: list[Change] = []
@@ -200,7 +252,7 @@ def _compare(
         old = current.get(row.key)
         if old is None:
             note("added", row.key, None, row.amount)
-        elif old != (row.amount, row.status):
+        elif old != (row.amount, row.status, row.origin):
             note("changed", row.key, old[0], row.amount)
         else:
             note("unchanged", row.key, old[0], row.amount)
@@ -268,6 +320,7 @@ def run(
                         "measure": row.key[4],
                         "amount": row.amount,
                         "status": row.status,
+                        "origin": row.origin,
                         "published_at": now,
                         "publish_run_id": run_id,
                     }
@@ -285,13 +338,21 @@ def run(
             fiscal_year=r.fiscal_year,
             published_at=now,
             scope=scope,
+            actuals_through=r.actuals_through,
         )
         conn.execute(
             stmt.on_conflict_do_update(
                 index_elements=[dim_version.c.code],
                 set_={
                     c: stmt.excluded[c]
-                    for c in ("name", "kind", "fiscal_year", "published_at", "scope")
+                    for c in (
+                        "name",
+                        "kind",
+                        "fiscal_year",
+                        "published_at",
+                        "scope",
+                        "actuals_through",
+                    )
                 },
             )
         )
@@ -358,7 +419,8 @@ def _dimension(conn: Connection, dim: int, hier_id: int) -> list[dict[str, objec
 def _records(r: RoundRef, rows: list[OutRow]) -> Iterator[tuple[object, ...]]:
     for row in rows:
         p, ent, c, a, m = row.key
-        yield (r.code, r.fiscal_year, p.isoformat(), ent, c, a, m, f"{row.amount:.2f}", row.status)
+        amount = f"{row.amount:.2f}"
+        yield (r.code, r.fiscal_year, p.isoformat(), ent, c, a, m, amount, row.status, row.origin)
 
 
 def csv_bytes(engine: Engine, user: User, code: str, scope: Scope) -> bytes:
@@ -376,7 +438,9 @@ def parquet_bytes(engine: Engine, user: User, code: str, scope: Scope) -> bytes:
     for row in rows:
         p, ent, c, a, m = row.key
         for name, value in zip(
-            COLUMNS, (r.code, r.fiscal_year, p, ent, c, a, m, row.amount, row.status), strict=True
+            COLUMNS,
+            (r.code, r.fiscal_year, p, ent, c, a, m, row.amount, row.status, row.origin),
+            strict=True,
         ):
             columns[name].append(value)
     schema = pa.schema(
@@ -390,6 +454,7 @@ def parquet_bytes(engine: Engine, user: User, code: str, scope: Scope) -> bytes:
             ("measure", pa.string()),
             ("amount", pa.decimal128(18, 2)),
             ("status", pa.string()),
+            ("origin", pa.string()),
         ]
     )
     table = pa.table({n: columns.get(n, []) for n in COLUMNS}, schema=schema)

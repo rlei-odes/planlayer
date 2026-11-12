@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Closes:** D-04
 - **Date:** 2026-11-08
-- **Amended by:** [0014](0014-preparing-a-round.md): hidden accounts become accounts not planned, shown read only where they have values; account sets; new rounds carry over by a checklist
+- **Amended by:** [0014](0014-preparing-a-round.md): hidden accounts become accounts not planned, shown read only where they have values; account sets; new rounds carry over by a checklist. [0015](0015-forecasts-and-quarters.md): rounds planned by quarter; forecasts close months up to their actuals through
 
 ## Context
 

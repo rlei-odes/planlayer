@@ -93,7 +93,11 @@ export default function PublishPage({ round }: { round: Version }) {
             <h3>
               <span className="su-step">1</span> What to publish
             </h3>
-            <p className="su-hint">Plan values of {round.name}. Actuals stay in the warehouse.</p>
+            <p className="su-hint">
+              {round.actuals_through
+                ? `Forecast values of ${round.name}, and the closed months’ actuals as they are now, marked origin “actual”: together the full year. Filter origin “plan” for the forecast months only.`
+                : `Plan values of ${round.name}. Actuals stay in the warehouse.`}
+            </p>
             <div className="su-body">
               <div className="su-forms pb-scope" role="group" aria-label="Scope">
                 <button type="button" aria-pressed={scope === 'approved'} onClick={() => choose({ scope: 'approved' })}>

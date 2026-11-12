@@ -11,8 +11,9 @@ from pydantic import BaseModel, Field
 from planlayer import rounds
 from planlayer.access import AccessError
 from planlayer.api.auth import CurrentUser, engine_of
-from planlayer.api.planning import Version
+from planlayer.api.planning import Version, version_out
 from planlayer.domain.entry_forms import Form
+from planlayer.domain.periods import fiscal_year_of
 from planlayer.domain.spreading import Profile, SpreadError
 
 router = APIRouter(prefix="/api")
@@ -65,6 +66,8 @@ class SetupIO(BaseModel):
     # Cost centers planned in the round; null leaves them as they are.
     planned_cost_centers: list[str] | None = None
     account_sets: list[AccountSetIO] = []
+    grain: Literal["month", "quarter"] = "month"  # ADR 0015
+    actuals_through: date | None = None  # forecasts: the last closed month
 
 
 class CarryOverIn(BaseModel):
@@ -98,6 +101,7 @@ class SetupOut(BaseModel):
     enabled_cost_centers: int
     sample_cost_center: str | None
     periods: list[date]
+    latest_actuals: date | None  # the latest month with synced actuals
 
 
 class RoundIn(BaseModel):
@@ -108,6 +112,16 @@ class RoundIn(BaseModel):
     deadline: date | None = None
     copy_from: str | None = None
     carry: CarryOverIn = CarryOverIn()
+    grain: Literal["month", "quarter"] = "month"
+    actuals_through: date | None = None  # forecasts: the last closed month (ADR 0015)
+
+
+class LatestActualsOut(BaseModel):
+    """What a new forecast proposes (ADR 0015), and the fiscal calendar to list its months."""
+
+    month: date | None  # the latest month holding synced actuals; null: none
+    fiscal_year: int | None  # the fiscal year of that month
+    start_month: int  # the installation's first fiscal month (T-18)
 
 
 class ScopeRowOut(BaseModel):
@@ -150,19 +164,31 @@ def create_round(request: Request, user: CurrentUser, body: RoundIn) -> Version:
             deadline=body.deadline,
             copy_from=body.copy_from,
             carry=rounds.CarryOver(**body.carry.model_dump()),
+            grain=body.grain,
+            actuals_through=body.actuals_through,
         )
         with engine.connect() as conn:
             r = rounds.get_round(conn, body.code)
     except HANDLED as e:
         raise _http(e) from None
-    return Version(
-        code=r.code,
-        name=r.name,
-        kind=r.kind,
-        fiscal_year=r.fiscal_year,
-        status=r.status,
-        deadline=r.deadline,
-    )
+    return version_out(r)
+
+
+@router.get("/actuals/latest", responses={403: {}})
+def latest_actuals(request: Request, user: CurrentUser) -> LatestActualsOut:
+    """What a new forecast proposes as its actuals through (ADR 0015)."""
+    try:
+        user.require_controller()
+        engine = engine_of(request)
+        month = rounds.latest_actuals(engine, user)
+        start = rounds.start_month(engine)
+        return LatestActualsOut(
+            month=month,
+            fiscal_year=None if month is None else fiscal_year_of(month, start),
+            start_month=start,
+        )
+    except HANDLED as e:
+        raise _http(e) from None
 
 
 @router.get("/rounds/{code}/setup", responses={403: {}, 404: {}})
@@ -173,14 +199,7 @@ def setup(request: Request, user: CurrentUser, code: str) -> SetupOut:
         raise _http(e) from None
     r, s = v.round, v.setup
     return SetupOut(
-        round=Version(
-            code=r.code,
-            name=r.name,
-            kind=r.kind,
-            fiscal_year=r.fiscal_year,
-            status=r.status,
-            deadline=r.deadline,
-        ),
+        round=version_out(r),
         copied_from=v.copied_from,
         created=None
         if v.created is None or v.created.at is None
@@ -209,7 +228,10 @@ def setup(request: Request, user: CurrentUser, code: str) -> SetupOut:
                 AccountSetIO(name=a.name, accounts=a.accounts, assigned_to=a.assigned_to)
                 for a in s.account_sets
             ],
+            grain=s.grain,
+            actuals_through=s.actuals_through,
         ),
+        latest_actuals=v.latest_actuals,
         actuals_available=v.actuals_available,
         enabled_cost_centers=v.enabled_cost_centers,
         sample_cost_center=v.sample_cost_center,
@@ -243,6 +265,8 @@ def save_setup(request: Request, user: CurrentUser, code: str, body: SetupIO) ->
                 account_sets=[
                     rounds.AccountSet(a.name, a.accounts, a.assigned_to) for a in body.account_sets
                 ],
+                grain=body.grain,
+                actuals_through=body.actuals_through,
             ),
         )
     except HANDLED as e:

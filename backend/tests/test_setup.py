@@ -23,6 +23,8 @@ def test_read_defaults(client: TestClient) -> None:
         "productive_cost_centers": [],
         "planned_cost_centers": ["CC1", "CC2"],
         "account_sets": [],
+        "grain": "month",
+        "actuals_through": None,
     }
     assert v["actuals_available"] is True and v["enabled_cost_centers"] == 2
     assert v["sample_cost_center"] == "Machining"

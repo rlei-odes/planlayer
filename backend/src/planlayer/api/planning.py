@@ -33,6 +33,8 @@ class Version(BaseModel):
     fiscal_year: int
     status: RoundStatus
     deadline: date | None
+    grain: Literal["month", "quarter"] = "month"  # how the round is planned (ADR 0015)
+    actuals_through: date | None = None  # a forecast's last closed month
 
 
 class PlanningUnit(BaseModel):
@@ -105,13 +107,22 @@ class GridOut(BaseModel):
     periods: list[date]
     comparisons: list[ComparisonOut]
     rows: list[RowOut]
+    version_kind: str
+    grain: Literal["month", "quarter"]
+    # A forecast's closed months (ADR 0015): the first ``closed_months`` plan cells hold
+    # actuals, read only, without a row version.
+    actuals_through: date | None
+    closed_months: int
     # The change batch a save or an undo wrote, for undo (E-05); null on a plain read.
     batch_id: str | None = None
 
 
 class EditIn(BaseModel):
+    """One edit: a month, a quarter (rounds planned by quarter), or neither for the year."""
+
     account_code: str
     month: Annotated[int, Field(ge=0, le=11)] | None = None
+    quarter: Annotated[int, Field(ge=0, le=3)] | None = None
     value: str | None
     expected: Annotated[list[int | None], Field(min_length=12, max_length=12)]
 
@@ -180,7 +191,7 @@ class OverviewOut(BaseModel):
     not_planned: list[NotPlannedOut]
 
 
-def _version(r: rounds.RoundRef) -> Version:
+def version_out(r: rounds.RoundRef) -> Version:
     return Version(
         code=r.code,
         name=r.name,
@@ -188,6 +199,8 @@ def _version(r: rounds.RoundRef) -> Version:
         fiscal_year=r.fiscal_year,
         status=r.status,
         deadline=r.deadline,
+        grain=r.grain,
+        actuals_through=r.actuals_through,
     )
 
 
@@ -204,6 +217,10 @@ def _grid_out(grid: planning.Grid, batch_id: str | None = None) -> GridOut:
         status=grid.status,
         lock_reason=grid.lock_reason,
         periods=grid.periods,
+        version_kind=grid.version_kind,
+        grain=grid.grain,
+        actuals_through=grid.actuals_through,
+        closed_months=grid.closed_months,
         comparisons=[
             ComparisonOut(
                 kind=c.kind,
@@ -271,7 +288,7 @@ HANDLED = (
 
 @router.get("/versions")
 def versions(request: Request, user: CurrentUser) -> list[Version]:
-    return [_version(r) for r in rounds.rounds(_engine(request))]
+    return [version_out(r) for r in rounds.rounds(_engine(request))]
 
 
 @router.post("/versions/{version_code}/status", responses={404: {}, 422: {}})
@@ -284,7 +301,7 @@ def round_status(
     except HANDLED as e:
         raise _errors(e) from None
     with engine.connect() as conn:
-        return _version(rounds.get_round(conn, version_code))
+        return version_out(rounds.get_round(conn, version_code))
 
 
 @router.get("/versions/{version_code}/cost-centers")
@@ -324,7 +341,9 @@ def edit(
     """Apply edits atomically; returns the updated grid with the change batch it wrote, or 409
     with the conflicting cells."""
     engine = _engine(request)
-    edits = [planning.Edit(e.account_code, e.month, e.value, e.expected) for e in body.edits]
+    edits = [
+        planning.Edit(e.account_code, e.month, e.value, e.expected, e.quarter) for e in body.edits
+    ]
     try:
         batch = planning.apply_edits(engine, user, version_code, cc_code, edits)
     except planning.ConflictError as e:
@@ -437,7 +456,7 @@ def overview(request: Request, user: CurrentUser, version_code: str) -> Overview
     except HANDLED as e:
         raise _errors(e) from None
     return OverviewOut(
-        round=_version(o.round),
+        round=version_out(o.round),
         rows=[StatusRowOut.model_validate(r, from_attributes=True) for r in o.rows],
         not_planned=[NotPlannedOut.model_validate(n, from_attributes=True) for n in o.not_planned],
     )
