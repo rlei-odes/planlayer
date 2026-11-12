@@ -28,7 +28,7 @@ export type CapacityRowOut = {
   activity_type_code: string
   activity_type_name: string
   plan: CellOut[]
-  prior: (string | null)[]
+  comparisons: ((string | null)[])[]
   work_center_code: string | null
   work_center_name: string | null
   added: boolean
@@ -54,11 +54,16 @@ export type CapacitySheetOut = {
   status: "not_started" | "in_progress" | "submitted" | "approved"
   lock_reason: string | null
   periods: string[]
+  comparisons: ComparisonOut[]
   rows: CapacityRowOut[]
   inactive: InactiveLineOut[]
   work_centers: CodeName[]
   activity_types: CodeName[]
   batch_id?: string | null
+  version_kind: string
+  grain: "month" | "quarter"
+  actuals_through: string | null
+  closed_months: number
 }
 
 export type CapacityUnitOut = {
@@ -141,6 +146,7 @@ export type CreatedOut = {
   at: string
   carried: CarryOverInOutput | null
   cells: number | null
+  hours?: number | null
 }
 
 export type DatasetOut = {
@@ -216,6 +222,7 @@ export type HoursEditIn = {
   work_center_code: string
   activity_type_code: string
   month?: number | null
+  quarter?: number | null
   value: string | null
   expected: (number | null)[]
 }
@@ -393,6 +400,7 @@ export type PublishPreviewOut = {
   cost_centers: CountsOut[]
   changes: ChangeOut[]
   fingerprint: string
+  hours_rows: number
 }
 
 export type PublishRunIn = {

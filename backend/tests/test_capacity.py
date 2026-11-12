@@ -119,7 +119,7 @@ def test_productive_cost_centers_get_a_capacity_sheet(client: TestClient) -> Non
         ("credit", "RW"),
     ]
     lathe = lines(sheet)["WC1/MH"]
-    assert (lathe["rate"], lathe["basis"], lathe["prior"][7]) == (
+    assert (lathe["rate"], lathe["basis"], lathe["comparisons"][0][7]) == (
         "80.00",
         "prior-year actual hours",
         "20.00",
@@ -209,7 +209,7 @@ def test_planners_add_lines_and_new_work_centers(engine: Engine, client: TestCli
     }
     sheet = client.post(f"{SHEET}/lines", json=new).json()
     laser = lines(sheet)["WC_LASER/MH"]
-    assert (laser["rate"], laser["added"], laser["prior"]) == ("120.50", True, [None] * 12)
+    assert (laser["rate"], laser["added"], laser["comparisons"][0]) == ("120.50", True, [None] * 12)
     # No history: it spreads evenly, without a warning, unless the line chooses otherwise.
     assert (laser["spread"], laser["fallback"], laser["chosen_spread"]) == ("even", False, None)
     assert client.post(f"{SHEET}/lines", json=new).status_code == 422  # exists

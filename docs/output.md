@@ -29,6 +29,21 @@ A forecast's rows cover the whole year: its closed months as `actual` rows (ever
 
 A run replaces all rows of its round. With the scope "approved cost centers", only approved cost centers are present; with "whole round", every current value is, and `status` tells them apart.
 
+## `fact_plan_capacity`
+
+Planned hours of productive cost centers ([ADR 0016](adr/0016-capacity-in-rounds-and-forecasts.md)): one row per round × cost center × work center × activity type × month × measure.
+
+| Column | Type | Meaning |
+|---|---|---|
+| `version_code`, `fiscal_year`, `period`, `entity_code`, `cost_center_code` | | as in `fact_plan_cost_center` |
+| `work_center_code` | text | work center |
+| `activity_type_code` | text | activity type |
+| `measure` | text | `hours` |
+| `amount` | numeric(18,2) | hours |
+| `status`, `origin`, `published_at`, `publish_run_id` | | as in `fact_plan_cost_center`; `actual` rows are a forecast's closed months, the actual hours of the cost centers productive in the round |
+
+Key: `version_code, period, entity_code, cost_center_code, work_center_code, activity_type_code, measure`. The credits that hours × rates give a cost center are in `fact_plan_cost_center`, as amounts on the activity type's account. The file downloads hold the amounts only.
+
 ## `dim_version`
 
 | Column | Meaning |
@@ -49,6 +64,14 @@ Members of the main hierarchy as Planlayer holds them at the last publish, inclu
 | `level_1_code`, `level_1_name` … `level_6_code`, `level_6_name` | the path from the root down to the member |
 | `entity_code` | cost centers: their entity |
 | `account_type` | accounts: e.g. `revenue`, `cost` |
+
+## `dim_work_center`, `dim_activity_type`
+
+Work centers with their `cost_center_code`, and activity types with the `account_code` their credits go to, as Planlayer holds them at the last publish.
+
+## `v_plan_capacity`
+
+`fact_plan_capacity` joined with the names of round, cost center, work center and activity type.
 
 ## `v_plan_cost_center`
 

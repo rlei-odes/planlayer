@@ -23,21 +23,26 @@ from sqlalchemy.exc import DBAPIError
 
 from planlayer.access import User, capacity_rights
 from planlayer.domain.entry_forms import Basis, weights
-from planlayer.domain.periods import closed_months
+from planlayer.domain.periods import QUARTERS, closed_months, quarter_months
 from planlayer.domain.spreading import Profile, spread
 from planlayer.domain.workflow import EDITABLE, RoundStatus, Status
 from planlayer.planning import (
     MONTHS,
     Cell,
+    ComparisonColumn,
     Conflict,
     ConflictError,
     EditError,
     LineSpread,
     LockedError,
+    _comparisons,
     _locked,
     _parse,
+    _values,
 )
-from planlayer.rounds import NotFoundError, RoundRef, fiscal_periods, get_round
+from planlayer.planning import _Context as _SheetContext
+from planlayer.rounds import Grain, NotFoundError, RoundRef, fiscal_periods, get_round
+from planlayer.store.bulk import insert_all
 from planlayer.store.schema import (
     ACCOUNT,
     ACTIVITY_TYPE,
@@ -47,15 +52,18 @@ from planlayer.store.schema import (
     ENTITY,
     HOURS,
     MODULE_CAPACITY,
+    MODULE_COST_CENTER,
     NO_ENTITY,
     WORK_CENTER,
     capacity_change_log,
     capacity_line,
     capacity_line_log,
+    comparison,
     credit_account,
     fact_capacity,
     fact_cost_center,
     member,
+    planning_round,
     round_member,
     seasonality_profile,
     version,
@@ -74,7 +82,8 @@ class CapacityRow:
     activity_type_code: str
     activity_type_name: str
     plan: list[Cell]
-    prior: list[Decimal | None]  # actual hours of the prior fiscal year
+    # One list of 12 months per comparison column: hours, or amounts on a credit row.
+    comparisons: list[list[Decimal | None]]
     # Lines:
     work_center_code: str | None = None
     work_center_name: str | None = None
@@ -111,8 +120,14 @@ class CapacitySheet:
     status: Status
     lock_reason: str | None  # None: editable
     periods: list[date]
+    comparisons: list[ComparisonColumn] = field(default_factory=list)
     rows: list[CapacityRow] = field(default_factory=list)
     inactive: list[InactiveLine] = field(default_factory=list)
+    version_kind: str = "budget"
+    grain: Grain = "month"
+    # A forecast's closed months (ADR 0015): the first ``closed_months`` cells hold actuals.
+    actuals_through: date | None = None
+    closed_months: int = 0
     # For adding a line: the cost center's work centers and every activity type.
     work_centers: list[tuple[str, str]] = field(default_factory=list)
     activity_types: list[tuple[str, str]] = field(default_factory=list)
@@ -122,9 +137,10 @@ class CapacitySheet:
 class HoursEdit:
     work_center_code: str
     activity_type_code: str
-    month: int | None  # 0-11, or None for the year total (spread by the line's basis)
+    month: int | None  # 0-11; None with no quarter: the year total (spread by the line's basis)
     value: str | None  # None = blank
     expected: list[int | None]  # row_version of each month as the client saw it
+    quarter: int | None = None  # 0-3 in a round planned by quarter (ADR 0016)
 
 
 @dataclass
@@ -148,6 +164,10 @@ class _Context:
     def closed(self) -> int:
         """A forecast's closed months (ADR 0015): capacity writes only the months after them."""
         return closed_months(self.periods, self.round.actuals_through)
+
+    @property
+    def open_months(self) -> list[int]:
+        return list(range(self.closed, MONTHS))
 
 
 @dataclass
@@ -201,7 +221,8 @@ def _context(conn: Connection, user: User, version_code: str, cc_code: str) -> _
         select(version.c.version_id).where(version.c.code == ACTUALS_CODE)
     ).scalar()
     status = status_of(conn, r.version_id, cc.member_id)
-    if r.status != "open":
+    # Controllers prepare a round in setup (ADR 0014, ADR 0016).
+    if r.status != "open" and not (r.status == "setup" and user.is_controller):
         reason: str | None = f"the planning round is {r.status}"
     elif not enabled_members(conn, r.version_id).get(cc.member_id, False):
         reason = "the cost center is not enabled in this round"
@@ -322,6 +343,15 @@ def read_sheet(engine: Engine, user: User, version_code: str, cc_code: str) -> C
         lines = _lines(conn, ctx)
         plan = _hours(conn, ctx.version_id, ctx.cost_center_id, ctx.periods)
         prior = _hours(conn, ctx.actuals_id, None, ctx.prior_periods)
+        # A forecast's closed months show the actual hours, read only (ADR 0016).
+        if ctx.closed:
+            booked = _hours(conn, ctx.actuals_id, None, ctx.periods[: ctx.closed])
+            for key, cells in booked.items():
+                row = list(plan.get(key, [Cell(None, None)] * MONTHS))
+                row[: ctx.closed] = [Cell(c.value, None) for c in cells[: ctx.closed]]
+                plan[key] = row
+        columns, amounts = _comparisons(conn, _sheet_context(ctx))
+        compared = _hour_comparisons(conn, ctx)
         ids = {wc for wc, _ in lines} | {at for _, at in lines}
         meta = {
             r.member_id: r
@@ -344,6 +374,24 @@ def read_sheet(engine: Engine, user: User, version_code: str, cc_code: str) -> C
             ).all()
         )
         credits = _stored_credits(conn, ctx)
+        account_ids = dict(
+            conn.execute(
+                select(member.c.code, member.c.member_id).where(
+                    member.c.dim_id == ACCOUNT, member.c.code.in_(set(accounts))
+                )
+            ).all()
+        )
+        if ctx.closed:  # a credit's closed months are the cost center's actuals on its account
+            actual = _values(conn, ctx.actuals_id, ctx.cost_center_id, ctx.periods[: ctx.closed])
+            for code, account_id in account_ids.items():
+                months = list(credits.get(code, [None] * MONTHS))
+                booked_credit = actual.get(account_id)
+                months[: ctx.closed] = (
+                    [c.value for c in booked_credit[: ctx.closed]]
+                    if booked_credit
+                    else [None] * ctx.closed
+                )
+                credits[code] = months
         profiles = _profiles(conn, lines.values())
         profile_codes = {pid: code for pid, (code, _, _) in profiles.items()}
         options = _options(conn, ctx)
@@ -360,11 +408,17 @@ def read_sheet(engine: Engine, user: User, version_code: str, cc_code: str) -> C
         ctx.status,
         ctx.lock_reason,
         ctx.periods,
+        columns,
         work_centers=options[0],
         activity_types=options[1],
+        version_kind=r.kind,
+        grain=r.grain,
+        actuals_through=r.actuals_through,
+        closed_months=ctx.closed,
     )
     editable = ctx.lock_reason is None
     blank = [Cell(None, None)] * MONTHS
+    none: list[Decimal | None] = [None] * MONTHS
     by_type: dict[int, list[_Line]] = defaultdict(list)
     for line in lines.values():
         if line.active:
@@ -380,21 +434,24 @@ def read_sheet(engine: Engine, user: User, version_code: str, cc_code: str) -> C
             )
     for at in sorted(by_type, key=lambda a: meta[a].code):
         t = meta[at]
-        group = CapacityRow("group", t.code, t.name, [Cell(None, None)] * MONTHS, [None] * MONTHS)
+        group = CapacityRow(
+            "group", t.code, t.name, [Cell(None, None)] * MONTHS, [none for _ in columns]
+        )
         sheet.rows.append(group)
         for line in sorted(by_type[at], key=lambda ln: meta[ln.work_center_id].code):
             w = meta[line.work_center_id]
             hours = plan.get((line.work_center_id, at), blank)
             before = [c.value for c in prior.get((line.work_center_id, at), blank)]
             basis, label, profile = _spread_of(line, profiles, before)
-            spreading = weights(basis, MONTHS, profile, before)
+            spreading = weights(basis, MONTHS, profile, before, ctx.open_months)
+            mine = [hours_of.get((line.work_center_id, at), none) for hours_of in compared]
             sheet.rows.append(
                 CapacityRow(
                     "line",
                     t.code,
                     t.name,
                     hours,
-                    before,
+                    mine,
                     work_center_code=w.code,
                     work_center_name=w.name,
                     added=w.origin == "manual",
@@ -412,20 +469,89 @@ def read_sheet(engine: Engine, user: User, version_code: str, cc_code: str) -> C
             group.plan = [
                 Cell(_add(g.value, h.value), None) for g, h in zip(group.plan, hours, strict=True)
             ]
-            group.prior = [_add(g, h) for g, h in zip(group.prior, before, strict=True)]
+            group.comparisons = [
+                [_add(g, h) for g, h in zip(gm, lm, strict=True)]
+                for gm, lm in zip(group.comparisons, mine, strict=True)
+            ]
         account = t.account_code
+        account_id = account_ids.get(account) if account else None
         sheet.rows.append(
             CapacityRow(
                 "credit",
                 t.code,
                 t.name,
                 [Cell(v, None) for v in credits.get(account or "", [None] * MONTHS)],
-                [None] * MONTHS,
+                [v.get(account_id, none) if account_id else none for v in amounts],
                 account_code=account,
                 account_name=accounts.get(account) if account else None,
             )
         )
     return sheet
+
+
+def _sheet_context(ctx: _Context) -> _SheetContext:
+    """The cost center sheet's context for the same cost center, for its comparison columns."""
+    return _SheetContext(
+        ctx.round,
+        ctx.actuals_id,
+        ctx.cost_center_id,
+        ctx.cost_center_name,
+        ctx.entity_id,
+        ctx.status,
+        ctx.lock_reason,
+        ctx.periods,
+        ctx.prior_periods,
+    )
+
+
+Hours = dict[tuple[int, int], list[Decimal | None]]
+
+
+def _hour_comparisons(conn: Connection, ctx: _Context) -> list[Hours]:
+    """The round's comparison columns in hours (ADR 0016), per work center x activity type."""
+
+    def amounts(cells: dict[tuple[int, int], list[Cell]]) -> Hours:
+        return {k: [c.value for c in v] for k, v in cells.items()}
+
+    out: list[Hours] = []
+    for kind, other_id in conn.execute(
+        select(comparison.c.kind, comparison.c.compare_version_id)
+        .where(
+            comparison.c.version_id == ctx.version_id,
+            comparison.c.module == MODULE_COST_CENTER,
+        )
+        .order_by(comparison.c.position)
+    ):
+        match kind:
+            case "prior_year_actuals":
+                out.append(amounts(_hours(conn, ctx.actuals_id, None, ctx.prior_periods)))
+            case "actuals":
+                # A forecast's actuals of the year stop at its closed months (ADR 0015).
+                periods = ctx.periods[: ctx.closed] if ctx.closed else ctx.periods
+                out.append(amounts(_hours(conn, ctx.actuals_id, None, periods)))
+            case _:
+                out.append(_version_hours(conn, ctx, other_id))
+    return out
+
+
+def _version_hours(conn: Connection, ctx: _Context, version_id: int) -> Hours:
+    """Another round's planned hours for the cost center; a forecast as its full year."""
+    found = conn.execute(
+        select(planning_round.c.fiscal_year, planning_round.c.actuals_through).where(
+            planning_round.c.version_id == version_id
+        )
+    ).first()
+    periods = ctx.periods if found is None else fiscal_periods(conn, found.fiscal_year)
+    planned = _hours(conn, version_id, ctx.cost_center_id, periods)
+    values = {k: [c.value for c in v] for k, v in planned.items()}
+    closed = 0 if found is None else closed_months(periods, found.actuals_through)
+    if closed:
+        booked = _hours(conn, ctx.actuals_id, None, periods[:closed])
+        for key in set(values) | set(booked):
+            months = values.get(key, [None] * MONTHS)
+            actual = [c.value for c in booked.get(key, [Cell(None, None)] * MONTHS)]
+            values[key] = actual[:closed] + months[closed:]
+    return values
 
 
 def _code(codes: dict[int, str], profile_id: int | None) -> str | None:
@@ -475,6 +601,73 @@ def _stored_credits(conn: Connection, ctx: _Context) -> dict[str, list[Decimal |
 
 
 # --- Writing ------------------------------------------------------------------------------------
+
+
+def carry_hours(
+    conn: Connection, source: RoundRef, target: RoundRef, cost_centers: Iterable[int]
+) -> int:
+    """A new round's planned hours from the round it is set up like (ADR 0016): month by month
+    into the new year, without uplift, for the given productive cost centers, into the target's
+    open months only. Credits are recomputed from them and the target's plan rates. Returns the
+    number of hour cells written. Runs in the round's creating transaction and change batch."""
+    ids = set(cost_centers)
+    if not ids:
+        return 0
+    old, new = fiscal_periods(conn, source.fiscal_year), fiscal_periods(conn, target.fiscal_year)
+    moved = {
+        o: n
+        for o, n in zip(old, new, strict=True)
+        if target.actuals_through is None or n > target.actuals_through
+    }
+    f = fact_capacity
+    rows = [
+        {
+            "version_id": target.version_id,
+            "layer_id": BASE_LAYER,
+            "measure_id": HOURS,
+            "period": moved[r.period],
+            "dim_entity": r.dim_entity,
+            "dim_cost_center": r.dim_cost_center,
+            "dim_work_center": r.dim_work_center,
+            "dim_activity_type": r.dim_activity_type,
+            "amount": r.amount,
+        }
+        for r in conn.execute(
+            select(f).where(
+                f.c.version_id == source.version_id,
+                f.c.layer_id == BASE_LAYER,
+                f.c.measure_id == HOURS,
+                f.c.period.in_(list(moved)),
+                f.c.dim_cost_center.in_(ids),
+            )
+        )
+    ]
+    insert_all(conn, f, rows)
+    for cc_id in sorted({r["dim_cost_center"] for r in rows}):
+        _write_credits(conn, _plain_context(conn, target, cc_id))
+    return len(rows)
+
+
+def _plain_context(conn: Connection, r: RoundRef, cc_id: int) -> _Context:
+    """A cost center's context for writing by the system, without a user's rights."""
+    cc = conn.execute(select(member).where(member.c.member_id == cc_id)).one()
+    entity_id = conn.execute(
+        select(member.c.member_id).where(
+            member.c.dim_id == ENTITY, member.c.code == (cc.entity_code or NO_ENTITY)
+        )
+    ).scalar_one()
+    return _Context(
+        round=r,
+        actuals_id=-1,
+        cost_center_id=cc_id,
+        cost_center_code=cc.code,
+        cost_center_name=cc.name,
+        entity_id=entity_id,
+        status="not_started",
+        lock_reason=None,
+        periods=fiscal_periods(conn, r.fiscal_year),
+        prior_periods=fiscal_periods(conn, r.fiscal_year - 1),
+    )
 
 
 def _run(engine: Engine, actor: User, work: Callable[[Connection], None]) -> str:
@@ -551,6 +744,16 @@ def apply_edits(
             for dim, c in ((WORK_CENTER, e.work_center_code), (ACTIVITY_TYPE, e.activity_type_code))
         }
         prior = _hours(conn, ctx.actuals_id, None, ctx.prior_periods)
+        to_date = (
+            {
+                key: sum((c.value for c in cells if c.value is not None), Decimal(0))
+                for key, cells in _hours(
+                    conn, ctx.actuals_id, None, ctx.periods[: ctx.closed]
+                ).items()
+            }
+            if ctx.closed
+            else {}
+        )
         profiles = _profiles(conn, lines.values())
         locked = _hours(conn, ctx.version_id, ctx.cost_center_id, ctx.periods, lock=True)
         current = {
@@ -572,13 +775,9 @@ def apply_edits(
                 raise EditError(f"{label} is not a line of {ctx.cost_center_code}")
             if not line.active:
                 raise EditError(f"{label} is inactive in this round")
-            if e.month is not None and not 0 <= e.month < MONTHS:
-                raise EditError(f"month {e.month} out of range")
-            if e.month is not None and e.month < ctx.closed:
-                raise EditError(f"{label}: month {e.month + 1} is closed in this forecast")
+            months = _targets(ctx, e, label)
             key = (line.work_center_id, line.activity_type_id)
-            open_months = list(range(ctx.closed, MONTHS))
-            for m in open_months if e.month is None else [e.month]:
+            for m in months:
                 cell = (key, ctx.periods[m])
                 if cell not in writes and current.get(cell) != e.expected[m]:
                     conflicts.append(Conflict(label, m))
@@ -586,24 +785,51 @@ def apply_edits(
             if value is not None and value < 0:
                 raise EditError(f"{label}: hours can't be negative")
             _keep(conn, ctx, line, actor)
-            if e.month is not None:
-                writes[(key, ctx.periods[e.month])] = value
-            elif value is None:
-                for m in open_months:
-                    writes[(key, ctx.periods[m])] = None
-            else:
-                # In a forecast, the year's hours spread over the open months.
-                before = [c.value for c in prior.get(key, [Cell(None, None)] * MONTHS)]
-                basis, _, profile = _spread_of(line, profiles, before)
-                w = weights(basis, MONTHS, profile, before, open_months)
-                for m, hours in zip(open_months, spread(value, w.weights), strict=True):
-                    writes[(key, ctx.periods[m])] = hours
+            if value is None or e.month is not None:
+                for m in months:
+                    writes[(key, ctx.periods[m])] = value
+                continue
+            if e.month is None and e.quarter is None and key in to_date:
+                # A forecast's year total is the full year (ADR 0016).
+                value -= to_date[key]
+                if value < 0:
+                    raise EditError(f"{label}: the year total is below the actual hours to date")
+            before = [c.value for c in prior.get(key, [Cell(None, None)] * MONTHS)]
+            basis, _, profile = _spread_of(line, profiles, before)
+            w = weights(basis, MONTHS, profile, before, months)
+            for m, hours in zip(months, spread(value, w.weights), strict=True):
+                writes[(key, ctx.periods[m])] = hours
         if conflicts:
             raise ConflictError(conflicts)
         _write_hours(conn, ctx, writes, current)
         _write_credits(conn, ctx)
 
     return _run(engine, actor, work)
+
+
+def _targets(ctx: _Context, e: HoursEdit, label: str) -> list[int]:
+    """The months an hours edit writes: one month, a quarter's three, or the year's open months
+    (ADR 0016)."""
+    grain = ctx.round.grain
+    if e.month is not None and e.quarter is not None:
+        raise EditError("an edit names a month or a quarter, not both")
+    if e.month is not None:
+        if not 0 <= e.month < MONTHS:
+            raise EditError(f"month {e.month} out of range")
+        if grain == "quarter":
+            raise EditError("this round is planned by quarter")
+        months = [e.month]
+    elif e.quarter is not None:
+        if not 0 <= e.quarter < QUARTERS:
+            raise EditError(f"quarter {e.quarter} out of range")
+        if grain != "quarter":
+            raise EditError("this round is planned by month")
+        months = list(quarter_months(e.quarter))
+    else:
+        return ctx.open_months
+    if months[0] < ctx.closed:
+        raise EditError(f"{label}: {ctx.periods[months[0]]:%B %Y} is closed in this forecast")
+    return months
 
 
 def _write_hours(

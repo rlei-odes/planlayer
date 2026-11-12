@@ -16,21 +16,22 @@ import {
 } from './api'
 import { RedoIcon, UndoIcon } from './icons'
 import Select, { type Option } from './Select'
+import { byColumn, isClosed, monthsOf, periodColumns, quarterly, span, type Layout } from './periods'
 import { pickUnit } from './units'
 
 // The capacity sheet of a productive cost center (ADR 0013): per activity type, its work
 // centers' planned hours and plan rates, and the credit they give the cost center (hours × rate,
 // stored on the activity type's account and shown on the cost sheet). Hours are typed per month
 // or as a year total, which spreads like last year's hours, evenly, or by a seasonality profile;
-// the line's badge chooses. The server decides what is editable.
+// the line's badge chooses. The server decides what is editable. The sheet follows its round
+// (ADR 0016): its comparison columns, quarters in a round planned by quarter, and a forecast's
+// closed months showing actual hours, read only, with a year total meaning the full year.
 
 const COL_LINE = 'line'
-const COL_PRIOR = 'prior'
 const COL_RATE = 'rate'
 const COL_FY = 'fy'
-const monthProp = (m: number) => `m${m}`
-const isMonth = (prop: string) => /^m\d+$/.test(prop)
-const MONTH_LABEL = new Intl.DateTimeFormat('en', { month: 'short', timeZone: 'UTC' })
+const comparisonProp = (i: number) => `c${i}`
+const MONTH_YEAR = new Intl.DateTimeFormat('en', { month: 'long', year: 'numeric', timeZone: 'UTC' })
 const SCROLLBAR = 18
 const NEW_WORK_CENTER = '__new__'
 const INACTIVE = 'inactive'
@@ -46,19 +47,34 @@ function errorText(e: unknown): string {
 
 const lineKey = (r: CapacityRow) => `${r.work_center_code ?? ''}|${r.activity_type_code}`
 
-function editable(row: CapacityRow | undefined, prop: string): boolean {
+function editable(row: CapacityRow | undefined, prop: string, layout: Layout): boolean {
   if (!row || row.kind !== 'line' || !row.editable) return false
-  return prop === COL_RATE || prop === COL_FY || isMonth(prop)
+  if (prop === COL_RATE || prop === COL_FY) return true
+  return monthsOf(prop) !== null && !isClosed(prop, layout)
 }
 
-function cellKind(row: CapacityRow | undefined, prop: string): string {
+function cellKind(row: CapacityRow | undefined, prop: string, layout: Layout, nComp: number): string {
   if (!row) return ''
-  if (row.kind === 'group') return 'pl-group'
-  if (row.kind === 'credit') return prop === COL_LINE ? 'cp-credit' : 'pl-num cp-credit'
-  if (prop === COL_PRIOR) return 'pl-cmp pl-cmp-last'
+  const comparison = /^c\d+$/.test(prop)
+  const last = prop === comparisonProp(nComp - 1) ? ' pl-cmp-last' : ''
+  if (row.kind === 'group') return (comparison ? 'pl-group pl-cmp' : isClosed(prop, layout) ? 'pl-group pl-act' : 'pl-group') + last
+  if (row.kind === 'credit') {
+    if (prop === COL_LINE) return 'cp-credit'
+    return (comparison ? 'pl-num pl-cmp' : isClosed(prop, layout) ? 'pl-num pl-act' : 'pl-num cp-credit') + last
+  }
+  if (comparison) return `pl-cmp${last}`
   if (prop === COL_LINE) return ''
-  const kind = editable(row, prop) ? 'pl-edit' : 'pl-plain'
+  if (isClosed(prop, layout)) return 'pl-act'
+  const kind = editable(row, prop, layout) ? 'pl-edit' : 'pl-plain'
   return prop === COL_FY ? `${kind} pl-total` : kind
+}
+
+/** A comparison column's tooltip: the controller's note, and for actuals how far they go. */
+function comparisonTitle(c: CapacitySheet['comparisons'][number]): string | undefined {
+  const actuals = c.kind === 'prior_year_actuals' || c.kind === 'actuals'
+  const coverage =
+    actuals && c.partial && c.actuals_until ? `Actuals up to ${MONTH_YEAR.format(new Date(c.actuals_until))}.` : null
+  return [c.note, 'Hours; amounts on the credit rows.', coverage].filter(Boolean).join(' · ')
 }
 
 function spreadText(row: CapacityRow): string {
@@ -101,7 +117,7 @@ function profileBars(h: H, values: number[]) {
 
 /** The first column: the activity type (group), a work center with its spread badge (line), or
  * the account the activity type credits (credit). */
-function lineCell(h: H, row: CapacityRow | undefined, profiles: ProfileRef[]) {
+function lineCell(h: H, row: CapacityRow | undefined, profiles: ProfileRef[], quarters: boolean) {
   if (!row) return ''
   if (row.kind === 'group') return h('span', { class: 'pl-acc-name' }, row.activity_type_name)
   if (row.kind === 'credit') {
@@ -126,7 +142,11 @@ function lineCell(h: H, row: CapacityRow | undefined, profiles: ProfileRef[]) {
       row.work_center_name ?? '',
       row.added ? h('span', { class: 'cp-added' }, 'added') : '',
     ]),
-    h('span', { class: 'pl-acc-tags' }, [profile ? profileBars(h, profile.values.map(Number)) : '', badge]),
+    // By quarter, a profile shows as its four quarters; it is still entered by month.
+    h('span', { class: 'pl-acc-tags' }, [
+      profile ? profileBars(h, quarters ? quarterly(profile.values.map(Number)) : profile.values.map(Number)) : '',
+      badge,
+    ]),
   ])
 }
 
@@ -191,32 +211,43 @@ export default function CapacityPage({
   useEffect(load, [load])
 
   const locked = sheet?.lock_reason != null
+  const quarters = sheet?.grain === 'quarter'
+  const closed = sheet?.closed_months ?? 0
+  const layout = useMemo<Layout>(() => ({ quarters, closed }), [quarters, closed])
+  const forecast = sheet?.version_kind === 'forecast'
 
   const columns = useMemo(() => {
     const periods = sheet?.periods ?? []
-    const column = (prop: string, name: string, size: number, headerClass = '') => ({
+    const nComp = sheet?.comparisons.length ?? 0
+    const column = (prop: string, name: string, size: number, headerClass = '', title?: string) => ({
       prop,
       name,
       size,
-      columnProperties: () => ({ class: `pl-head ${headerClass}` }),
-      readonly: ({ rowIndex }: { rowIndex: number }) => !editable(sheet?.rows[rowIndex], prop),
+      columnProperties: () => ({ class: `pl-head ${headerClass}${title ? ' pl-head-noted' : ''}`, title }),
+      readonly: ({ rowIndex }: { rowIndex: number }) => !editable(sheet?.rows[rowIndex], prop, layout),
       cellProperties: ({ rowIndex }: { rowIndex: number }) => ({
-        class: [prop === COL_LINE ? 'pl-acc' : 'pl-num', cellKind(sheet?.rows[rowIndex], prop)].join(' '),
+        class: [prop === COL_LINE ? 'pl-acc' : 'pl-num', cellKind(sheet?.rows[rowIndex], prop, layout, nComp)].join(' '),
       }),
     })
+    const yearTitle =
+      layout.closed > 0 && periods.length === 12
+        ? `Actual hours ${span(periods, 0, layout.closed - 1)} + planned hours ${span(periods, layout.closed, 11)}. A year total typed here is the full year: the open months take what the actual hours leave.`
+        : undefined
     return [
       {
         ...column(COL_LINE, 'Work center', 390, 'pl-head-acc'),
         pin: 'colPinStart' as const,
         cellTemplate: (h: HyperFunc<VNode>, { rowIndex }: { rowIndex: number }) =>
-          lineCell(h as unknown as H, sheet?.rows[rowIndex], profiles),
+          lineCell(h as unknown as H, sheet?.rows[rowIndex], profiles, layout.quarters),
       },
-      column(COL_PRIOR, `Hours ${sheet ? sheet.fiscal_year - 1 : ''}`, 112, 'pl-head-cmp'),
+      ...(sheet?.comparisons ?? []).map((c, i) => column(comparisonProp(i), c.label, 112, 'pl-head-cmp', comparisonTitle(c))),
       column(COL_RATE, 'Rate / h', 96),
-      column(COL_FY, `Plan ${sheet?.fiscal_year ?? ''}`, 116, 'pl-head-plan'),
-      ...periods.map((p, m) => column(monthProp(m), MONTH_LABEL.format(new Date(p)), 92)),
+      column(COL_FY, `${forecast ? 'Forecast' : 'Plan'} ${sheet?.fiscal_year ?? ''}`, 124, 'pl-head-plan', yearTitle),
+      ...periodColumns(periods, layout).map((c) =>
+        column(c.prop, c.label, layout.quarters ? 112 : 92, c.closed ? 'pl-head-act' : ''),
+      ),
     ]
-  }, [sheet, profiles])
+  }, [sheet, profiles, layout, forecast])
 
   const sheetWidth = columns.reduce((n, c) => n + c.size, 0) + 2 + SCROLLBAR
   const hasSheet = sheet !== null
@@ -230,14 +261,19 @@ export default function CapacityPage({
       (sheet?.rows ?? []).map((row) => {
         const out: GridRow = {
           [COL_LINE]: row.work_center_name ?? row.activity_type_name,
-          [COL_PRIOR]: row.kind === 'credit' ? '' : format(sum(row.prior)),
           [COL_RATE]: row.rate ?? '',
           [COL_FY]: format(sum(row.plan.map((c) => c.value))),
         }
-        row.plan.forEach((c, m) => (out[monthProp(m)] = format(c.value)))
+        row.comparisons.forEach((values, i) => (out[comparisonProp(i)] = format(sum(values))))
+        const periods = byColumn(
+          row.plan.map((c) => c.value),
+          layout,
+          (xs) => sum(xs),
+        )
+        for (const [prop, value] of Object.entries(periods)) out[prop] = format(value)
         return out
       }),
-    [sheet],
+    [sheet, layout],
   )
 
   async function save(changes: { rowIndex: number; prop: string; raw: unknown }[]) {
@@ -247,7 +283,7 @@ export default function CapacityPage({
     const refused: string[] = []
     for (const { rowIndex, prop, raw } of changes) {
       const row = sheet.rows[rowIndex]
-      if (!row || !editable(row, prop)) continue
+      if (!row || !editable(row, prop, layout)) continue
       const value = parse(String(raw ?? ''))
       if (value === undefined || (prop === COL_RATE && value === null)) {
         refused.push(`${row.work_center_code}: “${String(raw)}” is not ${prop === COL_RATE ? 'a rate' : 'a number of hours'}`)
@@ -257,10 +293,12 @@ export default function CapacityPage({
         rates.push({ row, rate: value! })
         continue
       }
+      const n = prop === COL_FY ? null : Number(prop.slice(1))
       edits.push({
         work_center_code: row.work_center_code!,
         activity_type_code: row.activity_type_code,
-        month: prop === COL_FY ? null : Number(prop.slice(1)),
+        month: prop.startsWith('m') ? n : null,
+        quarter: prop.startsWith('q') ? n : null,
         value,
         expected: row.plan.map((c) => c.row_version),
       })
@@ -442,6 +480,8 @@ export default function CapacityPage({
           <div className="pl-sub">
             Hours its work centers run, and what they credit the cost center
             {sheet && ` · fiscal year ${sheet.fiscal_year}`}
+            {sheet && forecast && closed > 0 && ` · forecast ${closed}+${12 - closed}`}
+            {sheet && quarters && ' · by quarter'}
             {saving && <span className="pl-saving"> · Saving…</span>}
           </div>
         </div>
@@ -545,16 +585,23 @@ export default function CapacityPage({
               <span className="pv-key">
                 <i className="k-edit" /> entered
               </span>
+              {closed > 0 && (
+                <span className="pv-key">
+                  <i className="k-act" /> actual hours (closed months)
+                </span>
+              )}
               <span className="pv-key">
-                <i className="k-cmp" /> last year’s hours
+                <i className="k-cmp" /> comparison
               </span>
               <span className="pv-key">
                 <i className="k-credit" /> credit to the cost center
               </span>
               {open && (
                 <span className="pl-help">
-                  Hours per month, or a year total in “Plan” that spreads as the line’s badge says. Rates are per hour. The
-                  credits appear on the cost center’s planning sheet. Ctrl+Z undoes.
+                  {closed > 0
+                    ? 'Hours per open month, or a year total in “Forecast”: the full year, of which the open months take what the actual hours leave.'
+                    : `Hours per ${quarters ? 'quarter' : 'month'}, or a year total in “Plan” that spreads as the line’s badge says.`}{' '}
+                  Rates are per hour. The credits appear on the cost center’s planning sheet. Ctrl+Z undoes.
                 </span>
               )}
             </div>

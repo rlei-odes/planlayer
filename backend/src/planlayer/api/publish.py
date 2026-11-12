@@ -64,6 +64,7 @@ class PublishPreviewOut(BaseModel):
     cost_centers: list[CountsOut]
     changes: list[ChangeOut]
     fingerprint: str
+    hours_rows: int  # planned hours written to fact_plan_capacity (ADR 0016)
 
 
 class PublishRunIn(BaseModel):

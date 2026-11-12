@@ -231,10 +231,11 @@ class CarryOver:
     values: bool = False  # plan values, moved to the new year and raised by ``uplift``
     uplift: Decimal = Decimal(0)  # percent
 
-    def record(self, cells: int | None) -> dict[str, object]:
-        """What the round carried, as kept on it: the items, and the plan values copied."""
+    def record(self, cells: int | None, hours: int | None = None) -> dict[str, object]:
+        """What the round carried, as kept on it: the items, the plan values and the planned
+        hours copied (ADR 0016)."""
         items = {k: getattr(self, k) for k in CARRY_ITEMS}
-        return {**items, "uplift": str(self.uplift), "cells": cells}
+        return {**items, "uplift": str(self.uplift), "cells": cells, "hours": hours}
 
 
 CARRY_ITEMS = ("setup", "compare_with_source", "scope", "accounts", "capacity", "sheets", "values")
@@ -349,10 +350,18 @@ def create_round(
             if carry.values
             else None
         )
+        hours = None
+        if carry.values and carry.capacity:
+            # Planned hours go with the plan values; credits are recomputed from them. Imported
+            # here: capacity builds on this module.
+            from planlayer.capacity import carry_hours, productive
+
+            target = get_round(conn, code)
+            hours = carry_hours(conn, source, target, productive(conn, vid) & planned)
         conn.execute(
             update(planning_round)
             .where(planning_round.c.version_id == vid)
-            .values(carried=carry.record(cells))
+            .values(carried=carry.record(cells, hours))
         )
         return vid
 
@@ -922,6 +931,7 @@ class Created:
     at: datetime | None
     carried: CarryOver | None
     cells: int | None  # plan values copied; None: none were carried
+    hours: int | None = None  # planned hour cells copied (ADR 0016)
 
 
 def _created(conn: Connection, version_id: int) -> Created | None:
@@ -936,7 +946,7 @@ def _created(conn: Connection, version_id: int) -> Created | None:
     if record is None:
         return Created(row.created_by, row.created_at, None, None)
     carry = CarryOver(**{k: bool(record[k]) for k in CARRY_ITEMS}, uplift=Decimal(record["uplift"]))
-    return Created(row.created_by, row.created_at, carry, record.get("cells"))
+    return Created(row.created_by, row.created_at, carry, record.get("cells"), record.get("hours"))
 
 
 def setup_of(engine: Engine, user: User, code: str) -> SetupView:

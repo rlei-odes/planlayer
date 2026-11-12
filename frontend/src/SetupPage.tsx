@@ -846,6 +846,7 @@ function CreatedFrom({ view, sourceName }: { view: SetupView; sourceName: string
                 <span className="ink-3">
                   {' '}
                   · {uplift ? `${uplift > 0 ? '+' : ''}${uplift} %` : 'unchanged'}, {(created.cells ?? 0).toLocaleString('en-US')} cells
+                  {created.hours ? `, ${created.hours.toLocaleString('en-US')} hour cells (no uplift)` : ''}
                 </span>
               )}
               {!on && <span className="ink-3"> · not carried</span>}
@@ -871,7 +872,7 @@ const CARRY: { key: keyof Omit<CarryOver, 'uplift'>; label: string; hint: string
   { key: 'accounts', label: 'Accounts', hint: 'accounts not planned, account sets and where they are assigned' },
   { key: 'capacity', label: 'Capacity', hint: 'productive cost centers and their plan rates and lines' },
   { key: 'sheets', label: 'Sheets', hint: 'accounts added to sheets, line spreads' },
-  { key: 'values', label: 'Plan values', hint: 'moved to the new year month by month, with an uplift' },
+  { key: 'values', label: 'Plan values', hint: 'moved to the new year month by month, with an uplift; planned hours too, without' },
 ]
 const NO_CARRY: CarryOver = {
   setup: true,

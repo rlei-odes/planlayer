@@ -216,14 +216,15 @@ Mid-size manufacturer of industrial pumps and valves, ~400 employees.
     - [x] Open periods per round: a forecast's *actuals through* closes the months before it; they show actuals, read only, refused by the store ([ADR 0015](docs/adr/0015-forecasts-and-quarters.md)). Rounds planned by quarter close whole quarters.
     - [x] Rounds planned by quarter: Q1–Q4 on the sheet, a quarter spreads over its months by the line's basis (ADR 0015).
     - [x] *Refresh actuals* on a forecast's setup: the actuals sync for its fiscal year, with the sync's preview.
-    - [ ] The capacity sheet in a forecast: show actual hours in the closed months (today they are blank and refused), and quarters in quarter grain.
+    - [x] The capacity sheet follows the round ([ADR 0016](docs/adr/0016-capacity-in-rounds-and-forecasts.md)): prepared by the controller in setup, actual hours in a forecast's closed months, a full-year total, quarters, the round's comparison columns.
     - [x] A walkthrough of `docs/scenarios/forecast-2026.md` with the user (quarter run; publish not yet walked).
     - [ ] Setup page redesign: in quarter grain, the entry-form defaults in step 3 speak of months ("Monthly" form, "planners type each month"): grey them out or present them as quarters.
     - [x] Account sets per round, assigned to cost center nodes or cost centers (nearest wins): sheets list the set's accounts, "add account" offers only them, the store refuses values outside ([ADR 0014](docs/adr/0014-preparing-a-round.md)).
     - [x] The setup page's *Cost centers* tab: planned, account set, productive, prior-year actuals and the source round's plan per cost center; new and no longer delivered marked.
     - [x] New rounds carry over by a checklist from a chosen round (default: the latest of the same kind), plan values optionally with an uplift, as one change batch; controllers prepare a round in setup without moving its workflow status.
     - [ ] Uplift per account group (today one percentage for all carried values).
-    - [ ] Carry planned hours (capacity) with the values.
+    - [x] Carry planned hours (capacity) with the values: no uplift, credits recomputed from the new round's rates (ADR 0016).
+    - [ ] Planned hours in the file downloads of the Publish page (today: amounts only; hours go to `fact_plan_capacity`).
     - [x] The "even ⚠" fallback warning shows only on lines holding values.
     - [x] Creating a round is a step of its own; the round then shows how it was created (from which round, by whom, what it carried, plan values with uplift and cell count).
     - [x] A note per comparison column, shown to planners as the column's tooltip; actuals columns say how far their actuals go when the year is partial.
@@ -282,7 +283,8 @@ German terms in parentheses, as controllers know them.
   - [x] Capacity planners: a responsibility on cost centers or nodes, enforced by row-level security.
   - [x] Undo and redo on the capacity sheet (as on the cost sheet, ADR 0010), hours and line changes alike.
   - [x] Lines of work centers added by hand spread evenly by default.
-  - [ ] Planned hours in the published output, as a table in `planlayer_out`.
+  - [x] Planned hours in the published output: `fact_plan_capacity`, with work center and activity type dimensions ([ADR 0016](docs/adr/0016-capacity-in-rounds-and-forecasts.md)).
+  - [x] The capacity sheet follows the round: setup preparation, carried hours, forecasts, quarters, comparison columns (ADR 0016).
   - [ ] The variable rate component: UI for a second rate, credited to the activity type's variable account (the tables hold it).
   - [ ] Rates entered on the master-data page, for installations without a rates source (today a line without a source rate is added on the sheet with its rate).
   - [ ] Clearing a cost center's capacity before it stops being productive (today the setup save is refused and names it).

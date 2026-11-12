@@ -90,6 +90,7 @@ class CreatedOut(BaseModel):
     at: datetime
     carried: CarryOverIn | None
     cells: int | None  # plan values copied; null: none were carried
+    hours: int | None = None  # planned hour cells copied with them (ADR 0016)
 
 
 class SetupOut(BaseModel):
@@ -210,6 +211,7 @@ def setup(request: Request, user: CurrentUser, code: str) -> SetupOut:
             if v.created.carried is None
             else CarryOverIn.model_validate(v.created.carried, from_attributes=True),
             cells=v.created.cells,
+            hours=v.created.hours,
         ),
         setup=SetupIO(
             default_form=s.default_form,

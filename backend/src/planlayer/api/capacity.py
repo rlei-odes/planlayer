@@ -11,7 +11,15 @@ from pydantic import BaseModel, Field
 
 from planlayer import capacity, planning
 from planlayer.api.auth import CurrentUser, engine_of
-from planlayer.api.planning import HANDLED, CellOut, ConflictOut, LineSpreadIO, _errors, _s
+from planlayer.api.planning import (
+    HANDLED,
+    CellOut,
+    ComparisonOut,
+    ConflictOut,
+    LineSpreadIO,
+    _errors,
+    _s,
+)
 from planlayer.domain.entry_forms import Basis
 from planlayer.domain.workflow import RoundStatus, Status
 
@@ -30,7 +38,8 @@ class CapacityRowOut(BaseModel):
     activity_type_code: str
     activity_type_name: str
     plan: list[CellOut]
-    prior: list[str | None]  # actual hours of the prior fiscal year
+    # One list of 12 months per comparison column: hours, or amounts on a credit row.
+    comparisons: list[list[str | None]]
     work_center_code: str | None
     work_center_name: str | None
     added: bool  # a work center added by hand
@@ -68,17 +77,26 @@ class CapacitySheetOut(BaseModel):
     status: Status
     lock_reason: str | None
     periods: list[date]
+    comparisons: list[ComparisonOut]  # the round's columns (ADR 0016)
     rows: list[CapacityRowOut]
     inactive: list[InactiveLineOut]
     work_centers: list[CodeName]
     activity_types: list[CodeName]
     batch_id: str | None = None
+    version_kind: str
+    grain: Literal["month", "quarter"]
+    # A forecast's closed months: the first ``closed_months`` cells hold actual hours, read only.
+    actuals_through: date | None
+    closed_months: int
 
 
 class HoursEditIn(BaseModel):
+    """One edit: a month, a quarter (rounds planned by quarter), or neither for the year."""
+
     work_center_code: str
     activity_type_code: str
     month: Annotated[int, Field(ge=0, le=11)] | None = None
+    quarter: Annotated[int, Field(ge=0, le=3)] | None = None
     value: str | None
     expected: Annotated[list[int | None], Field(min_length=12, max_length=12)]
 
@@ -132,13 +150,27 @@ def _sheet_out(s: capacity.CapacitySheet, batch_id: str | None = None) -> Capaci
         status=s.status,
         lock_reason=s.lock_reason,
         periods=s.periods,
+        version_kind=s.version_kind,
+        grain=s.grain,
+        actuals_through=s.actuals_through,
+        closed_months=s.closed_months,
+        comparisons=[
+            ComparisonOut(
+                kind=c.kind,
+                label=c.label,
+                note=c.note,
+                actuals_until=c.actuals_until,
+                partial=c.partial,
+            )
+            for c in s.comparisons
+        ],
         rows=[
             CapacityRowOut(
                 kind=r.kind,
                 activity_type_code=r.activity_type_code,
                 activity_type_name=r.activity_type_name,
                 plan=[CellOut(value=_s(c.value), row_version=c.row_version) for c in r.plan],
-                prior=[_s(v) for v in r.prior],
+                comparisons=[[_s(v) for v in months] for months in r.comparisons],
                 work_center_code=r.work_center_code,
                 work_center_name=r.work_center_name,
                 added=r.added,
@@ -203,7 +235,9 @@ def edit(
     or 409 with the conflicting cells."""
     engine = engine_of(request)
     edits = [
-        capacity.HoursEdit(e.work_center_code, e.activity_type_code, e.month, e.value, e.expected)
+        capacity.HoursEdit(
+            e.work_center_code, e.activity_type_code, e.month, e.value, e.expected, e.quarter
+        )
         for e in body.edits
     ]
     try:

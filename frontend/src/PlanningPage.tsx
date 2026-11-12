@@ -16,7 +16,7 @@ import {
 } from './api'
 import { RedoIcon, UndoIcon } from './icons'
 import Select, { type Option } from './Select'
-import { quarterly } from './periods'
+import { isClosed, monthProp, monthsOf, periodColumns, quarterProp, quarterly, span, type Layout } from './periods'
 import { pickUnit } from './units'
 
 // The planning sheet of one cost center (T-25, ADR 0007, ADR 0010), in the look of the setup
@@ -30,29 +30,9 @@ import { pickUnit } from './units'
 const COL_ACCOUNT = 'account'
 const COL_FY = 'fy'
 const comparisonProp = (i: number) => `c${i}`
-const monthProp = (m: number) => `m${m}`
-const quarterProp = (q: number) => `q${q}`
-const MONTH_LABEL = new Intl.DateTimeFormat('en', { month: 'short', timeZone: 'UTC' })
-const MONTH_YEAR_SHORT = new Intl.DateTimeFormat('en', { month: 'short', year: 'numeric', timeZone: 'UTC' })
 
 type GridRow = Record<string, string>
 type Message = { kind: 'error' | 'info' | 'ok'; text: string }
-/** How the sheet's period columns are laid out: by month or by quarter, and the months closed. */
-type Layout = { quarters: boolean; closed: number }
-
-/** The months a period column covers: one month, or a quarter's three; null for other columns. */
-function monthsOf(prop: string): number[] | null {
-  const n = Number(prop.slice(1))
-  if (/^m\d+$/.test(prop)) return [n]
-  if (/^q\d+$/.test(prop)) return [3 * n, 3 * n + 1, 3 * n + 2]
-  return null
-}
-
-/** A forecast's closed months hold actuals (ADR 0015). */
-function isClosed(prop: string, layout: Layout): boolean {
-  const months = monthsOf(prop)
-  return months !== null && months[0] < layout.closed
-}
 
 function editable(row: Row | undefined, prop: string, layout: Layout): boolean {
   if (!row || row.kind !== 'account') return false
@@ -73,12 +53,6 @@ function cellKind(row: Row | undefined, prop: string, locked: boolean, layout: L
   return locked ? 'pl-plain' : 'pl-calc'
 }
 
-/** "Jan–Jun 2026": a run of the year's months, for the forecast's year column. */
-function span(periods: string[], from: number, to: number): string {
-  const first = MONTH_LABEL.format(new Date(periods[from]))
-  const last = MONTH_YEAR_SHORT.format(new Date(periods[to]))
-  return from === to ? last : `${first}–${last}`
-}
 
 
 /** A year-only line's months aren't shown, so how it spreads isn't chosen on the sheet. */
@@ -271,11 +245,9 @@ export default function PlanningPage({
       readonly: ({ rowIndex }: { rowIndex: number }) => !editable(grid?.rows[rowIndex], prop, layout),
       cellProperties: cellProperties(prop),
     })
-    const act = (prop: string) => (isClosed(prop, layout) ? ' · Act' : '')
-    const actHead = (prop: string) => (isClosed(prop, layout) ? 'pl-head-act' : '')
-    const periodColumns = layout.quarters
-      ? [0, 1, 2, 3].map((q) => column(quarterProp(q), `Q${q + 1}${act(quarterProp(q))}`, 112, actHead(quarterProp(q))))
-      : periods.map((p, m) => column(monthProp(m), MONTH_LABEL.format(new Date(p)) + act(monthProp(m)), 92, actHead(monthProp(m))))
+    const periodCols = periodColumns(periods, layout).map((c) =>
+      column(c.prop, c.label, layout.quarters ? 112 : 92, c.closed ? 'pl-head-act' : ''),
+    )
     const yearTitle =
       layout.closed > 0 && periods.length === 12
         ? `Actuals ${span(periods, 0, layout.closed - 1)} + forecast ${span(periods, layout.closed, 11)}. A year total typed here is the full year: the open months take what the actuals leave.`
@@ -291,7 +263,7 @@ export default function PlanningPage({
         column(comparisonProp(i), c.label, 112, 'pl-head-cmp', comparisonTitle(c)),
       ),
       column(COL_FY, `${forecast ? 'Forecast' : 'Plan'} ${grid?.fiscal_year ?? ''}`, 124, 'pl-head-plan', yearTitle),
-      ...periodColumns,
+      ...periodCols,
     ]
   }, [grid, locked, profiles, layout, forecast])
 

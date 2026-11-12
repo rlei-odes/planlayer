@@ -59,6 +59,50 @@ fact_plan_cost_center = Table(
     ),
 )
 
+# Planned hours of productive cost centers (ADR 0016); a forecast's closed months as actuals.
+fact_plan_capacity = Table(
+    "fact_plan_capacity",
+    out_metadata,
+    Column("version_code", Text, nullable=False),
+    Column("fiscal_year", Integer, nullable=False),
+    Column("period", Date, nullable=False),
+    Column("entity_code", Text, nullable=False),
+    Column("cost_center_code", Text, nullable=False),
+    Column("work_center_code", Text, nullable=False),
+    Column("activity_type_code", Text, nullable=False),
+    Column("measure", Text, nullable=False),
+    Column("amount", Numeric(18, 2), nullable=False),
+    Column("status", Text, nullable=False),
+    Column("origin", Text, nullable=False),
+    Column("published_at", DateTime(timezone=True), nullable=False),
+    Column("publish_run_id", BigInteger, nullable=False),
+    PrimaryKeyConstraint(
+        "version_code",
+        "period",
+        "entity_code",
+        "cost_center_code",
+        "work_center_code",
+        "activity_type_code",
+        "measure",
+    ),
+)
+
+dim_work_center = Table(
+    "dim_work_center",
+    out_metadata,
+    Column("code", Text, primary_key=True),
+    Column("name", Text, nullable=False),
+    Column("cost_center_code", Text),
+)
+
+dim_activity_type = Table(
+    "dim_activity_type",
+    out_metadata,
+    Column("code", Text, primary_key=True),
+    Column("name", Text, nullable=False),
+    Column("account_code", Text),  # the account its credits go to
+)
+
 dim_version = Table(
     "dim_version",
     out_metadata,
@@ -122,4 +166,17 @@ def ensure(conn: Connection, schema: str) -> None:
         LEFT JOIN {s}.dim_version v ON v.code = f.version_code
         LEFT JOIN {s}.dim_cost_center cc ON cc.code = f.cost_center_code
         LEFT JOIN {s}.dim_account a ON a.code = f.account_code
+    """)
+    conn.exec_driver_sql(f"""
+        CREATE OR REPLACE VIEW {s}.v_plan_capacity AS
+        SELECT f.version_code, v.name AS version_name, f.fiscal_year, f.period,
+               f.entity_code, f.cost_center_code, cc.name AS cost_center_name,
+               f.work_center_code, w.name AS work_center_name,
+               f.activity_type_code, t.name AS activity_type_name,
+               f.measure, f.amount, f.status, f.origin, f.published_at
+        FROM {s}.fact_plan_capacity f
+        LEFT JOIN {s}.dim_version v ON v.code = f.version_code
+        LEFT JOIN {s}.dim_cost_center cc ON cc.code = f.cost_center_code
+        LEFT JOIN {s}.dim_work_center w ON w.code = f.work_center_code
+        LEFT JOIN {s}.dim_activity_type t ON t.code = f.activity_type_code
     """)

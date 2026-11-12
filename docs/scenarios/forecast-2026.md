@@ -58,7 +58,17 @@ While the round is in setup, set *Actuals through* to September and save: July t
 
 Open the round on the status page, then try September again: the save is refused and names the cost centers with values in July to September.
 
-## 7. Publish
+## 7. Capacity
+
+*Capacity*, DE1010 *Machining* (productive). Create the forecast from Budget 2026 for this step: hours carry from the round set up like.
+
+- *Setup → Round* shows the plan values carried and "N hour cells (no uplift)".
+- The capacity sheet follows the round: Q1 and Q2 (or January to June) show the actual hours, read only; the open quarters hold Budget 2026's hours, and the credits are recomputed from them at the forecast's plan rates.
+- The columns are the round's comparison columns in hours (credit rows: in amounts).
+- A year total typed on a line is the full year; one below the actual hours to date is refused.
+- While the forecast is in setup, the controller can enter hours; planners can't until it is opened.
+
+## 8. Publish
 
 *Publish*, *Whole round*. The page says the closed months go out as actuals. Run it, then in the warehouse:
 
@@ -67,4 +77,4 @@ SELECT origin, count(*), sum(amount) FROM planlayer_out.fact_plan_cost_center
 WHERE version_code = 'FC2026-6' GROUP BY origin;
 ```
 
-`actual` rows cover January to June for every planned cost center; `plan` rows cover July to December. `dim_version.actuals_through` is 2026-06-01.
+`actual` rows cover January to June for every planned cost center; `plan` rows cover July to December. `dim_version.actuals_through` is 2026-06-01. Planned hours are in `fact_plan_capacity` the same way (`v_plan_capacity` with names); the preview counts them.

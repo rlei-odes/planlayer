@@ -33,19 +33,27 @@ from planlayer.rounds import RoundRef, closed_periods, get_round
 from planlayer.store.output import (
     LEVELS,
     dim_account,
+    dim_activity_type,
     dim_cost_center,
     dim_version,
+    dim_work_center,
     ensure,
+    fact_plan_capacity,
     fact_plan_cost_center,
 )
 from planlayer.store.schema import (
     ACCOUNT,
+    ACTIVITY_TYPE,
     AMOUNT,
     BASE_LAYER,
     COST_CENTER,
     H_ACCOUNT,
     H_COST_CENTER,
+    HOURS,
+    MODULE_CAPACITY,
     MODULE_COST_CENTER,
+    WORK_CENTER,
+    fact_capacity,
     fact_cost_center,
     hier_edge,
     member,
@@ -224,6 +232,7 @@ class Preview:
     cost_centers: list[CostCenterCounts]
     changes: list[Change] = field(default_factory=list)  # the first ones, for display
     fingerprint: str = ""
+    hours_rows: int = 0  # planned hours in fact_plan_capacity (ADR 0016)
 
 
 def preview(
@@ -231,7 +240,106 @@ def preview(
 ) -> Preview:
     r, rows = plan_rows(engine, user, code, scope)
     current = _published(output, schema, r.code)
-    return _compare(r, scope, rows, current)
+    hours = hour_rows(engine, user, r, scope)
+    return _with_hours(_compare(r, scope, rows, current), hours, _published_hours(output, r.code))
+
+
+# --- Planned hours (ADR 0016) ---------------------------------------------------------------------
+
+HourKey = tuple[date, str, str, str, str]  # period, entity, cost center, work center, activity type
+HOURS_MEASURE = "hours"
+
+
+@dataclass(frozen=True)
+class HourRow:
+    key: HourKey
+    hours: Decimal
+    status: str
+    origin: Origin = "plan"
+
+
+def hour_rows(engine: Engine, user: User, r: RoundRef, scope: Scope) -> list[HourRow]:
+    """The round's planned hours in the scope; a forecast's closed months as actual hours of
+    the cost centers productive in the round."""
+    f = fact_capacity
+    e, cc, wc, at = (member.alias(n) for n in ("e", "cc", "wc", "at"))
+    status = func.coalesce(workflow_status.c.status, "not_started")
+    with unit_of_work(engine, user) as conn:
+        closed = closed_periods(conn, r)
+        base = (
+            select(f.c.period, e.c.code, cc.c.code, wc.c.code, at.c.code, f.c.amount, status)
+            .join(e, e.c.member_id == f.c.dim_entity)
+            .join(cc, cc.c.member_id == f.c.dim_cost_center)
+            .join(wc, wc.c.member_id == f.c.dim_work_center)
+            .join(at, at.c.member_id == f.c.dim_activity_type)
+            .outerjoin(
+                workflow_status,
+                (workflow_status.c.version_id == r.version_id)
+                & (workflow_status.c.cost_center_id == f.c.dim_cost_center),
+            )
+            .where(f.c.layer_id == BASE_LAYER, f.c.measure_id == HOURS)
+        )
+        if scope == "approved":
+            base = base.where(workflow_status.c.status == "approved")
+        planned = base.where(f.c.version_id == r.version_id)
+        if closed:
+            planned = planned.where(f.c.period > closed[-1])
+        rows = [HourRow((p, en, c, w, a), h, s) for p, en, c, w, a, h, s in conn.execute(planned)]
+        if closed:
+            actual = (
+                base.join(version, version.c.version_id == f.c.version_id)
+                .join(
+                    round_member,
+                    (round_member.c.version_id == r.version_id)
+                    & (round_member.c.module == MODULE_CAPACITY)
+                    & (round_member.c.member_id == f.c.dim_cost_center)
+                    & round_member.c.enabled.is_(True),
+                )
+                .where(version.c.kind == "actuals", f.c.period.in_(closed))
+            )
+            rows += [
+                HourRow((p, en, c, w, a), h, s, "actual")
+                for p, en, c, w, a, h, s in conn.execute(actual)
+            ]
+    rows.sort(key=lambda row: row.key)
+    return rows
+
+
+PublishedHours = dict[HourKey, tuple[Decimal, str, str]]
+
+
+def _published_hours(output: Engine, version_code: str) -> PublishedHours:
+    t = fact_plan_capacity
+    with output.connect() as conn:
+        if not output.dialect.has_table(conn, t.name, schema=conn.schema_for_object(t)):
+            return {}
+        return {
+            (p, en, c, w, a): (h, s, o)
+            for p, en, c, w, a, h, s, o in conn.execute(
+                select(
+                    t.c.period,
+                    t.c.entity_code,
+                    t.c.cost_center_code,
+                    t.c.work_center_code,
+                    t.c.activity_type_code,
+                    t.c.amount,
+                    t.c.status,
+                    t.c.origin,
+                ).where(t.c.version_code == version_code)
+            )
+        }
+
+
+def _with_hours(done: Preview, rows: list[HourRow], current: PublishedHours) -> Preview:
+    """The preview with the hour rows counted and in its fingerprint."""
+    h = hashlib.sha256(done.fingerprint.encode())
+    for row in rows:
+        h.update(f"+{row.key}|{row.hours}|{row.status}|{row.origin}\n".encode())
+    for key in sorted(current):
+        h.update(f"={key}|{current[key]}\n".encode())
+    done.hours_rows = len(rows)
+    done.fingerprint = h.hexdigest()
+    return done
 
 
 def _compare(r: RoundRef, scope: Scope, rows: list[OutRow], current: Published) -> Preview:
@@ -285,7 +393,8 @@ def run(
     the check (republish). Returns what the run did."""
     r, rows = plan_rows(engine, user, code, scope)
     current = _published(output, schema, r.code)
-    done = _compare(r, scope, rows, current)
+    hours = hour_rows(engine, user, r, scope)
+    done = _with_hours(_compare(r, scope, rows, current), hours, _published_hours(output, r.code))
     if fingerprint is not None and fingerprint != done.fingerprint:
         raise PublishError("the plan values or the output changed since the preview; preview again")
 
@@ -301,6 +410,22 @@ def run(
             _dimension(conn, COST_CENTER, H_COST_CENTER),
             _dimension(conn, ACCOUNT, H_ACCOUNT),
         )
+        work_centers = [
+            {"code": c, "name": n, "cost_center_code": cc}
+            for c, n, cc in conn.execute(
+                select(member.c.code, member.c.name, member.c.cost_center_code).where(
+                    member.c.dim_id == WORK_CENTER, member.c.is_group.is_(False)
+                )
+            )
+        ]
+        activity_types = [
+            {"code": c, "name": n, "account_code": a}
+            for c, n, a in conn.execute(
+                select(member.c.code, member.c.name, member.c.account_code).where(
+                    member.c.dim_id == ACTIVITY_TYPE, member.c.is_group.is_(False)
+                )
+            )
+        ]
     now = datetime.now().astimezone()
     with output.begin() as conn:
         ensure(conn, schema)
@@ -327,7 +452,36 @@ def run(
                     for row in rows
                 ],
             )
-        for table, members in ((dim_cost_center, cost_centers), (dim_account, accounts)):
+        h = fact_plan_capacity
+        conn.execute(delete(h).where(h.c.version_code == r.code))
+        if hours:
+            conn.execute(
+                insert(h),
+                [
+                    {
+                        "version_code": r.code,
+                        "fiscal_year": r.fiscal_year,
+                        "period": row.key[0],
+                        "entity_code": row.key[1],
+                        "cost_center_code": row.key[2],
+                        "work_center_code": row.key[3],
+                        "activity_type_code": row.key[4],
+                        "measure": HOURS_MEASURE,
+                        "amount": row.hours,
+                        "status": row.status,
+                        "origin": row.origin,
+                        "published_at": now,
+                        "publish_run_id": run_id,
+                    }
+                    for row in hours
+                ],
+            )
+        for table, members in (
+            (dim_cost_center, cost_centers),
+            (dim_account, accounts),
+            (dim_work_center, work_centers),
+            (dim_activity_type, activity_types),
+        ):
             conn.execute(delete(table))
             if members:
                 conn.execute(insert(table), members)
