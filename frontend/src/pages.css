@@ -1938,3 +1938,7 @@ revo-grid.pl-revo .rgCell:hover .pl-mark.empty,
   background: transparent;
   color: var(--accent);
 }
+
+.il-w-vis {
+  width: 260px;
+}

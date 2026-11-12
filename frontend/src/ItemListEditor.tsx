@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
-import { format, sum, times } from './amounts'
+import { format, sum, times, toCents } from './amounts'
 import { api, type ItemList, type ItemRow, type Visibility } from './api'
 import { VISIBILITY } from './itemLists'
 import Select from './Select'
@@ -70,7 +70,9 @@ export default function ItemListEditor({
   const kept = rows.filter((r) => r.name.trim() || r.unit_price.trim())
   const invalid = rows.some((r, i) => (r.name.trim() || r.unit_price.trim()) && (amounts[i] === undefined || !r.name.trim()))
   const total = sum(amounts.map((a) => a ?? null)) ?? '0.00'
-  const differs = lineValue !== undefined && (lineValue ?? '0.00') !== total
+  // A line without a year value yet has nothing to compare with: no message, just apply.
+  const lineSet = lineValue !== undefined && lineValue !== null && toCents(lineValue) !== 0n
+  const differs = lineSet && lineValue !== total
   const dirty =
     !list ||
     visibility !== list.visibility ||
@@ -139,7 +141,7 @@ export default function ItemListEditor({
           </div>
           <div className="il-vis">
             {owner && editable ? (
-              <div className="su-field su-w-select">
+              <div className="su-field il-w-vis">
                 Visible to
                 <Select<Visibility>
                   label="Visible to"
@@ -241,9 +243,9 @@ export default function ItemListEditor({
             <span>
               Total <strong>{format(total)}</strong>
             </span>
-            {lineValue !== undefined && (
+            {lineSet && (
               <span className={differs ? 'il-differs' : 'ink-3'}>
-                Line’s year value {format(lineValue ?? null) || '–'}
+                Line’s year value {format(lineValue ?? null)}
                 {differs ? ' · differs' : ' · matches'}
               </span>
             )}

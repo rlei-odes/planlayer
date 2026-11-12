@@ -4,6 +4,6 @@ import type { Visibility } from './api'
 
 export const VISIBILITY: Record<Visibility, { label: string; hint: string }> = {
   private: { label: 'Private', hint: 'only you' },
-  cost_center: { label: 'Cost center', hint: 'everyone who plans it sees and edits' },
-  public: { label: 'Public', hint: 'everyone who reads the cost center sees it' },
+  cost_center: { label: 'Cost center', hint: 'enabled planners' },
+  public: { label: 'Public', hint: 'everyone' },
 }

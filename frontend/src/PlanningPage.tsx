@@ -1,7 +1,7 @@
 import { RevoGrid } from '@revolist/react-datagrid'
 import type { HyperFunc, VNode } from '@revolist/revogrid'
 import { useCallback, useEffect, useEffectEvent, useMemo, useState } from 'react'
-import { format, parse, sum } from './amounts'
+import { format, parse, sum, toCents } from './amounts'
 import {
   api,
   ConflictError,
@@ -707,6 +707,14 @@ function profileBars(h: H, values: number[]) {
   )
 }
 
+/** The line's item list total differs from its year value; a line without a year value yet
+ * (blank or zero) has nothing to differ from. */
+function listDiffers(row: Row): boolean {
+  if (!row.item_list) return false
+  const year = sum(row.plan.map((c) => c.value))
+  return year !== null && toCents(year) !== 0n && year !== row.item_list.total
+}
+
 /** The account cell: code, name and the line's entry form, which opens the spread menu where
  * the line's spread can be chosen; a line spread by a profile shows its shape. Group rows show
  * their name only. */
@@ -740,7 +748,7 @@ function accountCell(h: H, row: Row | undefined, profiles: ProfileRef[], quarter
       badge,
       h('span', { class: 'pl-marks' }, [
         noteMark(h, row.code, row.notes),
-        listMark(h, row.code, !!row.item_list, !!row.item_list && row.item_list.total !== (sum(row.plan.map((c) => c.value)) ?? '0.00')),
+        listMark(h, row.code, !!row.item_list, listDiffers(row)),
       ]),
     ]),
   ])
