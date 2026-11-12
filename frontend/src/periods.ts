@@ -27,6 +27,11 @@ export function fitThrough(periods: string[], grain: Grain, through: string | nu
   return closable(periods, grain).filter((p) => p <= through).at(-1) ?? null
 }
 
+/** A profile's months summed to its four quarters, for a round planned by quarter. */
+export function quarterly(values: number[]): number[] {
+  return [0, 1, 2, 3].map((q) => values.slice(3 * q, 3 * q + 3).reduce((a, b) => a + b, 0))
+}
+
 const MONTH_YEAR = new Intl.DateTimeFormat('en', { month: 'long', year: 'numeric', timeZone: 'UTC' })
 
 export function monthName(iso: string): string {

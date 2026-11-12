@@ -16,6 +16,7 @@ import {
 } from './api'
 import { RedoIcon, UndoIcon } from './icons'
 import Select, { type Option } from './Select'
+import { quarterly } from './periods'
 import { pickUnit } from './units'
 
 // The planning sheet of one cost center (T-25, ADR 0007, ADR 0010), in the look of the setup
@@ -153,7 +154,7 @@ function basisText(row: Row): string {
   if (row.capacity) return 'Credited by capacity planning: planned hours × rate of the work centers. Change it on the Capacity page.'
   const text =
     row.entry_form === 'monthly'
-      ? `Months are typed in; a year total ${spreadText(row)}.`
+      ? `Months are entered; a year total ${spreadText(row)}.`
       : row.entry_form === 'annual'
         ? 'Only the year total is entered; it is stored as 12 equal months.'
         : `The year total ${spreadText(row)}.`
@@ -284,7 +285,7 @@ export default function PlanningPage({
         ...column(COL_ACCOUNT, 'Account', 390, 'pl-head-acc'),
         pin: 'colPinStart' as const,
         cellTemplate: (h: HyperFunc<VNode>, { rowIndex }: { rowIndex: number }) =>
-          accountCell(h as unknown as H, grid?.rows[rowIndex], profiles),
+          accountCell(h as unknown as H, grid?.rows[rowIndex], profiles, layout.quarters),
       },
       ...(grid?.comparisons ?? []).map((c, i) =>
         column(comparisonProp(i), c.label, 112, 'pl-head-cmp', comparisonTitle(c)),
@@ -596,7 +597,7 @@ export default function PlanningPage({
             />
             <div className="pl-foot">
               <span className="pv-key">
-                <i className="k-edit" /> typed in
+                <i className="k-edit" /> entered
               </span>
               {closed > 0 && (
                 <span className="pv-key">
@@ -667,7 +668,7 @@ function profileBars(h: H, values: number[]) {
 /** The account cell: code, name and the line's entry form, which opens the spread menu where
  * the line's spread can be chosen; a line spread by a profile shows its shape. Group rows show
  * their name only. */
-function accountCell(h: H, row: Row | undefined, profiles: ProfileRef[]) {
+function accountCell(h: H, row: Row | undefined, profiles: ProfileRef[], quarters: boolean) {
   if (!row) return ''
   if (row.kind === 'group') return h('span', { class: 'pl-acc-name' }, row.name)
   const form = row.entry_form
@@ -690,6 +691,10 @@ function accountCell(h: H, row: Row | undefined, profiles: ProfileRef[]) {
       : h('span', { class: classes }, label)
   return h('span', { class: 'pl-acc-in', title: form ? `${label}: ${basisText(row)}` : undefined }, [
     h('span', { class: 'pl-acc-name' }, [h('span', { class: 'pl-code' }, row.code), row.name]),
-    h('span', { class: 'pl-acc-tags' }, [profile ? profileBars(h, profile.values.map(Number)) : '', badge]),
+    // By quarter, a profile shows as its four quarters; it is still entered by month.
+    h('span', { class: 'pl-acc-tags' }, [
+      profile ? profileBars(h, quarters ? quarterly(profile.values.map(Number)) : profile.values.map(Number)) : '',
+      badge,
+    ]),
   ])
 }

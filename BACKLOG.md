@@ -217,7 +217,8 @@ Mid-size manufacturer of industrial pumps and valves, ~400 employees.
     - [x] Rounds planned by quarter: Q1–Q4 on the sheet, a quarter spreads over its months by the line's basis (ADR 0015).
     - [x] *Refresh actuals* on a forecast's setup: the actuals sync for its fiscal year, with the sync's preview.
     - [ ] The capacity sheet in a forecast: show actual hours in the closed months (today they are blank and refused), and quarters in quarter grain.
-    - [ ] A walkthrough of `docs/scenarios/forecast-2026.md` with the user.
+    - [x] A walkthrough of `docs/scenarios/forecast-2026.md` with the user (quarter run; publish not yet walked).
+    - [ ] Setup page redesign: in quarter grain, the entry-form defaults in step 3 speak of months ("Monthly" form, "planners type each month"): grey them out or present them as quarters.
     - [x] Account sets per round, assigned to cost center nodes or cost centers (nearest wins): sheets list the set's accounts, "add account" offers only them, the store refuses values outside ([ADR 0014](docs/adr/0014-preparing-a-round.md)).
     - [x] The setup page's *Cost centers* tab: planned, account set, productive, prior-year actuals and the source round's plan per cost center; new and no longer delivered marked.
     - [x] New rounds carry over by a checklist from a chosen round (default: the latest of the same kind), plan values optionally with an uplift, as one change batch; controllers prepare a round in setup without moving its workflow status.

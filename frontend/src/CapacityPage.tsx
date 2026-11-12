@@ -543,7 +543,7 @@ export default function CapacityPage({
             />
             <div className="pl-foot">
               <span className="pv-key">
-                <i className="k-edit" /> typed in
+                <i className="k-edit" /> entered
               </span>
               <span className="pv-key">
                 <i className="k-cmp" /> last year’s hours

@@ -1069,12 +1069,12 @@ function NewRoundCard({
   const periods = fiscalPeriods(r.fiscal_year, startMonth)
   const grain = r.grain ?? 'month'
 
-  /** A forecast is named by its closed months, e.g. "Forecast 6+6 2026" (F2026-6). */
+  /** A forecast is named by its closed months, e.g. "Forecast 6+6 2026" (FC2026-6). */
   function named(next: NewRound): NewRound {
     if (next.kind !== 'forecast') return next
     const n = closedCount(fiscalPeriods(next.fiscal_year, startMonth), next.actuals_through)
     const year = next.fiscal_year
-    return { ...next, code: n ? `F${year}-${n}` : `F${year}`, name: n ? `Forecast ${n}+${12 - n} ${year}` : `Forecast ${year}` }
+    return { ...next, code: n ? `FC${year}-${n}` : `FC${year}`, name: n ? `Forecast ${n}+${12 - n} ${year}` : `Forecast ${year}` }
   }
 
   function chooseKind(kind: NewRound['kind']) {
@@ -1111,9 +1111,9 @@ function NewRoundCard({
       </p>
       <div className="su-row" style={{ marginTop: 10 }}>
         <div className="su-field su-w-select">
-          Kind
+          Round type
           <Select
-            label="Kind"
+            label="Round type"
             value={r.kind}
             options={[
               { value: 'budget', label: 'Budget' },

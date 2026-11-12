@@ -859,6 +859,15 @@
   width: 6.5%;
 }
 
+/* Four quarters leave room: the account and year columns take it, not the quarters. */
+.pv-table.quarters col.acc {
+  width: 30%;
+}
+
+.pv-table.quarters col.year {
+  width: 9%;
+}
+
 .pv-table th {
   position: sticky;
   top: 0;
@@ -1017,6 +1026,15 @@
 .pv-calc {
   background: var(--calc);
   color: var(--ink-2);
+}
+
+/* The last column keeps off the card's edge. */
+.pv-table tr > :last-child {
+  padding-right: 12px;
+}
+
+.pv-table tr > .pv-edit:last-child::after {
+  right: 9px;
 }
 
 /* A forecast's closed months: actuals, read only (ADR 0015). */

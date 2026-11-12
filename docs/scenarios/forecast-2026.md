@@ -12,9 +12,9 @@ Starting point: Budget 2026 open with plan values on some cost centers, actuals 
 
 ## 1. Controller: create Forecast 6+6 2026
 
-Log in as `controller@`, *Setup → New round*, kind *Forecast*.
+Log in as `controller@`, *Setup → New round*, round type *Forecast*.
 
-1. The step proposes fiscal year 2026, *Actuals through* June 2026 ("6+6 · latest actuals"), code `F2026-6`, name *Forecast 6+6 2026*, and *Set up like* Budget 2026 (the year's last forecast, else its budget).
+1. The step proposes fiscal year 2026, *Actuals through* June 2026 ("6+6 · latest actuals"), code `FC2026-6`, name *Forecast 6+6 2026*, and *Set up like* Budget 2026 (the year's last forecast, else its budget).
 2. *Plan values* is ticked; the uplift example ends with "into the open months only".
 3. *Planned by* *Quarter*: *Actuals through* offers only March, June and September. Choose May under *Month*, then switch to *Quarter*: it moves back to March. Set it back to *Month*, June.
 4. Create. *Forms & columns → Round* shows the carried plan values and their cell count, *Planned by* and *Actuals through*, and below them: "6+6: January 2026 to June 2026 show actuals …, Latest synced actuals: June 2026".
@@ -64,7 +64,7 @@ Open the round on the status page, then try September again: the save is refused
 
 ```sql
 SELECT origin, count(*), sum(amount) FROM planlayer_out.fact_plan_cost_center
-WHERE version_code = 'F2026-6' GROUP BY origin;
+WHERE version_code = 'FC2026-6' GROUP BY origin;
 ```
 
 `actual` rows cover January to June for every planned cost center; `plan` rows cover July to December. `dim_version.actuals_through` is 2026-06-01.

@@ -43,7 +43,7 @@ Log in as `admin@`, open *Master data → Sources*.
 
 Log in as `controller@`, *Setup → New round*. The page shows only the new round: nothing of the round selected before.
 
-1. Kind *Budget*, fiscal year 2027, code `B2027`. *Set up like* proposes Budget 2026, the latest budget.
+1. Round type *Budget*, fiscal year 2027, code `B2027`. *Set up like* proposes Budget 2026, the latest budget.
 2. The checklist carries entry forms and comparisons, adds Budget 2026 as a comparison column, and carries the cost center scope, accounts, capacity and sheets. Tick *Plan values* and set the uplift, e.g. 3 %: the example shows 1,000 becoming 1,030.
 3. Create. The page switches to Budget 2027, in status *setup*, with a note that it stays unseen by planners until opened.
 4. *Forms & columns → Round* shows how the round was created: from Budget 2026, by whom and when, each checklist item carried or not, and the plan values with "+3 %" and the number of cells. *Comparison columns* now lists Budget 2026.

@@ -1,10 +1,10 @@
 import { Fragment } from 'react'
 import type { EntryForm, MemberRow } from './api'
-import { closedCount } from './periods'
+import { closedCount, quarterly } from './periods'
 import type { Profile, SetupDraft } from './setupTypes'
 
 // A designed mock-up of the sheet a planner gets with the draft setup (E-03): the forms decide
-// which cells are typed in, which are calculated and which months are hidden; the comparison
+// which cells are entered, which are calculated and which months are hidden; the comparison
 // columns come first. Values are examples, derived from the account code, not real data. A round
 // planned by quarter shows Q1–Q4; a forecast's closed months show actuals (ADR 0015).
 
@@ -184,7 +184,7 @@ export default function PlannerPreview(p: Props) {
         </div>
       </div>
       <div className="pv-scroll">
-        <table className="pv-table" style={{ minWidth: 160 + 48 * (nComp + 1) + (quarters ? 52 : 36) * cols.length }}>
+        <table className={`pv-table${quarters ? ' quarters' : ''}`} style={{ minWidth: 160 + 48 * (nComp + 1) + (quarters ? 52 : 36) * cols.length }}>
           <colgroup>
             <col className="acc" />
             {p.draft.comparisons.map((_, i) => (
@@ -204,7 +204,8 @@ export default function PlannerPreview(p: Props) {
                 </th>
               ))}
               <th className="plan">
-                {p.forecast ? 'Forecast' : 'Plan'} {p.fiscalYear}
+                {/* The preview's year column is narrow: a forecast is "FC". */}
+                {p.forecast ? 'FC' : 'Plan'} {p.fiscalYear}
               </th>
               {cols.map((c) => (
                 <th key={c.label} className={isClosed(c) ? 'act' : undefined}>
@@ -242,7 +243,7 @@ export default function PlannerPreview(p: Props) {
         )}
         {quarters && (
           <div className="su-note">
-            Planned by quarter: a quarter typed in spreads over its three months like a year total does; months are
+            Planned by quarter: a quarter entered spreads over its three months like a year total does; months are
             stored as before.
           </div>
         )}
@@ -254,7 +255,7 @@ export default function PlannerPreview(p: Props) {
       </div>
       <div className="pv-foot">
         <span className="pv-key">
-          <i className="k-edit" /> typed in
+          <i className="k-edit" /> entered
         </span>
         {closed > 0 && (
           <span className="pv-key">
@@ -307,7 +308,7 @@ export default function PlannerPreview(p: Props) {
       : `spreads like ${ref}`
     const basis =
       l.r.form === 'monthly'
-        ? `Months are typed in; a year total ${monthlyBasis}.`
+        ? `Months are entered; a year total ${monthlyBasis}.`
         : l.r.form === 'annual'
           ? 'Only the year total is entered; it is stored as 12 equal months.'
           : l.r.form === 'annual_even'
@@ -325,7 +326,7 @@ export default function PlannerPreview(p: Props) {
               <span className="code">{l.code}</span>
               {l.name}
             </span>
-            {prof && <Bars values={prof.values.map(Number)} />}
+            {prof && <Bars values={quarters ? quarterly(prof.values.map(Number)) : prof.values.map(Number)} />}
             <span className={`pv-form ${l.r.form === 'monthly' ? 'monthly' : ''} ${l.fallback ? 'fallback' : ''}`}>
               <span className="full">{full}</span>
               <span className="short">{short}</span>
