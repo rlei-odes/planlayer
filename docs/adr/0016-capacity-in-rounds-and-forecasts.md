@@ -24,7 +24,7 @@ The *Plan values* item of a new round's checklist also copies the source round's
 
 ### The capacity sheet follows the round
 
-- **Forecast:** closed months show the synced actual hours, read only, without row versions, and capacity writes no hours into them. A year total typed is the full year: the open months take the total minus the actual hours to date, spread by the line's basis over the open months. A credit row's closed months show the cost center's actuals on the credit account.
+- **Forecast:** closed months show the synced actual hours, read only, without row versions, and capacity writes no hours into them. A year total typed is the full year: the open months take the total minus the actual hours to date, spread by the line's basis over the open months. A credit row's closed months show the cost center's actuals on the credit account, from the ledger only: where the source books no credits, they stay blank rather than being computed from actual hours, so the forecast agrees with the ledger.
 - **Quarter grain:** the sheet shows Q1 to Q4. A quarter of hours spreads over its three months by the line's basis, renormalised to the quarter.
 - **Comparison columns:** the sheet shows the round's comparison columns in hours. Prior-year actuals are the prior year's actual hours. The year's actuals are actual hours, cut at the closed months in a forecast. A version shows that round's planned hours for the cost center, and a forecast its full year (actual hours to date plus planned hours). Credit rows show the same columns as amounts on the credit account.
 

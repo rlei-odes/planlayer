@@ -14,7 +14,7 @@ import psycopg
 from psycopg import sql
 
 from gen_testdata.actuals import Rows
-from gen_testdata.master import ACTIVITY_TYPES, FUNCTION_ROOT, FUNCTIONS, REGIONS, Master
+from gen_testdata.master import ACTIVITY_TYPES, FUNCTION_ROOT, FUNCTIONS, REGIONS, Account, Master
 
 BRONZE_TABLES = {
     "generator_run": "variant text, seed int, date_mode text, anchor date, fiscal_start_month int",
@@ -38,7 +38,8 @@ BRONZE_TABLES = {
     "account_hierarchy_node": (
         "node_id text PRIMARY KEY, node_text text, parent_node text, sort int"
     ),
-    # kontoart: E = Ertrag (revenue, credit side), A = Aufwand (cost, debit side)
+    # kontoart: E = Ertrag (revenue, credit side), A = Aufwand (cost, debit side),
+    # L = Leistungsverrechnung (activity credits a productive cost center receives, credit side)
     "sachkonto": "saknr text PRIMARY KEY, txt50 text, kontoart text, node_id text",
     "product_line": "line_code text PRIMARY KEY, line_name text",
     "product_group": "group_code text PRIMARY KEY, group_name text, line_code text",
@@ -157,10 +158,12 @@ GOLD_VIEWS = {
         JOIN {b}.fx_rates r ON r.period = date_trunc('month', l.budat)::date
                            AND r.currency = l.waers
         GROUP BY 1, 2, 3, 4""",
-    # The same in natural signs: revenue and cost both positive (T-7).
+    # The same in natural signs: revenue, cost and activity credits all positive (T-7), as
+    # Planlayer plans them.
     "v_gl_actuals_natural": """
         SELECT a.posting_month, a.company_code, a.cost_center, a.gl_account,
-               CASE s.kontoart WHEN 'E' THEN -a.amount_eur ELSE a.amount_eur END AS amount_eur
+               CASE WHEN s.kontoart IN ('E', 'L') THEN -a.amount_eur ELSE a.amount_eur END
+                   AS amount_eur
         FROM {g}.v_gl_actuals_ledger a JOIN {b}.sachkonto s ON s.saknr = a.gl_account""",
     # Monthly sales in EUR, long format: one row per measure (T-23).
     "v_sales_actuals": """
@@ -214,6 +217,13 @@ EXPORT_ORDER = {
 }
 
 
+def _kontoart(account: Account) -> str:
+    """Revenue is booked credit-side, so are the activity credits; other costs debit-side."""
+    if account.account_type == "revenue":
+        return "E"
+    return "L" if account.group == "CREDITS" else "A"
+
+
 def load(
     conn: psycopg.Connection,
     master: Master,
@@ -262,10 +272,7 @@ def load(
                 (a.code, a.parent, a.valid_from, a.valid_to) for a in master.cc_assignments
             ],
             "account_hierarchy_node": _account_nodes(master),
-            "sachkonto": [
-                (a.code, a.name, "E" if a.account_type == "revenue" else "A", a.group)
-                for a in master.accounts
-            ],
+            "sachkonto": [(a.code, a.name, _kontoart(a), a.group) for a in master.accounts],
             "product_line": sorted(master.product_lines.items()),
             "product_group": [(k, n, line) for k, (n, line) in master.product_groups.items()],
             "material": [

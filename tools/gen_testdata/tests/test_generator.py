@@ -114,11 +114,12 @@ def test_ledger_signs() -> None:
     master = build("small")
     rows = Rows(master, 42)
     list(rows.billing_lines())
-    types = {a.code: a.account_type for a in master.accounts}
-    totals: dict[str, float] = {"revenue": 0.0, "cost": 0.0}
+    kinds = {a.code: "credit" if a.group == "CREDITS" else a.account_type for a in master.accounts}
+    totals: dict[str, float] = {"revenue": 0.0, "cost": 0.0, "credit": 0.0}
     for row in rows.gl_lines():
-        totals[types[str(row[5])]] += float(str(row[6]))
-    assert totals["revenue"] < 0 < totals["cost"]
+        totals[kinds[str(row[5])]] += float(str(row[6]))
+    # Revenue and activity credits are credit-side, other costs debit-side.
+    assert totals["revenue"] < 0 < totals["cost"] and totals["credit"] < 0
 
 
 def test_gl_needs_billing_first() -> None:
@@ -135,7 +136,7 @@ def test_work_centers_of_production_cost_centers() -> None:
     assert [w.name for w in machining] == ["Machining centre 1", "Machining centre 2", "Lathe"]
     credited = {a.code for a in master.accounts if a.group == "CREDITS"}
     assert {account for _, _, account in m.ACTIVITY_TYPES} == credited
-    # Credit accounts are never booked directly.
+    # Credit accounts are booked only by the activity credits, not as cost series.
     assert all(not a.functions for a in master.accounts if a.group == "CREDITS")
 
     rows = Rows(master, 42)
@@ -143,3 +144,25 @@ def test_work_centers_of_production_cost_centers() -> None:
     outputs = sum(len(w.outputs) for w in master.work_centers)
     assert len(hours) == outputs * len(master.calendar.periods)
     assert hours == list(Rows(master, 42).capacity_hours())  # deterministic
+
+
+def test_credits_are_actual_hours_times_rate() -> None:
+    """TD-21: each work center's activity is credited to its cost center, hours x rate."""
+    master = build()
+    rows = Rows(master, 42)
+    list(rows.billing_lines())
+    credits = {a.code for a in master.accounts if a.group == "CREDITS"}
+    lathe = next(w for w in master.work_centers if w.name == "Lathe")
+    first = master.calendar.periods[0]
+    hours = next(
+        float(str(h)) for p, wc, _, h in rows.capacity_hours() if p == first and wc == lathe.code
+    )
+    booked = [
+        row
+        for row in rows.gl_lines()
+        if row[5] in credits and row[4] == lathe.cost_center
+        and str(row[3])[:7] == first.isoformat()[:7]
+    ]  # fmt: skip
+    # The lathe's machine hours, plus the other machining centres on the same cost center.
+    assert any(abs(-float(str(r[6])) - hours * 80) < 0.02 for r in booked)
+    assert all(float(str(r[6])) < 0 for r in booked)

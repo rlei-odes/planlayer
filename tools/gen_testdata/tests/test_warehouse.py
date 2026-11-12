@@ -44,7 +44,7 @@ def one(conn: psycopg.Connection, query: str) -> tuple[object, ...]:
     return tuple(row)
 
 
-def test_natural_signs_flip_revenue_only(loaded: tuple[psycopg.Connection, str]) -> None:
+def test_natural_signs_flip_revenue_and_credits(loaded: tuple[psycopg.Connection, str]) -> None:
     conn, g = loaded
     ledger, natural = one(
         conn,
@@ -63,9 +63,20 @@ def test_natural_signs_flip_revenue_only(loaded: tuple[psycopg.Connection, str])
         SELECT count(*) FROM {g}.v_gl_actuals_ledger l
         JOIN {g}.v_gl_actuals_natural n USING (posting_month, company_code, cost_center, gl_account)
         JOIN {g}.v_accounts a ON a.account_code = l.gl_account
-        WHERE a.account_type = 'cost' AND l.amount_eur <> n.amount_eur""",
+        WHERE a.account_type = 'cost' AND l.amount_eur <> n.amount_eur
+          AND a.account_code NOT IN (SELECT account_code FROM {g}.v_activity_types)""",
     )
     assert cost_differs == 0
+    # Activity credits are booked credit-side and arrive positive, as Planlayer plans them.
+    ledger, natural = one(
+        conn,
+        f"""
+        SELECT sum(l.amount_eur), sum(n.amount_eur)
+        FROM {g}.v_gl_actuals_ledger l
+        JOIN {g}.v_gl_actuals_natural n USING (posting_month, company_code, cost_center, gl_account)
+        WHERE l.gl_account IN (SELECT account_code FROM {g}.v_activity_types)""",
+    )
+    assert isinstance(ledger, Decimal) and ledger < 0 and natural == -ledger
 
 
 def test_zero_and_missing_are_distinct(loaded: tuple[psycopg.Connection, str]) -> None:

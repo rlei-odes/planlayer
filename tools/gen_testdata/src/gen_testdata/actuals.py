@@ -4,6 +4,8 @@ Amounts are integer cents internally. GL lines are ledger-signed (debit positive
 positive, revenue negative. Every series has its own random generator, seeded from the series
 key, so changing one part of the data does not shift the rest.
 
+Activity credits are booked as actual hours x rate on the credit accounts (TD-21).
+
 Patterns: growth, seasonality (August shutdown, Q4 sales peak, bonus months for personnel),
 noise, one-off spikes, negative corrections, months netting to exactly zero (a posting and its
 reversal) and months with no posting at all, kept distinct.
@@ -16,7 +18,14 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import date
 
-from gen_testdata.master import LINE_REVENUE_ACCOUNT, Account, CostCenter, Master
+from gen_testdata.master import (
+    ACTIVITY_TYPES,
+    LINE_REVENUE_ACCOUNT,
+    Account,
+    CostCenter,
+    Master,
+    WorkCenter,
+)
 
 BASE_RATE_MICRO = {"EUR": 1_000_000, "CHF": 1_050_000, "PLN": 232_000, "USD": 920_000}
 
@@ -73,10 +82,39 @@ class Rows:
         month, with the production season (August shutdown) and noise."""
         for wc in self.master.work_centers:
             for activity, _rate, hours in wc.outputs:
-                rng = random.Random(f"{self.seed}:hours:{wc.code}:{activity}")
-                for period in self.periods:
-                    factor = SEASON["production"].get(period.month, 1.0) * rng.uniform(0.9, 1.1)
-                    yield (period, wc.code, activity, f"{hours * factor:.2f}")
+                for period, value in self._hours(wc, activity, hours):
+                    yield (period, wc.code, activity, value)
+
+    def _hours(self, wc: WorkCenter, activity: str, hours: int) -> list[tuple[date, str]]:
+        """A work center's actual hours of one activity type per month, as booked."""
+        rng = random.Random(f"{self.seed}:hours:{wc.code}:{activity}")
+        out = []
+        for period in self.periods:
+            factor = SEASON["production"].get(period.month, 1.0) * rng.uniform(0.9, 1.1)
+            out.append((period, f"{hours * factor:.2f}"))
+        return out
+
+    def _credit_lines(self) -> Iterator[tuple[object, ...]]:
+        """Activity credits (ADR 0013, TD-21): each month, a productive cost center is credited
+        actual hours x rate per activity type on the type's account, one posting per work center,
+        credit-side (negative) in the ledger."""
+        credited = {code: account for code, _name, account in ACTIVITY_TYPES}
+        entity = {cc.code: cc.entity for cc in self.master.cost_centers}
+        for wc in self.master.work_centers:
+            for activity, rate, hours in wc.outputs:
+                for i, (period, value) in enumerate(self._hours(wc, activity, hours)):
+                    eur_cents = round(float(value) * rate * 100)
+                    local = self._to_local(eur_cents, entity[wc.cost_center], i)
+                    yield (
+                        self._doc_no(entity[wc.cost_center]),
+                        1,
+                        entity[wc.cost_center],
+                        date(period.year, period.month, 28),
+                        wc.cost_center,
+                        credited[activity],
+                        cents(-local),
+                        self.currency[entity[wc.cost_center]],
+                    )
 
     def fx_rates(self) -> Iterator[tuple[object, ...]]:
         for i, period in enumerate(self.periods):
@@ -152,6 +190,7 @@ class Rows:
         for cc in self.master.cost_centers:
             for account in self.master.accounts:
                 yield from self._cost_series(cc, account)
+        yield from self._credit_lines()
 
     def _cost_series(self, cc: CostCenter, account: Account) -> Iterator[tuple[object, ...]]:
         if cc.function not in account.functions:

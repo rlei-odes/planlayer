@@ -22,7 +22,7 @@ A round is planned by **month** (the default) or by **quarter**. The controller 
 - Values are stored as months in either grain (ADR 0001), so changing the grain changes how the sheet is entered, not what is stored.
 - In quarter grain the sheet shows Q1 to Q4 and the year. A quarter is three fiscal months: Q1 is the fiscal year's first three months.
   - A `monthly` line takes quarter totals, and each spreads over its three months by the line's basis: its profile, its reference or evenly, renormalised to the quarter. A quarter whose basis is zero in all three months spreads evenly, like the year fallback (ADR 0007).
-  - The year forms show their quarters read-only. A year total spreads over the months as in month grain.
+  - The year forms show their quarters read-only. A year total spreads over the months as in month grain, rounded to the cent per month. The months sum to the total exactly; a quarter may differ from an even share by a cent (1,000 over two quarters: 500.01 and 499.99).
 
 ### Forecasts close months
 

@@ -10,12 +10,12 @@ from decimal import Decimal
 import pytest
 from fastapi.testclient import TestClient
 from httpx2 import Response
-from sqlalchemy import func, select
+from sqlalchemy import create_engine, func, select, text
 
 from planlayer.config import Settings
 from planlayer.store.output import create_output_engine, fact_plan_capacity
 
-from .conftest import BLANK
+from .conftest import BLANK, TEST_DATABASE_URL, plan, run_sync
 
 B, F = "B2025", "F2025"
 
@@ -155,3 +155,24 @@ def test_publish_planned_hours(forecast: TestClient, migrated: Settings) -> None
     finally:
         output.dispose()
     assert counts == {"plan": Decimal("600.00"), "actual": Decimal("600.00")}
+
+
+def test_closed_months_show_credits_the_ledger_books(
+    forecast: TestClient, migrated: Settings, source_schema: str
+) -> None:
+    """Credit accounts are ordinary accounts to the sync: credits the ledger books on them are
+    synced as actuals and show in a forecast's closed months (ADR 0016), on both sheets."""
+    assert TEST_DATABASE_URL
+    admin = create_engine(TEST_DATABASE_URL)
+    with admin.begin() as conn:
+        conn.execute(
+            text(
+                f"INSERT INTO {source_schema}.v_gl_actuals_natural "
+                "VALUES ('2025-03-01', 'DE', 'CC1', '4900', 8000.00)"
+            )
+        )
+    admin.dispose()
+    run_sync(migrated, source_schema)
+    assert credit(sheet(forecast, F))[2] == "8000.00"
+    grid = forecast.get(f"/api/versions/{F}/cost-centers/CC1/grid").json()
+    assert plan(grid, "4900")[2] == "8000.00"
