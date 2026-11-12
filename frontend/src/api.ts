@@ -42,6 +42,21 @@ export type CapacitySheet = S.CapacitySheetOut
 export type CapacityRow = S.CapacityRowOut
 export type HoursEdit = S.HoursEditIn
 export type NewMember = S.MemberIn
+// Line notes and item lists (ADR 0017).
+export type NoteLine = S.NoteLineIn
+export type LineNotes = S.LineNotesOut
+export type Thread = S.ThreadOut
+export type NoteEntry = S.NoteOut
+export type Person = S.PersonOut
+export type Notepad = S.NotepadOut
+export type NotepadRow = S.GridRowIO
+export type MyNotes = S.MyNotesOut
+export type MyThread = S.MyThreadOut
+export type NotesMarker = S.NotesMarkerOut
+export type ItemList = S.ItemListOut
+export type ListSummary = S.ListSummaryOut
+export type ItemRow = S.ItemIO
+export type Visibility = S.ListSummaryOut['visibility']
 
 /** The session is missing or has ended. */
 export class UnauthorizedError extends Error {}
@@ -79,6 +94,16 @@ const r = (code: string) => `/api/responsibilities/${encodeURIComponent(code)}`
 const v = (version: string) => `/api/versions/${encodeURIComponent(version)}`
 const cc = (version: string, code: string) => `${v(version)}/cost-centers/${encodeURIComponent(code)}`
 const cap = (version: string, code: string) => `${v(version)}/capacity/${encodeURIComponent(code)}`
+
+/** A line as query parameters: only the fields it has. */
+function lineQuery(version: string, line: NoteLine): string {
+  const params: Record<string, string> = { version, module: line.module, cost_center: line.cost_center }
+  for (const key of ['account', 'work_center', 'activity_type'] as const) {
+    const value = line[key]
+    if (value) params[key] = value
+  }
+  return new URLSearchParams(params).toString()
+}
 
 export const api = {
   me: () => fetch('/api/me').then((res) => json<Me>(res)),
@@ -174,6 +199,37 @@ export const api = {
   profiles: () => fetch('/api/profiles').then((r) => json<ProfileRef[]>(r)),
   act: (version: string, request: ActionRequest) => post(`${v(version)}/workflow`, request).then((r) => json<string[]>(r)),
   overview: (version: string) => fetch(`${v(version)}/overview`).then((r) => json<Overview>(r)),
+  // Line notes (ADR 0017): written from a round, which they then belong to.
+  lineNotes: (version: string, line: NoteLine) =>
+    fetch(`/api/notes/line?${lineQuery(version, line)}`).then((r) => json<LineNotes>(r)),
+  startThread: (version: string, line: NoteLine, body: string, mentions: string[], assign: string | null) =>
+    post('/api/notes/threads', { version, line, body, mentions, assign }).then((r) => json<LineNotes>(r)),
+  reply: (version: string, thread: number, body: string, mentions: string[], assign: string | null) =>
+    post(`/api/notes/threads/${thread}/replies`, { version, body, mentions, assign }).then((r) => json<null>(r)),
+  resolveThread: (version: string, thread: number, resolved: boolean) =>
+    post(`/api/notes/threads/${thread}/resolved`, { version, resolved }).then((r) => json<null>(r)),
+  editNote: (version: string, note: number, body: string, mentions: string[]) =>
+    send('PUT', `/api/notes/${note}`, { version, body, mentions }).then((r) => json<null>(r)),
+  deleteNote: (note: number) => send('DELETE', `/api/notes/${note}`).then((r) => json<null>(r)),
+  saveNotepad: (version: string, line: NoteLine, rows: NotepadRow[]) =>
+    send('PUT', '/api/notes/notepad', { version, line, rows }).then((r) => json<LineNotes>(r)),
+  people: (costCenter: string, module: NoteLine['module']) =>
+    fetch(`/api/notes/people?${new URLSearchParams({ cost_center: costCenter, module })}`).then((r) =>
+      json<Person[]>(r),
+    ),
+  myNotes: () => fetch('/api/notes/mine').then((r) => json<MyNotes>(r)),
+  // Item lists (ADR 0017).
+  itemLists: () => fetch('/api/item-lists').then((r) => json<ListSummary[]>(r)),
+  itemList: (id: number) => fetch(`/api/item-lists/${id}`).then((r) => json<ItemList>(r)),
+  lineList: (costCenter: string, account: string) =>
+    fetch(`/api/item-lists/line?${new URLSearchParams({ cost_center: costCenter, account })}`).then((r) =>
+      json<ItemList | null>(r),
+    ),
+  createList: (costCenter: string, account: string, visibility: Visibility, items: ItemRow[]) =>
+    post('/api/item-lists', { cost_center: costCenter, account, visibility, items }).then((r) => json<ItemList>(r)),
+  saveList: (id: number, visibility: Visibility, items: ItemRow[]) =>
+    send('PUT', `/api/item-lists/${id}`, { visibility, items }).then((r) => json<ItemList>(r)),
+  deleteList: (id: number) => send('DELETE', `/api/item-lists/${id}`).then((r) => json<null>(r)),
 }
 
 export const STATUS_LABEL: Record<Status, string> = {

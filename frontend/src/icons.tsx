@@ -115,3 +115,22 @@ export const LogoutIcon = () => (
     <path d="M8 4H5.5a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2H8M12.5 6.5 16 10l-3.5 3.5M16 10H8" />
   </Icon>
 )
+
+// A speech bubble: line notes (ADR 0017).
+export const NotesIcon = () => (
+  <Icon>
+    <path d="M4 4.5h12a1.5 1.5 0 0 1 1.5 1.5v7a1.5 1.5 0 0 1-1.5 1.5H9l-3.5 3v-3H4A1.5 1.5 0 0 1 2.5 13V6A1.5 1.5 0 0 1 4 4.5z" />
+    <path d="M6 8.5h8M6 11h5" />
+  </Icon>
+)
+
+// A list with bullets and a sum line: item lists (ADR 0017).
+export const ItemListIcon = () => (
+  <Icon>
+    <path d="M7.5 5h9M7.5 9h9M7.5 13h9" />
+    <circle cx="4.2" cy="5" r=".6" fill="currentColor" />
+    <circle cx="4.2" cy="9" r=".6" fill="currentColor" />
+    <circle cx="4.2" cy="13" r=".6" fill="currentColor" />
+    <path d="M10.5 16.5h6" />
+  </Icon>
+)

@@ -15,6 +15,8 @@ import {
   type ProfileRef,
 } from './api'
 import { RedoIcon, UndoIcon } from './icons'
+import { headerWithMarks, noteMark, type H } from './lineMarks'
+import NotesPanel from './NotesPanel'
 import Select, { type Option } from './Select'
 import { byColumn, isClosed, monthsOf, periodColumns, quarterly, span, type Layout } from './periods'
 import { pickUnit } from './units'
@@ -38,8 +40,6 @@ const INACTIVE = 'inactive'
 
 type GridRow = Record<string, string>
 type Message = { kind: 'error' | 'info' | 'ok'; text: string }
-// RevoGrid's hyperscript function, called with plain props and mixed children.
-type H = (tag: string, props: Record<string, unknown> | null, children?: unknown) => unknown
 
 function errorText(e: unknown): string {
   return e instanceof Error ? e.message : String(e)
@@ -129,9 +129,9 @@ function lineCell(h: H, row: CapacityRow | undefined, profiles: ProfileRef[], qu
         ])
       : h('span', { class: 'cp-credit-label cp-missing' }, 'No account named for this activity type: nothing is credited')
   }
-  const label = badgeLabel(row) + (row.fallback && !row.chosen_spread ? ' ⚠' : '')
+  const label = badgeLabel(row)
   const profile = row.spread === 'profile' ? profiles.find((p) => p.code === row.profile) : undefined
-  const classes = `pv-form monthly${row.fallback && !row.chosen_spread ? ' fallback' : ''}${row.chosen_spread ? ' chosen' : ''}`
+  const classes = `pv-form monthly${row.chosen_spread ? ' chosen' : ''}`
   const title = `${label}: a year total ${spreadText(row)}.${row.chosen_spread ? ' Chosen for this line.' : ''}`
   const badge = row.editable
     ? h('button', { type: 'button', class: `${classes} pl-spread`, 'data-line': lineKey(row), 'aria-label': `How ${row.work_center_code} spreads: ${label}` }, label)
@@ -146,6 +146,7 @@ function lineCell(h: H, row: CapacityRow | undefined, profiles: ProfileRef[], qu
     h('span', { class: 'pl-acc-tags' }, [
       profile ? profileBars(h, quarters ? quarterly(profile.values.map(Number)) : profile.values.map(Number)) : '',
       badge,
+      h('span', { class: 'pl-marks' }, [noteMark(h, lineKey(row), row.notes)]),
     ]),
   ])
 }
@@ -156,6 +157,8 @@ export default function CapacityPage({
   onUnit,
   controller,
   onWidth,
+  focus,
+  onFocused,
 }: {
   version: string
   /** The cost center chosen last, here or on the planning page. */
@@ -163,6 +166,9 @@ export default function CapacityPage({
   onUnit: (code: string) => void
   controller: boolean
   onWidth: (px: number | null) => void
+  /** A line whose notes to open (from My notes): "work center|activity type". */
+  focus?: { key: string; thread: number } | null
+  onFocused?: () => void
 }) {
   const [units, setUnits] = useState<CapacityUnit[] | null>(null)
   const [planning, setPlanning] = useState<PlanningUnit[]>([])
@@ -171,6 +177,8 @@ export default function CapacityPage({
   const [message, setMessage] = useState<Message | null>(null)
   const [saving, setSaving] = useState(false)
   const [menu, setMenu] = useState<{ key: string; anchor: DOMRect } | null>(null)
+  // The line whose notes are open beside the sheet (ADR 0017), by its line key.
+  const [notesFor, setNotesFor] = useState<{ key: string; thread: number | null } | null>(null)
   const [adding, setAdding] = useState(false)
   // Undo (ADR 0010): the change batches of this visit to the sheet, newest last. Undoing a batch
   // writes a new one, which goes on the other stack, so redo is undoing the undo.
@@ -237,6 +245,7 @@ export default function CapacityPage({
       {
         ...column(COL_LINE, 'Work center', 390, 'pl-head-acc'),
         pin: 'colPinStart' as const,
+        columnTemplate: (h: HyperFunc<VNode>) => headerWithMarks(h as unknown as H, 'Work center', false),
         cellTemplate: (h: HyperFunc<VNode>, { rowIndex }: { rowIndex: number }) =>
           lineCell(h as unknown as H, sheet?.rows[rowIndex], profiles, layout.quarters),
       },
@@ -417,7 +426,28 @@ export default function CapacityPage({
     }
   }
 
+  /** Write the gridnote's total as the line's hours for the year, as if typed into the year
+   * column. */
+  async function insertYear(key: string, total: string) {
+    if (!sheet) return
+    const rowIndex = sheet.rows.findIndex((r) => r.kind === 'line' && lineKey(r) === key)
+    const row = sheet.rows[rowIndex]
+    if (!row || !editable(row, COL_FY, layout)) throw new Error('this line’s hours can’t be changed here')
+    await save([{ rowIndex, prop: COL_FY, raw: total }])
+  }
+
+  /** Pressing a line's notes marker or badge opens its notes or menu; handled on mouse down,
+   * before the grid selects and redraws the cell under the pointer. */
   function openMenu(e: React.MouseEvent) {
+    if (e.button !== 0) return
+    if ((e.target as HTMLElement).closest('[data-notes], [data-line]')) e.preventDefault()
+    const notes = (e.target as HTMLElement).closest<HTMLElement>('[data-notes]')
+    if (notes?.dataset.notes) {
+      e.stopPropagation()
+      setNotesFor({ key: notes.dataset.notes, thread: null })
+      onFocused?.()
+      return
+    }
     const badge = (e.target as HTMLElement).closest<HTMLElement>('[data-line]')
     if (!badge?.dataset.line) return
     e.stopPropagation()
@@ -440,6 +470,10 @@ export default function CapacityPage({
 
   const current = units.find((u) => u.code === unit)
   const open = sheet !== null && !locked
+  // The notes shown beside the sheet: those opened here, or the line My notes opened it for.
+  const notesOpen =
+    notesFor ?? (focus && sheet?.cost_center_code === unit ? { key: focus.key, thread: focus.thread } : null)
+  const notesRow = notesOpen ? sheet?.rows.find((r) => r.kind === 'line' && lineKey(r) === notesOpen.key) : undefined
   const canSubmit = open && planning.some((p) => p.code === unit && p.can_write)
   const menuRow = menu && sheet?.rows.find((r) => r.kind === 'line' && lineKey(r) === menu.key)
   const menuOptions: Option[] = [
@@ -557,7 +591,7 @@ export default function CapacityPage({
         </div>
       ) : (
         sheet && (
-          <div className="pl-sheet" onClick={openMenu}>
+          <div className="pl-sheet" onMouseDownCapture={openMenu}>
             <RevoGrid
               className="pl-revo"
               columns={columns}
@@ -627,6 +661,27 @@ export default function CapacityPage({
         </div>
       )}
 
+      {notesOpen && sheet && notesRow && (
+        <NotesPanel
+          key={`${sheet.cost_center_code}/${notesOpen.key}`}
+          version={version}
+          line={{
+            module: 'capacity',
+            cost_center: sheet.cost_center_code,
+            work_center: notesRow.work_center_code,
+            activity_type: notesRow.activity_type_code,
+          }}
+          title={`${notesRow.work_center_code} ${notesRow.work_center_name ?? ''} · ${notesRow.activity_type_name}`}
+          canInsert={editable(notesRow, COL_FY, layout)}
+          focusThread={notesOpen.thread}
+          onInsertTotal={(total) => insertYear(notesOpen.key, total)}
+          onChanged={load}
+          onClose={() => {
+            setNotesFor(null)
+            onFocused?.()
+          }}
+        />
+      )}
       {menu && menuRow && (
         <Select
           label={`How ${menuRow.work_center_code} spreads its year total`}

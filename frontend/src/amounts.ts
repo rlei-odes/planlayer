@@ -62,3 +62,18 @@ export function parse(raw: string): Amount | undefined {
   if (!/^\d+(\.\d{1,2})?$/.test(s)) return undefined
   return fromCents(negative ? -toCents(s) : toCents(s))
 }
+
+/** Quantity (up to 4 decimals) × unit price, rounded half up to the cent, as the database computes
+ * an item's amount (ADR 0017); undefined when either isn't a number. */
+export function times(quantity: string, price: string): string | undefined {
+  const q = quantity.trim().replace(',', '.') || '1'
+  const p = parse(price)
+  if (!/^-?\d+(\.\d{1,4})?$/.test(q) || !p) return undefined
+  const [whole, frac = ''] = q.replace('-', '').split('.')
+  const q4 = (BigInt(whole) * 10000n + BigInt((frac + '0000').slice(0, 4))) * (q.startsWith('-') ? -1n : 1n)
+  const product = toCents(p) * q4 // cents × 10^4
+  const negative = product < 0n
+  const abs = negative ? -product : product
+  const rounded = (abs + 5000n) / 10000n
+  return fromCents(negative ? -rounded : rounded)
+}

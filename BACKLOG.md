@@ -226,7 +226,7 @@ Mid-size manufacturer of industrial pumps and valves, ~400 employees.
     - [ ] Uplift per account group (today one percentage for all carried values).
     - [x] Carry planned hours (capacity) with the values: no uplift, credits recomputed from the new round's rates (ADR 0016).
     - [ ] Planned hours in the file downloads of the Publish page (today: amounts only; hours go to `fact_plan_capacity`).
-    - [x] The "even ⚠" fallback warning shows only on lines holding values.
+    - [x] A line whose reference has no values reads "even" with no warning; its tooltip says why.
     - [x] Creating a round is a step of its own; the round then shows how it was created (from which round, by whom, what it carried, plan values with uplift and cell count).
     - [x] A note per comparison column, shown to planners as the column's tooltip; actuals columns say how far their actuals go when the year is partial.
     - [x] A comparison column of actuals for the year to date plus the forecast for the rest: a forecast compared as a version shows its full year (ADR 0015).
@@ -337,35 +337,31 @@ An MCP (Model Context Protocol) server, so a user can connect the LLM client of 
 - [ ] **P-5 Number display** follows the installation's setting (E-13).
 - [ ] **P-6 Tests:** the report's text content checked against a fixed round (golden), and the close trigger generating exactly one set.
 
-### Line notes (after v1)
+### Line notes
 
-Notes on a line of a sheet (cost center × account), for the whole fiscal year rather than a month. They hold to-dos and explanations of why a value is what it is. Unlike E-08's cell comments (TBD), which belong to one round, notes carry forward from round to round.
+Notes on a line of a sheet (cost center × account, or work center × activity type on the capacity sheet), for the whole fiscal year rather than a month. They hold to-dos and explanations of why a value is what it is, and carry forward from round to round while open. Built: [ADR 0017](docs/adr/0017-notes-and-item-lists.md).
 
-- [ ] **N-1 Decision (ADR): the note model.**
-  - **Key:** cost center × account, not round or month, so a note outlives the round it was written in; each note records the round it was written in.
-  - **Rights:** whoever may read the line reads its notes (the same RLS as plan values, ADR 0009); whoever may plan it writes them. Notes are audited like plan values.
-  - **Relation to E-08:** whether cell comments become notes with a month, or stay separate.
-- [ ] **N-2 Writing and resolving:** a planner adds a note to a line; the line shows a marker and the count of open notes. A note can be resolved, and reopened; resolving records who and when.
-- [ ] **N-3 Mentions:** `@` a user in a note. The mentioned user sees it in their to-dos (and in MCP's to-dos, M-2) until they open or resolve it. To decide: e-mail notifications, which need mail settings the installation doesn't have yet.
-- [ ] **N-4 Carried forward:** a new round shows the open notes of its lines, labelled with the round they came from. The planner keeps or dismisses each; a dismissed note stays in the history but no longer shows in later rounds. To decide: whether resolved notes carry forward too.
-- [ ] **N-5 Tests:** notes visible only under the line's RLS, carry-forward into a new round, dismissed notes not shown again.
-- [ ] **N-6 Table note type** notes can be of type table, a type which offers a limited spreadsheet space with limited amount of columns. One column is forced to the number type, which also gives the table note a total. The total can be inserted/updated as the value of the cell.
+- [x] **N-1 Decision (ADR): the note model.** Threads keyed by line, remembering the round last written in; everyone who reads the line writes notes (RLS through `cost_center_access` / `capacity_access`); audited in `annotation_log`. E-08's cell comments are not built: a note belongs to the line.
+- [x] **N-2 Writing and resolving:** threads with replies; the line's marker shows the open count; resolve and reopen record who and when.
+- [x] **N-3 Mentions:** `@` a user who reads the line; a mention can assign the thread as a task. *My notes* lists tasks, mentions and own threads; the sidebar counts open tasks.
+- [x] **N-4 Carried forward:** open threads show in later rounds with the earlier round's name as a pill; writing to them makes them the current round's. Resolved threads stay in their round.
+- [x] **N-5 Tests:** RLS, mentions limited to readers, tasks, carry-forward, gridnote rights, capacity lines (`tests/test_notes.py`).
+- [x] **N-6 Gridnote:** one per line, rows of a text and an amount with their sum; *Insert total* writes it as the line's year value.
+- [ ] Notes on account groups and hierarchy nodes (with a marker once rows can collapse).
+- [ ] E-mail notifications for mentions and tasks.
+- [ ] Notes in MCP's to-dos (M-2).
 
-### Item lists (after v1)
+### Item lists
 
-An optional entry form for a line: instead of typing a value, the planner lists items and their yearly values, and the line's year value is the list's total. Example: the IT planner lists the software the company holds licences for, with each one's yearly maintenance cost. Like notes, a list belongs to the whole fiscal year; the year value then spreads over months as the line's entry form says.
+The items behind a line's value, kept outside rounds: invoices, licences, contracts. Built: [ADR 0017](docs/adr/0017-notes-and-item-lists.md).
 
-- [ ] **L-1 Decision (ADR): lists and versions.**
-  - **Lists live outside rounds:** a list belongs to cost center × account and is kept up to date during the year (new invoices, price changes), so it is ready when the next round opens.
-  - **Versions:** submitting a round snapshots the lists its lines use; the round's plan refers to that version, so later edits to the list never change a submitted or approved plan. Reopening and submitting again makes a new version.
-  - **Items:** each entry in a list is an item, e.g. "Claude Code subscription" or "Microsoft cloud subscription". An item has a name, a supplier and a yearly amount. Entry stays simple: typing only an amount is enough.
-  - **To decide, quantity:** either quantity defaults to 1 and the amount is quantity × unit price, or an item takes either a yearly amount or a quantity and unit price that give it.
-  - **To decide, optional fields:** a renewal date or contract end per item.
-  - **Values:** amounts as `numeric` and natural-positive like plan values (T-7, T-12); item amounts and the list total are computed by the server and tie exactly.
-- [ ] **L-2 Setup:** the controller allows item lists per account group or account in the yearly setup (E-03), as a further entry form.
-- [ ] **L-3 Editing:** from the line in the grid, the planner opens its list, adds, changes and removes items, and the line's year value follows. A list can also be opened and edited outside a round, from a page listing the planner's lists.
-- [ ] **L-4 History:** each version shows which rounds used it; two versions can be compared item by item.
-- [ ] **L-5 Tests:** the line's value equals the list total; a submitted round keeps its version while the list changes; RLS on lists as on plan values.
+- [x] **L-1 Decision (ADR): lists.** One list per cost center × account; items are quantity × unit price (quantity 1 by default), computed by the database; visibility private / cost center / public, changed only by the owner. The total reaches the plan only by *Save & apply total*; the marker warns when they differ.
+- [x] **L-3 Editing:** a large overlay from the line's marker; *My item lists* lists every list the user can see.
+- [x] **L-5 Tests:** totals, visibility and rights (`tests/test_notes.py`).
+- [ ] **L-2 Setup:** item lists as an entry form, where the line's year value always equals the list total (allowed per account group in the yearly setup).
+- [ ] **L-4 History:** snapshots of a list per submitted round, and comparing two states item by item.
+- [ ] Optional fields per item: a renewal date or contract end.
+- [ ] Starting a list from *My item lists* (today from the line on the sheet).
 
 ### Sales Module
 

@@ -10,6 +10,7 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     Column,
+    Computed,
     Date,
     DateTime,
     ForeignKey,
@@ -649,3 +650,105 @@ capacity_access = Table(
     Column("can_write", Boolean),
 )
 credit_account = Table("credit_account", metadata, Column("account_id", Integer))
+
+
+# --- Line notes and item lists (ADR 0017) --------------------------------------------------------
+
+
+def _line() -> list[Column]:  # type: ignore[type-arg]
+    """A line: a cost center with an account (module ``cost_center``), or with a work center and
+    an activity type (module ``capacity``)."""
+    return [
+        Column("module", Text, nullable=False),
+        Column("cost_center_id", Integer, ForeignKey("member.member_id"), nullable=False),
+        Column("account_id", Integer, ForeignKey("member.member_id")),
+        Column("work_center_id", Integer, ForeignKey("member.member_id")),
+        Column("activity_type_id", Integer, ForeignKey("member.member_id")),
+    ]
+
+
+note_thread = Table(
+    "note_thread",
+    metadata,
+    Column("thread_id", BigInteger, Identity(), primary_key=True),
+    *_line(),
+    # The round it was last written in: it shows there, and while open in every later round.
+    Column("round_id", SmallInteger, ForeignKey("planning_round.version_id"), nullable=False),
+    Column("assignee_id", Integer, ForeignKey("app_user.user_id")),  # a task's assignee
+    Column("resolved_at", DateTime(timezone=True)),
+    Column("resolved_by", Integer, ForeignKey("app_user.user_id")),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("created_by", Integer, ForeignKey("app_user.user_id"), nullable=False),
+)
+
+note = Table(
+    "note",
+    metadata,
+    Column("note_id", BigInteger, Identity(), primary_key=True),
+    Column("thread_id", BigInteger, ForeignKey("note_thread.thread_id"), nullable=False),
+    Column("author_id", Integer, ForeignKey("app_user.user_id"), nullable=False),
+    Column("body", Text, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("edited_at", DateTime(timezone=True)),
+)
+
+note_mention = Table(
+    "note_mention",
+    metadata,
+    Column("note_id", BigInteger, ForeignKey("note.note_id"), nullable=False),
+    Column("user_id", Integer, ForeignKey("app_user.user_id"), nullable=False),
+    PrimaryKeyConstraint("note_id", "user_id"),
+)
+
+# A line's notepad: rows of a text and an amount.
+note_grid = Table(
+    "note_grid",
+    metadata,
+    Column("grid_id", BigInteger, Identity(), primary_key=True),
+    *_line(),
+    Column("round_id", SmallInteger, ForeignKey("planning_round.version_id"), nullable=False),
+    Column("rows", JSONB, nullable=False),
+    Column("changed_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("changed_by", Integer, ForeignKey("app_user.user_id"), nullable=False),
+)
+
+item_list = Table(
+    "item_list",
+    metadata,
+    Column("list_id", BigInteger, Identity(), primary_key=True),
+    Column("cost_center_id", Integer, ForeignKey("member.member_id"), nullable=False),
+    Column("account_id", Integer, ForeignKey("member.member_id"), nullable=False),
+    Column("owner_id", Integer, ForeignKey("app_user.user_id"), nullable=False),
+    Column("visibility", Text, nullable=False, server_default="private"),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("changed_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("changed_by", Integer, ForeignKey("app_user.user_id"), nullable=False),
+)
+
+item = Table(
+    "item",
+    metadata,
+    Column("item_id", BigInteger, Identity(), primary_key=True),
+    Column("list_id", BigInteger, ForeignKey("item_list.list_id"), nullable=False),
+    Column("position", Integer, nullable=False),
+    Column("name", Text, nullable=False),
+    Column("supplier", Text),
+    Column("quantity", Numeric(18, 4), nullable=False, server_default="1"),
+    Column("unit_price", Numeric(18, 2), nullable=False),
+    # quantity x unit price, rounded to the cent, computed by the database.
+    Column("amount", Numeric(18, 2), Computed("round(quantity * unit_price, 2)", persisted=True)),
+    Column("comment", Text),
+)
+
+annotation_log = Table(
+    "annotation_log",
+    metadata,
+    Column("id", BigInteger, Identity(), primary_key=True),
+    Column("at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("actor", Text),
+    Column("batch_id", Text),
+    Column("table_name", Text, nullable=False),
+    Column("op", Text, nullable=False),
+    Column("old", JSONB),
+    Column("new", JSONB),
+)

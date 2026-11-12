@@ -33,6 +33,9 @@ from planlayer.domain.entry_forms import Basis, EntryForm, Form, resolve, weight
 from planlayer.domain.periods import closed_months, quarter_months
 from planlayer.domain.spreading import Profile, spread
 from planlayer.domain.workflow import EDITABLE, RoundStatus, Status
+from planlayer.item_lists import markers as list_markers
+from planlayer.notes import Marker
+from planlayer.notes import markers as note_markers
 from planlayer.rounds import (
     Grain,
     NotFoundError,
@@ -125,6 +128,15 @@ class LineSpread:
 
 
 @dataclass
+class ListMarker:
+    """A line's item list as its marker shows it (ADR 0017)."""
+
+    list_id: int
+    total: Decimal
+    visibility: str
+
+
+@dataclass
 class Row:
     kind: Literal["group", "account"]
     code: str
@@ -146,6 +158,9 @@ class Row:
     capacity: bool = False  # credited by capacity planning: read only (ADR 0013)
     # Why the line takes no plan values in this round (ADR 0014); None: it is planned.
     not_planned: Literal["round", "set"] | None = None
+    # The line's notes and item list (ADR 0017); None: it has none the user can see.
+    notes: Marker | None = None
+    item_list: ListMarker | None = None
 
 
 @dataclass
@@ -573,6 +588,8 @@ def read_grid(engine: Engine, user: User, version_code: str, cc_code: str) -> Gr
             shown |= set(values)
         lines = _lines(conn, ctx, shown)
         credited = scope.credited
+        note_marks = note_markers(conn, user, ctx.round, "cost_center", ctx.cost_center_id)
+        list_marks = list_markers(conn, ctx.cost_center_id)
 
     r = ctx.round
     grid = Grid(
@@ -632,6 +649,10 @@ def read_grid(engine: Engine, user: User, version_code: str, cc_code: str) -> Gr
             total_editable=editable and planned and not from_capacity,
             capacity=from_capacity,
             not_planned=why_not,
+            notes=note_marks.get((line.account_id, None, None)),
+            item_list=ListMarker(*list_marks[line.account_id])
+            if line.account_id in list_marks
+            else None,
         )
         grid.rows.append(row)
         for i, months in enumerate(row.comparisons):

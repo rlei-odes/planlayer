@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } from 'react'
-import { api, type Me, type Version } from './api'
+import { api, type Me, type MyThread, type Version } from './api'
 import CapacityPage from './CapacityPage'
 import {
   CapacityIcon,
   CollapseIcon,
+  ItemListIcon,
   LogoMark,
   LogoutIcon,
   MasterDataIcon,
+  NotesIcon,
   PlanningIcon,
   PublishIcon,
   ResponsibilitiesIcon,
@@ -14,10 +16,12 @@ import {
   StatusIcon,
   UsersIcon,
 } from './icons'
+import ItemListsPage from './ItemListsPage'
 import LoginPage from './LoginPage'
 import { initials } from './names'
 import Select from './Select'
 import MasterDataPage from './MasterDataPage'
+import MyNotesPage from './MyNotesPage'
 import PlanningPage from './PlanningPage'
 import PublishPage from './PublishPage'
 import ResponsibilitiesPage from './ResponsibilitiesPage'
@@ -29,12 +33,24 @@ import UsersPage from './UsersPage'
 // One current round applies to every page that works on a round.
 
 type Health = { status: 'ok' | 'unavailable'; version: string; schema_revision: string | null }
-type Page = 'capacity' | 'planning' | 'status' | 'setup' | 'publish' | 'masterdata' | 'responsibilities' | 'users'
+type Page =
+  | 'capacity'
+  | 'planning'
+  | 'status'
+  | 'notes'
+  | 'lists'
+  | 'setup'
+  | 'publish'
+  | 'masterdata'
+  | 'responsibilities'
+  | 'users'
 
 const NAV: Record<Page, { label: string; icon: () => ReactNode }> = {
   capacity: { label: 'Capacity', icon: CapacityIcon },
   planning: { label: 'Planning', icon: PlanningIcon },
   status: { label: 'Status', icon: StatusIcon },
+  notes: { label: 'My notes', icon: NotesIcon },
+  lists: { label: 'My item lists', icon: ItemListIcon },
   setup: { label: 'Setup', icon: SetupIcon },
   publish: { label: 'Publish', icon: PublishIcon },
   masterdata: { label: 'Master data', icon: MasterDataIcon },
@@ -52,7 +68,7 @@ function groupsFor(me: Me): { label: string; pages: Page[] }[] {
   // planner grant or an approver assignment. The admin role alone gives none (ADR 0009). Capacity
   // comes first, the usual order of work (ADR 0013).
   const plan: Page[] =
-    me.is_controller || me.is_viewer || me.reads_cost_centers ? ['capacity', 'planning', 'status'] : []
+    me.is_controller || me.is_viewer || me.reads_cost_centers ? ['capacity', 'planning', 'status', 'notes', 'lists'] : []
   const groups: { label: string; pages: Page[] }[] = [
     { label: 'Plan', pages: plan },
     { label: 'Round', pages: round },
@@ -94,6 +110,9 @@ export default function App() {
   const [error, setError] = useState<string | null>(null)
   // The cost center shown on the capacity and planning pages: switching pages keeps it.
   const [costCenter, setCostCenter] = useState(() => remembered('planlayer.costCenter') ?? '')
+  // A line whose notes a sheet opens once loaded (from My notes), and the open tasks for the badge.
+  const [focus, setFocus] = useState<{ account?: string; key?: string; thread: number } | null>(null)
+  const [tasks, setTasks] = useState(0)
 
   const checkHealth = useCallback(() => {
     fetch('/api/health')
@@ -138,6 +157,24 @@ export default function App() {
   function go(next: Page) {
     setPage(next)
     window.location.hash = next
+  }
+
+  // The badge counts open tasks for the user; refreshed when they move between pages.
+  useEffect(() => {
+    if (me && (me.is_controller || me.is_viewer || me.reads_cost_centers))
+      api.myNotes().then((m) => setTasks(m.tasks), () => setTasks(0))
+  }, [me, page])
+
+  /** Open a thread from My notes: its round, its sheet, its cost center, then its line's notes. */
+  function openThread(t: MyThread) {
+    setVersion(t.round_code)
+    setCostCenter(t.cost_center_code)
+    setFocus(
+      t.module === 'capacity'
+        ? { key: t.line_code.replace(' / ', '|'), thread: t.thread_id }
+        : { account: t.line_code, thread: t.thread_id },
+    )
+    go(t.module === 'capacity' ? 'capacity' : 'planning')
   }
 
   function toggleSidebar() {
@@ -206,6 +243,11 @@ export default function App() {
                   >
                     <PageIcon />
                     <span>{label}</span>
+                    {p === 'notes' && tasks > 0 && (
+                      <b className="sb-badge" title={`${tasks} open task${tasks === 1 ? '' : 's'} for you`}>
+                        {tasks}
+                      </b>
+                    )}
                   </button>
                 )
               })}
@@ -305,6 +347,8 @@ export default function App() {
               onUnit={setCostCenter}
               controller={me.is_controller}
               onWidth={setSheetWidth}
+              focus={focus?.key ? { key: focus.key, thread: focus.thread } : null}
+              onFocused={() => setFocus(null)}
             />
           )}
           {version && current === 'planning' && (
@@ -314,11 +358,15 @@ export default function App() {
               unit={costCenter}
               onUnit={setCostCenter}
               onWidth={setSheetWidth}
+              focus={focus?.account ? { account: focus.account, thread: focus.thread } : null}
+              onFocused={() => setFocus(null)}
             />
           )}
           {version && current === 'status' && (
             <StatusPage key={`${me.login}/${version}`} version={version} me={me} onRoundChanged={loadVersions} />
           )}
+          {current === 'notes' && <MyNotesPage onOpen={openThread} />}
+          {current === 'lists' && <ItemListsPage />}
           {current === 'setup' && <SetupPage rounds={versions} code={version} onRoundsChanged={loadVersions} />}
           {round && current === 'publish' && <PublishPage key={round.code} round={round} />}
           {current === 'masterdata' && <MasterDataPage me={me} />}

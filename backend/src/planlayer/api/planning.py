@@ -13,7 +13,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from planlayer import access, planning, rounds, workflow
+from planlayer import access, notes, planning, rounds, workflow
 from planlayer.api.auth import CurrentUser, engine_of
 from planlayer.domain.entry_forms import Basis, Form
 from planlayer.domain.workflow import Action, RoundStatus, Status, WorkflowError
@@ -70,6 +70,27 @@ class SpreadIn(BaseModel):
     spread: LineSpreadIO | None  # None: back to the entry form's basis
 
 
+class NotesMarkerOut(BaseModel):
+    open: int  # open threads shown in this round
+    resolved: int
+    task_for_me: bool  # an open thread is the user's task
+    notepad: bool
+
+
+class ListMarkerOut(BaseModel):
+    list_id: int
+    total: str
+    visibility: Literal["private", "cost_center", "public"]
+
+
+def notes_marker(m: notes.Marker | None) -> NotesMarkerOut | None:
+    if m is None:
+        return None
+    return NotesMarkerOut(
+        open=m.open, resolved=m.resolved, task_for_me=m.task_for_me, notepad=m.notepad
+    )
+
+
 class RowOut(BaseModel):
     kind: Literal["group", "account"]
     code: str
@@ -92,6 +113,8 @@ class RowOut(BaseModel):
     # Why the line takes no plan values (ADR 0014): not planned in the round, or outside the
     # cost center's account set; it shows read only for its comparison values.
     not_planned: Literal["round", "set"] | None = None
+    notes: NotesMarkerOut | None = None  # the line's notes in this round (ADR 0017)
+    item_list: ListMarkerOut | None = None  # the line's item list the user can see
 
 
 class GridOut(BaseModel):
@@ -257,6 +280,14 @@ def _grid_out(grid: planning.Grid, batch_id: str | None = None) -> GridOut:
                 total_editable=r.total_editable,
                 capacity=r.capacity,
                 not_planned=r.not_planned,
+                notes=notes_marker(r.notes),
+                item_list=None
+                if r.item_list is None
+                else ListMarkerOut(
+                    list_id=r.item_list.list_id,
+                    total=f"{r.item_list.total:.2f}",
+                    visibility=r.item_list.visibility,  # type: ignore[arg-type]
+                ),
             )
             for r in grid.rows
         ],

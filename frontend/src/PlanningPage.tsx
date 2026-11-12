@@ -9,12 +9,16 @@ import {
   type Account,
   type Edit,
   type Grid,
+  type ItemList,
   type LineSpread,
   type PlanningUnit,
   type ProfileRef,
   type Row,
 } from './api'
 import { RedoIcon, UndoIcon } from './icons'
+import ItemListEditor from './ItemListEditor'
+import { headerWithMarks, listMark, noteMark, type H } from './lineMarks'
+import NotesPanel from './NotesPanel'
 import Select, { type Option } from './Select'
 import { isClosed, monthProp, monthsOf, periodColumns, quarterProp, quarterly, span, type Layout } from './periods'
 import { pickUnit } from './units'
@@ -98,13 +102,6 @@ function comparisonTitle(c: Grid['comparisons'][number]): string | undefined {
   return [c.note, coverage].filter(Boolean).join(' · ') || undefined
 }
 
-/** A line spreading evenly for want of a reference is flagged only where it holds values: on an
- * empty line, such as a new account or a new cost center's sheet, even is simply where it starts. */
-function warnsFallback(row: Row): boolean {
-  if (!row.fallback || row.capacity) return false
-  return row.plan.some((c) => c.value !== null) || row.comparisons.some((months) => months.some((v) => v !== null))
-}
-
 function spreadText(row: Row): string {
   switch (row.spread) {
     case 'even':
@@ -170,6 +167,8 @@ export default function PlanningPage({
   unit: chosen,
   onUnit,
   onWidth,
+  focus,
+  onFocused,
 }: {
   version: string
   /** The cost center chosen last, here or on the capacity page. */
@@ -177,6 +176,9 @@ export default function PlanningPage({
   onUnit: (code: string) => void
   /** Reports the sheet's width, so the app widens its content area for wide sheets. */
   onWidth: (px: number | null) => void
+  /** A line whose notes to open once the sheet is loaded (from My notes). */
+  focus?: { account: string; thread: number } | null
+  onFocused?: () => void
 }) {
   const [units, setUnits] = useState<PlanningUnit[] | null>(null)
   const unit = units ? pickUnit(units, chosen) : ''
@@ -191,6 +193,9 @@ export default function PlanningPage({
   const [profiles, setProfiles] = useState<ProfileRef[]>([])
   // The open spread menu: the line and the badge it opens at.
   const [spreadMenu, setSpreadMenu] = useState<{ code: string; anchor: DOMRect } | null>(null)
+  // The line whose notes are open beside the sheet, and the line whose item list is open (ADR 0017).
+  const [notesFor, setNotesFor] = useState<{ code: string; thread: number | null } | null>(null)
+  const [listFor, setListFor] = useState<{ code: string; list: ItemList | null } | null>(null)
 
   const showError = useCallback((e: unknown) => setMessage({ kind: 'error', text: errorText(e) }), [])
 
@@ -256,6 +261,7 @@ export default function PlanningPage({
       {
         ...column(COL_ACCOUNT, 'Account', 390, 'pl-head-acc'),
         pin: 'colPinStart' as const,
+        columnTemplate: (h: HyperFunc<VNode>) => headerWithMarks(h as unknown as H, 'Account', true),
         cellTemplate: (h: HyperFunc<VNode>, { rowIndex }: { rowIndex: number }) =>
           accountCell(h as unknown as H, grid?.rows[rowIndex], profiles, layout.quarters),
       },
@@ -407,12 +413,42 @@ export default function PlanningPage({
     }
   }
 
-  /** A click on a line's badge opens its spread menu (the badge is rendered by the grid). */
-  function openSpreadMenu(e: React.MouseEvent) {
-    const badge = (e.target as HTMLElement).closest<HTMLElement>('[data-spread]')
+  /** Pressing a line's badge opens its spread menu; its notes or list marker, the line's notes or
+   * item list (all rendered by the grid). Handled on mouse down, before the grid sees the press:
+   * the grid would select the cell and redraw it, replacing the marker under the pointer so that
+   * no click ever reaches it. */
+  function onSheetPress(e: React.MouseEvent) {
+    if (e.button !== 0) return
+    const target = e.target as HTMLElement
+    if (target.closest('[data-notes], [data-list], [data-spread]')) e.preventDefault()
+    const notes = target.closest<HTMLElement>('[data-notes]')
+    if (notes?.dataset.notes) {
+      e.stopPropagation()
+      setNotesFor({ code: notes.dataset.notes, thread: null })
+      onFocused?.()
+      return
+    }
+    const list = target.closest<HTMLElement>('[data-list]')
+    if (list?.dataset.list && grid) {
+      e.stopPropagation()
+      const code = list.dataset.list
+      api.lineList(grid.cost_center_code, code).then((found) => setListFor({ code, list: found }), showError)
+      return
+    }
+    const badge = target.closest<HTMLElement>('[data-spread]')
     if (!badge?.dataset.spread) return
     e.stopPropagation()
     setSpreadMenu({ code: badge.dataset.spread, anchor: badge.getBoundingClientRect() })
+  }
+
+  /** Write a total from the gridnote or an item list as the line's year value, as if typed into
+   * the year column: spread by the line's badge, audited and undoable. */
+  async function insertYear(code: string, total: string) {
+    if (!grid) return
+    const rowIndex = grid.rows.findIndex((r) => r.kind === 'account' && r.code === code)
+    const row = grid.rows[rowIndex]
+    if (!row || !editable(row, COL_FY, layout)) throw new Error(`${code}’s year value can’t be changed here`)
+    await save([{ rowIndex, prop: COL_FY, raw: total }])
   }
 
   async function addAccount(code: string) {
@@ -439,6 +475,9 @@ export default function PlanningPage({
   }
 
   const current = units.find((u) => u.code === unit)
+  // The notes shown beside the sheet: those opened here, or the line My notes opened it for.
+  const notesOpen =
+    notesFor ?? (focus && grid?.cost_center_code === unit ? { code: focus.account, thread: focus.thread } : null)
   const onSheet = new Set(grid?.rows.map((r) => r.code))
   const open = grid !== null && !locked
   const accountRows = grid?.rows.filter((r) => r.kind === 'account').length ?? 0
@@ -541,7 +580,7 @@ export default function PlanningPage({
         </div>
       ) : (
         grid && (
-          <div className="pl-sheet" ref={trimPastes} onClick={openSpreadMenu}>
+          <div className="pl-sheet" ref={trimPastes} onMouseDownCapture={onSheetPress}>
             <RevoGrid
               className="pl-revo"
               columns={columns}
@@ -598,6 +637,39 @@ export default function PlanningPage({
           </div>
         )
       )}
+      {notesOpen && grid && (
+        <NotesPanel
+          key={`${grid.cost_center_code}/${notesOpen.code}`}
+          version={version}
+          line={{ module: 'cost_center', cost_center: grid.cost_center_code, account: notesOpen.code }}
+          title={`${notesOpen.code} ${grid.rows.find((r) => r.kind === 'account' && r.code === notesOpen.code)?.name ?? ''}`}
+          canInsert={editable(grid.rows.find((r) => r.kind === 'account' && r.code === notesOpen.code), COL_FY, layout)}
+          focusThread={notesOpen.thread}
+          onInsertTotal={(total) => insertYear(notesOpen.code, total)}
+          onChanged={load}
+          onClose={() => {
+            setNotesFor(null)
+            onFocused?.()
+          }}
+        />
+      )}
+      {listFor && grid && (
+        <ItemListEditor
+          list={listFor.list}
+          costCenter={grid.cost_center_code}
+          account={listFor.code}
+          title={`${grid.cost_center_code} ${grid.cost_center_name} · ${listFor.code} ${grid.rows.find((r) => r.kind === 'account' && r.code === listFor.code)?.name ?? ''}`}
+          lineValue={sum(grid.rows.find((r) => r.kind === 'account' && r.code === listFor.code)?.plan.map((c) => c.value) ?? [])}
+          canCreate={current?.can_write ?? false}
+          onApply={
+            editable(grid.rows.find((r) => r.kind === 'account' && r.code === listFor.code), COL_FY, layout)
+              ? (total) => insertYear(listFor.code, total)
+              : undefined
+          }
+          onSaved={load}
+          onClose={() => setListFor(null)}
+        />
+      )}
       {spreadMenu && grid && (
         <Select
           label={`How ${spreadMenu.code} spreads its year total`}
@@ -624,8 +696,6 @@ function trimPastes(el: HTMLDivElement | null) {
   el?.addEventListener('beforepasteapply', trimTrailingRows) // the same listener is added once
 }
 
-// RevoGrid's hyperscript function, called with plain props and mixed children.
-type H = (tag: string, props: Record<string, unknown> | null, children?: unknown) => unknown
 
 /** A profile's shape as tiny bars, as in the setup page's preview. */
 function profileBars(h: H, values: number[]) {
@@ -644,13 +714,14 @@ function accountCell(h: H, row: Row | undefined, profiles: ProfileRef[], quarter
   if (!row) return ''
   if (row.kind === 'group') return h('span', { class: 'pl-acc-name' }, row.name)
   const form = row.entry_form
-  const warn = warnsFallback(row)
-  const label = badgeLabel(row) + (warn ? ' ⚠' : '')
+  // A line meant to follow a reference that has none spreads evenly and says so: "even". Its
+  // tooltip tells why; a warning would contradict the badge.
+  const label = badgeLabel(row)
   const classes = row.not_planned
     ? 'pv-form off'
     : row.capacity
     ? 'pv-form capacity'
-    : `pv-form${form === 'monthly' ? ' monthly' : ''}${warn ? ' fallback' : ''}${row.chosen_spread ? ' chosen' : ''}`
+    : `pv-form${form === 'monthly' ? ' monthly' : ''}${row.chosen_spread ? ' chosen' : ''}`
   const profile = row.spread === 'profile' ? profiles.find((p) => p.code === row.profile) : undefined
   const badge = !form
     ? ''
@@ -667,6 +738,10 @@ function accountCell(h: H, row: Row | undefined, profiles: ProfileRef[], quarter
     h('span', { class: 'pl-acc-tags' }, [
       profile ? profileBars(h, quarters ? quarterly(profile.values.map(Number)) : profile.values.map(Number)) : '',
       badge,
+      h('span', { class: 'pl-marks' }, [
+        noteMark(h, row.code, row.notes),
+        listMark(h, row.code, !!row.item_list, !!row.item_list && row.item_list.total !== (sum(row.plan.map((c) => c.value)) ?? '0.00')),
+      ]),
     ]),
   ])
 }

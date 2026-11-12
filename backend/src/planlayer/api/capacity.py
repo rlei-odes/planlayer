@@ -17,8 +17,10 @@ from planlayer.api.planning import (
     ComparisonOut,
     ConflictOut,
     LineSpreadIO,
+    NotesMarkerOut,
     _errors,
     _s,
+    notes_marker,
 )
 from planlayer.domain.entry_forms import Basis
 from planlayer.domain.workflow import RoundStatus, Status
@@ -52,6 +54,7 @@ class CapacityRowOut(BaseModel):
     editable: bool
     account_code: str | None  # credit rows: the account credited; None when the type names none
     account_name: str | None
+    notes: NotesMarkerOut | None = None  # lines: their notes in this round (ADR 0017)
 
 
 class CodeName(BaseModel):
@@ -187,6 +190,7 @@ def _sheet_out(s: capacity.CapacitySheet, batch_id: str | None = None) -> Capaci
                 editable=r.editable,
                 account_code=r.account_code,
                 account_name=r.account_name,
+                notes=notes_marker(r.notes),
             )
             for r in s.rows
         ],

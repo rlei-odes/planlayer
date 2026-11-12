@@ -26,6 +26,8 @@ from planlayer.domain.entry_forms import Basis, weights
 from planlayer.domain.periods import QUARTERS, closed_months, quarter_months
 from planlayer.domain.spreading import Profile, spread
 from planlayer.domain.workflow import EDITABLE, RoundStatus, Status
+from planlayer.notes import Marker
+from planlayer.notes import markers as note_markers
 from planlayer.planning import (
     MONTHS,
     Cell,
@@ -98,6 +100,7 @@ class CapacityRow:
     # Credit rows: the account credited, and whether the activity type names none.
     account_code: str | None = None
     account_name: str | None = None
+    notes: Marker | None = None  # lines: their notes (ADR 0017)
 
 
 @dataclass
@@ -395,6 +398,7 @@ def read_sheet(engine: Engine, user: User, version_code: str, cc_code: str) -> C
         profiles = _profiles(conn, lines.values())
         profile_codes = {pid: code for pid, (code, _, _) in profiles.items()}
         options = _options(conn, ctx)
+        note_marks = note_markers(conn, user, ctx.round, "capacity", ctx.cost_center_id)
 
     r = ctx.round
     sheet = CapacitySheet(
@@ -464,6 +468,7 @@ def read_sheet(engine: Engine, user: User, version_code: str, cc_code: str) -> C
                     profile=_code(profile_codes, line.profile_id),
                     fallback=spreading.fallback,
                     editable=editable,
+                    notes=note_marks.get((None, line.work_center_id, at)),
                 )
             )
             group.plan = [

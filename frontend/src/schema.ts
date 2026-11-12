@@ -41,6 +41,7 @@ export type CapacityRowOut = {
   editable: boolean
   account_code: string | null
   account_name: string | null
+  notes?: NotesMarkerOut | null
 }
 
 export type CapacitySheetOut = {
@@ -208,6 +209,11 @@ export type GridOut = {
   batch_id?: string | null
 }
 
+export type GridRowIO = {
+  text: string
+  amount: string | null
+}
+
 export type HTTPValidationError = {
   detail?: ValidationError[]
 }
@@ -238,6 +244,33 @@ export type InactiveLineOut = {
   activity_type_name: string
 }
 
+export type ItemIO = {
+  name: string
+  supplier?: string | null
+  quantity?: string
+  unit_price: string
+  amount?: string | null
+  comment?: string | null
+}
+
+export type ItemListOut = {
+  list_id: number
+  cost_center_code: string
+  cost_center_name: string
+  account_code: string
+  account_name: string
+  owner_login: string
+  owner_name: string
+  visibility: "private" | "cost_center" | "public"
+  total: string
+  items: number
+  changed_at: string
+  changed_by: string
+  mine: boolean
+  can_edit: boolean
+  entries: ItemIO[]
+}
+
 export type LatestActualsOut = {
   month: string | null
   fiscal_year: number | null
@@ -257,9 +290,38 @@ export type LineIn = {
   new_work_center_name?: string | null
 }
 
+export type LineNotesOut = {
+  threads: ThreadOut[]
+  notepad: NotepadOut | null
+  can_write: boolean
+}
+
 export type LineSpreadIO = {
   basis: "even" | "profile" | "reference"
   profile_code?: string | null
+}
+
+export type ListMarkerOut = {
+  list_id: number
+  total: string
+  visibility: "private" | "cost_center" | "public"
+}
+
+export type ListSummaryOut = {
+  list_id: number
+  cost_center_code: string
+  cost_center_name: string
+  account_code: string
+  account_name: string
+  owner_login: string
+  owner_name: string
+  visibility: "private" | "cost_center" | "public"
+  total: string
+  items: number
+  changed_at: string
+  changed_by: string
+  mine: boolean
+  can_edit: boolean
 }
 
 export type LoginIn = {
@@ -338,10 +400,90 @@ export type MemberOut = {
   variable_account_code: string | null
 }
 
+export type MyNotesOut = {
+  tasks: number
+  threads: MyThreadOut[]
+}
+
+export type MyThreadOut = {
+  thread_id: number
+  reason: "assigned" | "mentioned" | "started"
+  module: "cost_center" | "capacity"
+  cost_center_code: string
+  cost_center_name: string
+  line_code: string
+  line_name: string
+  round_code: string
+  first: string
+  last_author: string
+  last_at: string
+  assignee: string | null
+  notes: number
+}
+
+export type NewListIn = {
+  cost_center: string
+  account: string
+  visibility?: "private" | "cost_center" | "public"
+  items?: ItemIO[]
+}
+
 export type NotPlannedOut = {
   code: string
   name: string
   reason: "new" | "disabled"
+}
+
+export type NoteEditIn = {
+  version: string
+  body: string
+  mentions?: string[]
+}
+
+export type NoteIn = {
+  version: string
+  body: string
+  mentions?: string[]
+  assign?: string | null
+}
+
+export type NoteLineIn = {
+  module: "cost_center" | "capacity"
+  cost_center: string
+  account?: string | null
+  work_center?: string | null
+  activity_type?: string | null
+}
+
+export type NoteOut = {
+  note_id: number
+  author: PersonOut
+  body: string
+  created_at: string
+  edited_at: string | null
+  mentions: PersonOut[]
+  mine: boolean
+}
+
+export type NotepadIn = {
+  version: string
+  line: NoteLineIn
+  rows: GridRowIO[]
+}
+
+export type NotepadOut = {
+  rows: GridRowIO[]
+  total: string
+  changed_at: string
+  changed_by: PersonOut
+  carried_from: string | null
+}
+
+export type NotesMarkerOut = {
+  open: number
+  resolved: number
+  task_for_me: boolean
+  notepad: boolean
 }
 
 export type OverviewOut = {
@@ -352,6 +494,11 @@ export type OverviewOut = {
 
 export type OwnerIn = {
   login: string | null
+}
+
+export type PersonOut = {
+  login: string
+  name: string
 }
 
 export type PlanOut = {
@@ -433,6 +580,11 @@ export type QueryPreviewOut = {
   error?: string | null
 }
 
+export type ResolveIn = {
+  version: string
+  resolved: boolean
+}
+
 export type ResponsibilitiesOut = {
   rows: ResponsibilityOut[]
   unmatched_owners: string[]
@@ -488,6 +640,8 @@ export type RowOut = {
   total_editable: boolean
   capacity: boolean
   not_planned?: "round" | "set" | null
+  notes?: NotesMarkerOut | null
+  item_list?: ListMarkerOut | null
 }
 
 export type RuleIO = {
@@ -495,6 +649,11 @@ export type RuleIO = {
   form: "monthly" | "annual" | "annual_even" | "annual_profile" | "annual_reference"
   profile_code?: string | null
   reference_version_code?: string | null
+}
+
+export type SaveListIn = {
+  visibility: "private" | "cost_center" | "public"
+  items: ItemIO[]
 }
 
 export type ScopeOut = {
@@ -581,6 +740,23 @@ export type SyncRunOut = {
 export type SyncYearsOut = {
   default: WindowOut | null
   years: YearOut[]
+}
+
+export type ThreadIn = {
+  version: string
+  body: string
+  mentions?: string[]
+  assign?: string | null
+  line: NoteLineIn
+}
+
+export type ThreadOut = {
+  thread_id: number
+  notes: NoteOut[]
+  assignee: PersonOut | null
+  resolved_at: string | null
+  resolved_by: PersonOut | null
+  carried_from: string | null
 }
 
 export type UndoIn = {
