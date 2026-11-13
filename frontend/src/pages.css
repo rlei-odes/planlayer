@@ -2076,6 +2076,7 @@ revo-grid.pl-revo .rgCell:hover .pl-mark.empty,
 
 /* Tree picker: many members of a hierarchy at once. */
 .tp {
+  max-width: 560px;
   border: 1px solid var(--line);
   border-radius: var(--radius-s);
   background: var(--surface);
@@ -2093,8 +2094,8 @@ revo-grid.pl-revo .rgCell:hover .pl-mark.empty,
   flex: 0 1 260px;
 }
 .tp-hint {
+  flex-basis: 100%;
   font-size: 12px;
-  margin-left: auto;
 }
 .tp-list {
   list-style: none;

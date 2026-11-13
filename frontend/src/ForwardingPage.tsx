@@ -117,6 +117,18 @@ function number(raw: string): string {
     : s.replace(/,/g, '')
 }
 
+/** The first column of what a spreadsheet copied: lines of the plain text, whatever line breaks
+ * it uses (LibreOffice, Excel, Google Sheets differ), or the rows of its HTML table. */
+function pastedColumn(data: DataTransfer): string[] {
+  const text = data.getData('text/plain').replace(/(\r\n|\r|\n)$/, '')
+  const lines = text.split(/\r\n|\r|\n/).map((l) => l.split('\t')[0].trim())
+  if (lines.length > 1) return lines
+  const html = data.getData('text/html')
+  if (!html) return lines
+  const rows = new DOMParser().parseFromString(html, 'text/html').querySelectorAll('tr')
+  return Array.from(rows, (tr) => tr.querySelector('td, th')?.textContent?.trim() ?? '')
+}
+
 // Display only: previews before saving. Stored values come from the server (T-12).
 function value(raw: string): number {
   const n = Number(number(raw))
@@ -410,10 +422,9 @@ function Editor(p: {
   }
   // A column pasted from a spreadsheet fills down from this cell; the first column of each line.
   function paste(i: number, e: ClipboardEvent<HTMLInputElement>) {
-    const lines = e.clipboardData.getData('text/plain').replace(/\r/g, '').replace(/\n$/, '').split('\n')
-    if (lines.length < 2) return
+    const values = pastedColumn(e.clipboardData)
+    if (values.length < 2) return
     e.preventDefault()
-    const values = lines.map((l) => l.split('\t')[0].trim())
     set({
       receivers: d.receivers.map((r, j) => (j >= i && j - i < values.length ? { ...r, quantity: values[j - i] } : r)),
     })
