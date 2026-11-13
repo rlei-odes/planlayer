@@ -752,3 +752,53 @@ annotation_log = Table(
     Column("old", JSONB),
     Column("new", JSONB),
 )
+
+
+# --- Cost forwarding (ADR 0018) ------------------------------------------------------------------
+
+# A forwarding of a round: what a source cost center passes on, by which method, onto which
+# accounts. Written by controllers only, while the round is in setup or open (guard trigger).
+forwarding = Table(
+    "forwarding",
+    metadata,
+    Column("forwarding_id", Integer, primary_key=True),
+    Column("version_id", SmallInteger, ForeignKey("planning_round.version_id"), nullable=False),
+    Column("code", Text, nullable=False),
+    Column("name", Text, nullable=False),
+    Column("method", Text, nullable=False),  # full / fixed / rate
+    Column("source_id", Integer, ForeignKey("member.member_id"), nullable=False),
+    Column("shares", Text),  # full and fixed: percent / portion
+    Column("amount", AMOUNT_TYPE),  # fixed: the year's amount
+    Column("rate", RATE_TYPE),  # rate: per unit and year
+    Column("unit", Text),  # rate: what a quantity counts
+    Column("charge_account_id", Integer, ForeignKey("member.member_id"), nullable=False),
+    Column("credit_account_id", Integer, ForeignKey("member.member_id"), nullable=False),
+    Column("changed_by", Text),
+    Column("changed_at", DateTime(timezone=True), server_default=func.now()),
+    UniqueConstraint("version_id", "code"),
+)
+
+# A receiver's share (percent or portion) or quantity of the forwarding's unit.
+forwarding_receiver = Table(
+    "forwarding_receiver",
+    metadata,
+    Column(
+        "forwarding_id",
+        Integer,
+        ForeignKey("forwarding.forwarding_id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("cost_center_id", Integer, ForeignKey("member.member_id"), nullable=False),
+    Column("quantity", RATE_TYPE, nullable=False),
+    PrimaryKeyConstraint("forwarding_id", "cost_center_id"),
+)
+
+# View (migration 0014): the accounts each round's forwardings charge and credit.
+forwarding_account = Table(
+    "forwarding_account",
+    metadata,
+    Column("version_id", SmallInteger),
+    Column("account_id", Integer),
+    Column("side", Text),  # charge / credit
+    Column("forwarding_id", Integer),
+)

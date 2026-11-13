@@ -58,6 +58,7 @@ from planlayer.store.schema import (
     entry_form,
     fact_capacity,
     fact_cost_center,
+    forwarding_account,
     installation,
     line_spread,
     member,
@@ -228,6 +229,7 @@ class CarryOver:
     accounts: bool = True  # accounts not planned, account sets and their assignments
     capacity: bool = True  # productive cost centers and their capacity lines
     sheets: bool = True  # accounts added to sheets, line spreads
+    forwarding: bool = True  # cost forwardings (ADR 0018), recomputed in the new round
     values: bool = False  # plan values, moved to the new year and raised by ``uplift``
     uplift: Decimal = Decimal(0)  # percent
 
@@ -238,7 +240,16 @@ class CarryOver:
         return {**items, "uplift": str(self.uplift), "cells": cells, "hours": hours}
 
 
-CARRY_ITEMS = ("setup", "compare_with_source", "scope", "accounts", "capacity", "sheets", "values")
+CARRY_ITEMS = (
+    "setup",
+    "compare_with_source",
+    "scope",
+    "accounts",
+    "capacity",
+    "sheets",
+    "forwarding",
+    "values",
+)
 
 
 CENT = Decimal("0.01")
@@ -358,6 +369,12 @@ def create_round(
 
             target = get_round(conn, code)
             hours = carry_hours(conn, source, target, productive(conn, vid) & planned)
+        if carry.forwarding:
+            # After the values: full forwardings pass on the carried costs. Imported here:
+            # forwarding builds on this module.
+            from planlayer.forwarding import carry as carry_forwarding
+
+            carry_forwarding(conn, source, get_round(conn, code), planned)
         conn.execute(
             update(planning_round)
             .where(planning_round.c.version_id == vid)
@@ -509,6 +526,14 @@ def _copy_values(
             )
         ).scalars()
     ) | set(conn.execute(select(credit_account.c.account_id)).scalars())
+    # Forwarding values are computed in the new round, not carried (ADR 0018).
+    excluded |= set(
+        conn.execute(
+            select(forwarding_account.c.account_id).where(
+                forwarding_account.c.version_id == source.version_id
+            )
+        ).scalars()
+    )
     scopes = account_scopes(conn, target_id, planned)
     factor = 1 + uplift / 100
     f = fact_cost_center
@@ -945,7 +970,9 @@ def _created(conn: Connection, version_id: int) -> Created | None:
     record = row.carried
     if record is None:
         return Created(row.created_by, row.created_at, None, None)
-    carry = CarryOver(**{k: bool(record[k]) for k in CARRY_ITEMS}, uplift=Decimal(record["uplift"]))
+    carry = CarryOver(
+        **{k: bool(record.get(k, False)) for k in CARRY_ITEMS}, uplift=Decimal(record["uplift"])
+    )
     return Created(row.created_by, row.created_at, carry, record.get("cells"), record.get("hours"))
 
 

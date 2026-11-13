@@ -808,6 +808,7 @@ def apply_edits(
             raise ConflictError(conflicts)
         _write_hours(conn, ctx, writes, current)
         _write_credits(conn, ctx)
+        _follow(conn, ctx)
 
     return _run(engine, actor, work)
 
@@ -880,6 +881,14 @@ def _write_hours(
                 set_={"amount": stmt.excluded.amount, "row_version": f.c.row_version + 1},
             )
         )
+
+
+def _follow(conn: Connection, ctx: _Context) -> None:
+    """New credits change what is left on the cost center, which its full forwardings pass on
+    (ADR 0018). Imported here: forwarding builds on planning, which this module builds on."""
+    from planlayer.forwarding import follow
+
+    follow(conn, ctx.round, ctx.cost_center_id)
 
 
 def _write_credits(conn: Connection, ctx: _Context) -> None:
@@ -1035,6 +1044,7 @@ def change_line(
             .values(**values)
         )
         _write_credits(conn, ctx)
+        _follow(conn, ctx)
 
     return _run(engine, actor, work)
 
@@ -1226,6 +1236,7 @@ def undo_batch(engine: Engine, actor: User, version_code: str, cc_code: str, bat
                 )
         _write_hours(conn, ctx, hours_before, current)
         _write_credits(conn, ctx)
+        _follow(conn, ctx)
 
     return _run(engine, actor, work)
 

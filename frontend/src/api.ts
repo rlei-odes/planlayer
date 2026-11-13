@@ -41,6 +41,10 @@ export type CapacityUnit = S.CapacityUnitOut
 export type CapacitySheet = S.CapacitySheetOut
 export type CapacityRow = S.CapacityRowOut
 export type HoursEdit = S.HoursEditIn
+// Cost forwarding (ADR 0018).
+export type ForwardingPage = S.ForwardingPageOut
+export type Forwarding = S.ForwardingOut
+export type ForwardingIn = S.ForwardingIn
 export type NewMember = S.MemberIn
 // Line notes and item lists (ADR 0017).
 export type NoteLine = S.NoteLineIn
@@ -94,6 +98,7 @@ const r = (code: string) => `/api/responsibilities/${encodeURIComponent(code)}`
 const v = (version: string) => `/api/versions/${encodeURIComponent(version)}`
 const cc = (version: string, code: string) => `${v(version)}/cost-centers/${encodeURIComponent(code)}`
 const cap = (version: string, code: string) => `${v(version)}/capacity/${encodeURIComponent(code)}`
+const fw = (version: string) => `${v(version)}/forwarding`
 
 /** A line as query parameters: only the fields it has. */
 function lineQuery(version: string, line: NoteLine): string {
@@ -140,6 +145,12 @@ export const api = {
     post('/api/sync/run', { entity, confirm, years }).then((res) =>
       json<S.SyncRunOut>(res),
     ),
+  forwarding: (version: string) => fetch(fw(version)).then((res) => json<ForwardingPage>(res)),
+  createForwarding: (version: string, f: ForwardingIn) => post(fw(version), f).then((res) => json<ForwardingPage>(res)),
+  changeForwarding: (version: string, code: string, f: ForwardingIn) =>
+    send('PUT', `${fw(version)}/${encodeURIComponent(code)}`, f).then((res) => json<ForwardingPage>(res)),
+  deleteForwarding: (version: string, code: string) =>
+    send('DELETE', `${fw(version)}/${encodeURIComponent(code)}`).then((res) => json<ForwardingPage>(res)),
   members: (d: MemberDataset) => fetch(`/api/members/${d}`).then((res) => json<MemberRow[]>(res)),
   addMember: (d: MemberDataset, m: NewMember) => post(`/api/members/${d}`, m).then((res) => json<null>(res)),
   changeMember: (d: MemberDataset, code: string, change: Record<string, string | null>) =>

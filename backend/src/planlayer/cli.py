@@ -89,6 +89,11 @@ def main(argv: list[str] | None = None) -> None:
         help="plan values for some cost centers, as their owners began planning (development)",
     )
     plans_cmd.add_argument("--round", default="B2026", help="the planning round (default B2026)")
+    forwarding_cmd = commands.add_parser(
+        "seed-dev-forwarding",
+        help="the test company's cost forwardings in a round (development)",
+    )
+    forwarding_cmd.add_argument("--round", required=True, help="the planning round")
     types_cmd = commands.add_parser(
         "api-types", help="write the frontend's TypeScript types from the API schema"
     )
@@ -195,6 +200,16 @@ def main(argv: list[str] | None = None) -> None:
             for code, owner, status in seeded:
                 print(f"{code}: {status} ({owner})")
             print(f"seeded plan values for {len(seeded)} cost center(s) in {args.round}")
+        case "seed-dev-forwarding":
+            settings = Settings()  # type: ignore[call-arg]
+            if settings.environment == "production":
+                raise SystemExit("seed-dev-forwarding is refused in production")
+            engine = create_app_engine(settings)
+            try:
+                made = devdata.seed_forwarding(engine, args.round)
+            finally:
+                engine.dispose()
+            print(f"created {len(made)} forwarding(s) in {args.round}: {', '.join(made) or '-'}")
         case "api-types":
             from planlayer.api.typescript import app_schema, typescript
 

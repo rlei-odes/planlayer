@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import { api, type Me, type MyThread, type Version } from './api'
 import CapacityPage from './CapacityPage'
+import ForwardingPage from './ForwardingPage'
 import {
   CapacityIcon,
+  ForwardingIcon,
   CollapseIcon,
   ItemListIcon,
   LogoMark,
@@ -40,6 +42,7 @@ type Page =
   | 'notes'
   | 'lists'
   | 'setup'
+  | 'forwarding'
   | 'publish'
   | 'masterdata'
   | 'responsibilities'
@@ -52,15 +55,16 @@ const NAV: Record<Page, { label: string; icon: () => ReactNode }> = {
   notes: { label: 'My notes', icon: NotesIcon },
   lists: { label: 'My item lists', icon: ItemListIcon },
   setup: { label: 'Setup', icon: SetupIcon },
+  forwarding: { label: 'Forwarding', icon: ForwardingIcon },
   publish: { label: 'Publish', icon: PublishIcon },
   masterdata: { label: 'Master data', icon: MasterDataIcon },
   responsibilities: { label: 'Responsibilities', icon: ResponsibilitiesIcon },
   users: { label: 'Users', icon: UsersIcon },
 }
-const ROUND_PAGES: Page[] = ['capacity', 'planning', 'status', 'setup', 'publish']
+const ROUND_PAGES: Page[] = ['capacity', 'planning', 'status', 'setup', 'forwarding', 'publish']
 
 function groupsFor(me: Me): { label: string; pages: Page[] }[] {
-  const round: Page[] = me.is_controller ? ['setup', 'publish', 'responsibilities'] : []
+  const round: Page[] = me.is_controller ? ['setup', 'forwarding', 'publish', 'responsibilities'] : []
   const admin: Page[] = []
   if (me.is_controller || me.is_admin) admin.push('masterdata')
   if (me.is_admin) admin.push('users')
@@ -368,6 +372,7 @@ export default function App() {
           {current === 'notes' && <MyNotesPage onOpen={openThread} />}
           {current === 'lists' && <ItemListsPage />}
           {current === 'setup' && <SetupPage rounds={versions} code={version} onRoundsChanged={loadVersions} />}
+          {version && current === 'forwarding' && <ForwardingPage key={version} version={version} />}
           {round && current === 'publish' && <PublishPage key={round.code} round={round} />}
           {current === 'masterdata' && <MasterDataPage me={me} />}
           {current === 'responsibilities' && <ResponsibilitiesPage />}

@@ -79,6 +79,7 @@ class CarryOverIn(BaseModel):
     accounts: bool = True
     capacity: bool = True
     sheets: bool = True
+    forwarding: bool = True  # cost forwardings (ADR 0018)
     values: bool = False
     uplift: Annotated[Decimal, Field(ge=-100, le=1000)] = Decimal(0)  # percent
 

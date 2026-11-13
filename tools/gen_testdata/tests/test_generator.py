@@ -52,8 +52,8 @@ def test_standard_sizes() -> None:
     master = build()
     assert len(master.entities) == 4
     assert 55 <= len(master.cost_centers) <= 65
-    assert len(master.accounts) == 155  # 154 booked, plus the new one (NEW_ACCOUNT)
-    assert len(master.account_groups) == 13
+    assert len(master.accounts) == 158  # 157 booked, plus the new one (NEW_ACCOUNT)
+    assert len(master.account_groups) == 14
     assert len(master.products) == 400
     assert len(master.product_groups) == 40
     assert len(master.countries) == 12
@@ -104,8 +104,8 @@ def test_small_variant() -> None:
     master = build("small")
     assert [e.code for e in master.entities] == ["DE"]
     assert len(master.cost_centers) <= 16
-    # Capped per group, except the credit accounts capacity planning needs.
-    assert len([a for a in master.accounts if a.group != "CREDITS"]) <= 27
+    # Capped per group, except the credit and forwarding accounts.
+    assert len([a for a in master.accounts if a.group not in ("CREDITS", "FORWARDED")]) <= 27
     assert len([a for a in master.accounts if a.group == "CREDITS"]) == 4
     assert master.calendar.periods[0] == date(2025, 1, 1)
 
@@ -166,3 +166,21 @@ def test_credits_are_actual_hours_times_rate() -> None:
     # The lathe's machine hours, plus the other machining centres on the same cost center.
     assert any(abs(-float(str(r[6])) - hours * 80) < 0.02 for r in booked)
     assert all(float(str(r[6])) < 0 for r in booked)
+
+
+def test_cost_forwarding_balances_and_passes_on_toolings_costs() -> None:
+    """TD-22: forwarding documents net to zero; tooling passes on all it spends."""
+    master = build()
+    rows = Rows(master, 42)
+    list(rows.billing_lines())
+    tooling = master.cc_by_name("Tooling").code
+    first = master.calendar.periods[0].isoformat()[:7]
+    month = [r for r in rows.gl_lines() if str(r[3])[:7] == first]
+    forwarded = [r for r in month if r[5] in m.FORWARDED_ACCOUNT_NAMES]
+    docs: dict[object, float] = {}
+    for r in forwarded:
+        docs[r[0]] = docs.get(r[0], 0.0) + float(str(r[6]))
+    assert len(docs) == len(m.FORWARDINGS) and all(abs(v) < 0.005 for v in docs.values())
+    left = sum(float(str(r[6])) for r in month if r[4] == tooling and r[5] != "8800")
+    passed = -sum(float(str(r[6])) for r in forwarded if r[4] == tooling and r[5] == "8800")
+    assert abs(passed - left) < 0.02  # 40 + 25 + 20 + 15 %

@@ -397,6 +397,8 @@ ACCOUNT_GROUPS = (
     ("DEPRECIATION", "Depreciation", "DA", 7800, 10, "cost", ("production", "admin"), 1200),
     # Credited by capacity planning (ADR 0013), never booked directly: no functions.
     ("CREDITS", "Activity credits", "ALLOC", 8900, 4, "cost", (), 0),
+    # Booked only by the cost forwarding below (ADR 0018), never as cost series.
+    ("FORWARDED", "Internal cost forwarding", "ALLOC", 8800, 3, "cost", (), 0),
 )
 CREDIT_ACCOUNT_NAMES = {
     "8900": "Credits machine hours",
@@ -404,6 +406,96 @@ CREDIT_ACCOUNT_NAMES = {
     "8920": "Credits repair work",
     "8930": "Credits engineering hours",
 }
+
+FORWARDED_ACCOUNT_NAMES = {
+    "8800": "Forwarded tooling costs",
+    "8810": "Forwarded building costs",
+    "8820": "Forwarded IT services",
+}
+
+
+@dataclass(frozen=True)
+class Forwarding:
+    """Cost forwarding as the ERP books it (ADR 0018, TD-22): each month, the source is
+    credited and the receivers charged on one account, in one document. ``full`` passes on the
+    source's balance of the month by percentages; ``rate`` passes on a rate per unit and year
+    (EUR) times each receiver's quantity, a twelfth a month. They are booked in this order, so a
+    full forwarding passes on the charges its source received before."""
+
+    account: str
+    method: str  # full / rate
+    source: str  # cost center name
+    receivers: tuple[tuple[str, float], ...]  # cost center name, percent or quantity
+    rate: int = 0
+
+
+FORWARDINGS = (
+    # Building A, the production hall, by m² at 95 a year.
+    Forwarding(
+        "8810",
+        "rate",
+        "Facilities",
+        (
+            ("Machining", 1800),
+            ("Assembly Line 1", 1300),
+            ("Assembly Line 2", 1200),
+            ("Painting", 700),
+            ("Plant Logistics", 1500),
+            ("Tooling", 500),
+        ),
+        95,
+    ),
+    # Building B, offices, by m² at 150 a year: on the same account as building A.
+    Forwarding(
+        "8810",
+        "rate",
+        "Facilities",
+        (
+            ("Finance", 220),
+            ("Human Resources", 160),
+            ("IT", 200),
+            ("Executive Office", 180),
+            ("Hydraulic Design", 260),
+            ("Mechanical Design", 240),
+        ),
+        150,
+    ),
+    # IT: PCs at 1,500 a year, and CAD licences at 6,000 a year.
+    Forwarding(
+        "8820",
+        "rate",
+        "IT",
+        (
+            ("Machining", 12),
+            ("Quality Assurance", 10),
+            ("Maintenance", 8),
+            ("Plant Logistics", 10),
+            ("Hydraulic Design", 24),
+            ("Mechanical Design", 26),
+            ("Prototyping", 8),
+            ("Sales DACH", 30),
+            ("Finance", 18),
+            ("Human Resources", 12),
+            ("Executive Office", 9),
+        ),
+        1500,
+    ),
+    Forwarding(
+        "8820",
+        "rate",
+        "IT",
+        (("Hydraulic Design", 12), ("Mechanical Design", 14), ("Prototyping", 4), ("Tooling", 3)),
+        6000,
+    ),
+    # Tooling buys the tools of the machining and assembly lines: all of it, by rough use,
+    # after the building and IT charges it receives itself (step-down).
+    Forwarding(
+        "8800",
+        "full",
+        "Tooling",
+        (("Machining", 40), ("Assembly Line 1", 25), ("Assembly Line 2", 20), ("Painting", 15)),
+    ),
+)
 
 # Revenue accounts per product line: sales revenue is booked by line (TD-07).
 LINE_REVENUE_ACCOUNT = {
@@ -554,7 +646,11 @@ def _accounts(variant: Variant) -> list[Account]:
     accounts: list[Account] = []
     for group, name, _section, first, count, kind, functions, monthly in ACCOUNT_GROUPS:
         n = count
-        if variant.max_accounts_per_group is not None and group not in ("SALES_REV", "CREDITS"):
+        if variant.max_accounts_per_group is not None and group not in (
+            "SALES_REV",
+            "CREDITS",
+            "FORWARDED",
+        ):
             n = min(count, variant.max_accounts_per_group)
         for i in range(n):
             code = str(first + 10 * i)
@@ -564,6 +660,8 @@ def _accounts(variant: Variant) -> list[Account]:
                 label = f"Revenue {dict((c, n) for c, n, *_ in PRODUCT_LINES)[line]}"
             if group == "CREDITS":
                 label = CREDIT_ACCOUNT_NAMES[code]
+            if group == "FORWARDED":
+                label = FORWARDED_ACCOUNT_NAMES[code]
             accounts.append(Account(code, label, group, kind, functions, monthly))
     if variant.max_accounts_per_group is None:
         code, label, group = NEW_ACCOUNT

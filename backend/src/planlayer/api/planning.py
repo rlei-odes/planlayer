@@ -91,6 +91,18 @@ def notes_marker(m: notes.Marker | None) -> NotesMarkerOut | None:
     )
 
 
+class ForwardedOut(BaseModel):
+    """A line written by cost forwarding (ADR 0018): the forwarding and the other side."""
+
+    code: str
+    name: str
+    side: Literal["charge", "credit"]
+    method: Literal["full", "fixed", "rate"]
+    source_code: str
+    source_name: str
+    receivers: int
+
+
 class RowOut(BaseModel):
     kind: Literal["group", "account"]
     code: str
@@ -110,6 +122,8 @@ class RowOut(BaseModel):
     months_editable: bool
     total_editable: bool
     capacity: bool  # credited by capacity planning, read only
+    forwarded: ForwardedOut | None = None  # written by cost forwarding, read only
+    credit: bool = False  # a credit, shown negative (stored natural-positive, T-7)
     # Why the line takes no plan values (ADR 0014): not planned in the round, or outside the
     # cost center's account set; it shows read only for its comparison values.
     not_planned: Literal["round", "set"] | None = None
@@ -279,6 +293,10 @@ def _grid_out(grid: planning.Grid, batch_id: str | None = None) -> GridOut:
                 months_editable=r.months_editable,
                 total_editable=r.total_editable,
                 capacity=r.capacity,
+                forwarded=None
+                if r.forwarded is None
+                else ForwardedOut.model_validate(r.forwarded, from_attributes=True),
+                credit=r.credit,
                 not_planned=r.not_planned,
                 notes=notes_marker(r.notes),
                 item_list=None

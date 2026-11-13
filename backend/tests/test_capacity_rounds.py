@@ -175,4 +175,4 @@ def test_closed_months_show_credits_the_ledger_books(
     run_sync(migrated, source_schema)
     assert credit(sheet(forecast, F))[2] == "8000.00"
     grid = forecast.get(f"/api/versions/{F}/cost-centers/CC1/grid").json()
-    assert plan(grid, "4900")[2] == "8000.00"
+    assert plan(grid, "4900")[2] == "-8000.00"

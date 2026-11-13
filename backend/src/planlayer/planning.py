@@ -59,6 +59,9 @@ from planlayer.store.schema import (
     credit_account,
     entry_form,
     fact_cost_center,
+    forwarding,
+    forwarding_account,
+    forwarding_receiver,
     hier_edge,
     line_spread,
     member,
@@ -137,6 +140,19 @@ class ListMarker:
 
 
 @dataclass
+class Forwarded:
+    """A line written by cost forwarding (ADR 0018): which forwarding, and the other side."""
+
+    code: str
+    name: str
+    side: Literal["charge", "credit"]
+    method: str
+    source_code: str
+    source_name: str
+    receivers: int
+
+
+@dataclass
 class Row:
     kind: Literal["group", "account"]
     code: str
@@ -156,6 +172,9 @@ class Row:
     months_editable: bool = False
     total_editable: bool = False
     capacity: bool = False  # credited by capacity planning: read only (ADR 0013)
+    forwarded: Forwarded | None = None  # written by cost forwarding: read only (ADR 0018)
+    # A credit (capacity or forwarding): stored natural-positive, shown negative (T-7).
+    credit: bool = False
     # Why the line takes no plan values in this round (ADR 0014); None: it is planned.
     not_planned: Literal["round", "set"] | None = None
     # The line's notes and item list (ADR 0017); None: it has none the user can see.
@@ -408,8 +427,11 @@ class _Scope:
     not_planned: set[int]  # not planned in the round
     account_set: set[int] | None  # the leaves of its account set; None: every account
     credited: set[int]  # written by capacity planning, outside any set
+    forwarded: set[int] = field(default_factory=set)  # written by cost forwarding (ADR 0018)
 
     def why_not(self, account_id: int) -> Literal["round", "set"] | None:
+        if account_id in self.forwarded:
+            return None
         if account_id in self.not_planned:
             return "round"
         if (
@@ -422,7 +444,11 @@ class _Scope:
 
     def offered(self, account_id: int) -> bool:
         """Whether a planner may add the account to the sheet."""
-        return self.why_not(account_id) is None and account_id not in self.credited
+        return (
+            self.why_not(account_id) is None
+            and account_id not in self.credited
+            and account_id not in self.forwarded
+        )
 
 
 def _scope(conn: Connection, ctx: _Context) -> _Scope:
@@ -430,6 +456,7 @@ def _scope(conn: Connection, ctx: _Context) -> _Scope:
         _not_planned(conn, ctx.version_id),
         account_scopes(conn, ctx.version_id, [ctx.cost_center_id])[ctx.cost_center_id],
         _credited(conn, ctx),
+        set(_forwarded(conn, ctx.version_id)),
     )
 
 
@@ -588,6 +615,7 @@ def read_grid(engine: Engine, user: User, version_code: str, cc_code: str) -> Gr
             shown |= set(values)
         lines = _lines(conn, ctx, shown)
         credited = scope.credited
+        forwarded = _forwarded(conn, ctx.version_id)
         note_marks = note_markers(conn, user, ctx.round, "cost_center", ctx.cost_center_id)
         list_marks = list_markers(conn, ctx.cost_center_id)
 
@@ -625,15 +653,23 @@ def read_grid(engine: Engine, user: User, version_code: str, cc_code: str) -> Gr
             grid.rows.append(group_row)
         w = weights(line.form.basis, MONTHS, line.profile, line.reference, ctx.open_months)
         from_capacity = line.account_id in credited
+        by_forwarding = forwarded.get(line.account_id)
+        is_credit = from_capacity or (by_forwarding is not None and by_forwarding.side == "credit")
+        read_only = from_capacity or by_forwarding is not None
         why_not = scope.why_not(line.account_id)
         planned = why_not is None
+        comparisons = [values.get(line.account_id, blank) for values in compared]
+        cells = plan[line.account_id]
+        if is_credit:  # shown negative, so the group's subtotal is what the cost center carries
+            comparisons = [[None if v is None else -v for v in months] for months in comparisons]
+            cells = [Cell(None if c.value is None else -c.value, c.row_version) for c in cells]
         row = Row(
             "account",
             line.code,
             line.name,
             line.group_code,
-            [values.get(line.account_id, blank) for values in compared],
-            plan[line.account_id],
+            comparisons,
+            cells,
             entry_form=line.form.form,
             basis=line.basis,
             fallback=w.fallback,
@@ -641,13 +677,12 @@ def read_grid(engine: Engine, user: User, version_code: str, cc_code: str) -> Gr
             chosen_spread=line.chosen,
             reference_version=line.reference_code,
             profile=line.profile_code,
-            months_visible=line.form.months_visible or from_capacity,
-            months_editable=editable
-            and planned
-            and line.form.months_editable
-            and not from_capacity,
-            total_editable=editable and planned and not from_capacity,
+            months_visible=line.form.months_visible or read_only,
+            months_editable=editable and planned and line.form.months_editable and not read_only,
+            total_editable=editable and planned and not read_only,
             capacity=from_capacity,
+            forwarded=by_forwarding,
+            credit=is_credit,
             not_planned=why_not,
             notes=note_marks.get((line.account_id, None, None)),
             item_list=ListMarker(*list_marks[line.account_id])
@@ -677,6 +712,36 @@ def _credited(conn: Connection, ctx: _Context) -> set[int]:
     if productive is None:
         return set()
     return set(conn.execute(select(credit_account.c.account_id)).scalars())
+
+
+def _forwarded(conn: Connection, version_id: int) -> dict[int, Forwarded]:
+    """The round's forwarding accounts (ADR 0018), with what the sheet says about them."""
+    fa, f, src = forwarding_account, forwarding, member.alias("src")
+    receivers = (
+        select(func.count())
+        .where(forwarding_receiver.c.forwarding_id == f.c.forwarding_id)
+        .scalar_subquery()
+    )
+    return {
+        r.account_id: Forwarded(
+            r.code, r.name, r.side, r.method, r.source_code, r.source_name, r.receivers
+        )
+        for r in conn.execute(
+            select(
+                fa.c.account_id,
+                fa.c.side,
+                f.c.code,
+                f.c.name,
+                f.c.method,
+                src.c.code.label("source_code"),
+                src.c.name.label("source_name"),
+                receivers.label("receivers"),
+            )
+            .join(f, f.c.forwarding_id == fa.c.forwarding_id)
+            .join(src, src.c.member_id == f.c.source_id)
+            .where(fa.c.version_id == version_id)
+        )
+    }
 
 
 def _add(a: Decimal | None, b: Decimal | None) -> Decimal | None:
@@ -795,6 +860,7 @@ def undo_batch(engine: Engine, actor: User, version_code: str, cc_code: str, bat
                 )
                 raise ConflictError([Conflict(codes[a], m) for a, m in changed])
             _write(conn, ctx, before, current)
+            _follow(conn, ctx)
     except DBAPIError as e:
         locked_error = _locked(e)
         if locked_error is None:
@@ -818,6 +884,9 @@ def _apply(
     credited = sorted(c for c, a in accounts.items() if a in scope.credited)
     if credited:
         raise EditError(f"credited by capacity planning: {', '.join(credited)}")
+    by_forwarding = sorted(c for c, a in accounts.items() if a in scope.forwarded)
+    if by_forwarding:
+        raise EditError(f"written by cost forwarding: {', '.join(by_forwarding)}")
     lines = {line.account_id: line for line in _lines(conn, ctx, accounts.values())}
 
     # Lock the cells this request may touch, then compare versions (D-19).
@@ -863,6 +932,15 @@ def _apply(
     if conflicts:
         raise ConflictError(conflicts)
     _write(conn, ctx, writes, current)
+    _follow(conn, ctx)
+
+
+def _follow(conn: Connection, ctx: _Context) -> None:
+    """Full forwardings fed by the cost center follow its new values (ADR 0018). Imported here:
+    forwarding builds on this module."""
+    from planlayer.forwarding import follow
+
+    follow(conn, ctx.round, ctx.cost_center_id)
 
 
 def _targets(ctx: _Context, line: _Line, e: Edit) -> list[int]:

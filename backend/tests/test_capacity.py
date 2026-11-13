@@ -147,7 +147,7 @@ def test_hours_spread_and_credit_the_cost_center(engine: Engine, client: TestCli
     grid = client.get(f"/api/versions/{R}/cost-centers/CC1/grid").json()
     row = rows(grid)["4900"]
     assert (row["capacity"], row["total_editable"], row["months_editable"]) == (True, False, False)
-    assert plan(grid, "4900")[7] == "1628.80"
+    assert plan(grid, "4900")[7] == "-1628.80"  # credits show negative (ADR 0018)
     edit = {"account_code": "4900", "month": 0, "value": "1", "expected": BLANK}
     refused = client.post(f"/api/versions/{R}/cost-centers/CC1/edits", json={"edits": [edit]})
     assert refused.status_code == 422 and "capacity" in refused.json()["detail"]
@@ -247,7 +247,7 @@ def test_capacity_planner(engine: Engine, client: TestClient) -> None:
     # They read the cost sheet, but don't plan costs.
     grid = client.get(f"/api/versions/{R}/cost-centers/CC1/grid").json()
     assert grid["lock_reason"] == "you may only read this cost center"
-    assert plan(grid, "4900")[0] == "800.00"
+    assert plan(grid, "4900")[0] == "-800.00"
 
     # The database lets them write credit accounts only.
     with engine.connect() as conn:

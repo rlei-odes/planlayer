@@ -1,6 +1,11 @@
 // Generated from the API's OpenAPI schema by `planlayer api-types` (npm run gen:api).
 // Do not edit: change the Pydantic models in backend/src/planlayer/api instead.
 
+export type AccountIO = {
+  code: string
+  name: string
+}
+
 export type AccountOut = {
   code: string
   name: string
@@ -81,6 +86,7 @@ export type CarryOverInInput = {
   accounts?: boolean
   capacity?: boolean
   sheets?: boolean
+  forwarding?: boolean
   values?: boolean
   uplift?: number | string
 }
@@ -92,6 +98,7 @@ export type CarryOverInOutput = {
   accounts?: boolean
   capacity?: boolean
   sheets?: boolean
+  forwarding?: boolean
   values?: boolean
   uplift?: string
 }
@@ -111,6 +118,11 @@ export type ChangeOut = {
 }
 
 export type CodeName = {
+  code: string
+  name: string
+}
+
+export type CodeNameOut = {
   code: string
   name: string
 }
@@ -189,6 +201,64 @@ export type FieldOut = {
   required: boolean
 }
 
+export type ForwardedOut = {
+  code: string
+  name: string
+  side: "charge" | "credit"
+  method: "full" | "fixed" | "rate"
+  source_code: string
+  source_name: string
+  receivers: number
+}
+
+export type ForwardingIn = {
+  code: string
+  name: string
+  method: "full" | "fixed" | "rate"
+  source_code: string
+  group_code: string
+  charge_account: AccountIO
+  credit_account: AccountIO
+  receivers: ReceiverIn[]
+  shares?: "percent" | "portion" | null
+  amount?: string | null
+  rate?: string | null
+  unit?: string | null
+}
+
+export type ForwardingOut = {
+  code: string
+  name: string
+  method: "full" | "fixed" | "rate"
+  source_code: string
+  source_name: string
+  shares: "percent" | "portion" | null
+  amount: string | null
+  rate: string | null
+  unit: string | null
+  group_code: string | null
+  charge_account: AccountIO
+  credit_account: AccountIO
+  receivers: ReceiverOut[]
+  passed_on: string | null
+  changed_by: string | null
+}
+
+export type ForwardingPageOut = {
+  version_code: string
+  version_name: string
+  fiscal_year: number
+  round_status: "setup" | "open" | "closed"
+  lock_reason: string | null
+  closed_months: number
+  forwardings: ForwardingOut[]
+  sources: SourceOut[]
+  cost_centers: CodeNameOut[]
+  groups: GroupOut[]
+  proposed_codes: string[]
+  batch_id?: string | null
+}
+
 export type GridOut = {
   version_code: string
   version_name: string
@@ -212,6 +282,12 @@ export type GridOut = {
 export type GridRowIO = {
   text: string
   amount: string | null
+}
+
+export type GroupOut = {
+  code: string
+  name: string
+  depth: number
 }
 
 export type HTTPValidationError = {
@@ -580,6 +656,20 @@ export type QueryPreviewOut = {
   error?: string | null
 }
 
+export type ReceiverIn = {
+  cost_center_code: string
+  quantity: string
+}
+
+export type ReceiverOut = {
+  cost_center_code: string
+  cost_center_name: string
+  quantity: string
+  percent: string | null
+  year: string | null
+  status: "not_started" | "in_progress" | "submitted" | "approved"
+}
+
 export type ResolveIn = {
   version: string
   resolved: boolean
@@ -639,6 +729,8 @@ export type RowOut = {
   months_editable: boolean
   total_editable: boolean
   capacity: boolean
+  forwarded?: ForwardedOut | null
+  credit?: boolean
   not_planned?: "round" | "set" | null
   notes?: NotesMarkerOut | null
   item_list?: ListMarkerOut | null
@@ -698,6 +790,15 @@ export type SetupOut = {
   sample_cost_center: string | null
   periods: string[]
   latest_actuals: string | null
+}
+
+export type SourceOut = {
+  cost_center_code: string
+  cost_center_name: string
+  costs: string | null
+  other_credits: string | null
+  passed_on: string | null
+  remaining: string | null
 }
 
 export type SpreadIn = {

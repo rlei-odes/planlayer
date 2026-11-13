@@ -872,6 +872,7 @@ const CARRY: { key: keyof Omit<CarryOver, 'uplift'>; label: string; hint: string
   { key: 'accounts', label: 'Accounts', hint: 'accounts not planned, account sets and where they are assigned' },
   { key: 'capacity', label: 'Capacity', hint: 'productive cost centers and their plan rates and lines' },
   { key: 'sheets', label: 'Sheets', hint: 'accounts added to sheets, line spreads' },
+  { key: 'forwarding', label: 'Cost forwarding', hint: 'forwardings with their receivers, recomputed in the new round' },
   { key: 'values', label: 'Plan values', hint: 'moved to the new year month by month, with an uplift; planned hours too, without' },
 ]
 const NO_CARRY: CarryOver = {
@@ -881,6 +882,7 @@ const NO_CARRY: CarryOver = {
   accounts: true,
   capacity: true,
   sheets: true,
+  forwarding: true,
   values: false,
   uplift: '0',
 }

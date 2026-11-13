@@ -44,6 +44,15 @@ export const CapacityIcon = () => (
   </Icon>
 )
 
+// One source branching to several receivers: costs passed on.
+export const ForwardingIcon = () => (
+  <Icon>
+    <circle cx="4.5" cy="10" r="1.8" />
+    <path d="M6.3 10h3.2M9.5 10c2 0 2.5-5 5-5M9.5 10c2 0 2.5 5 5 5M9.5 10h5" />
+    <path d="m13 3.5 1.5 1.5L13 6.5M13 13.5l1.5 1.5-1.5 1.5" />
+  </Icon>
+)
+
 export const StatusIcon = () => (
   <Icon>
     <circle cx="10" cy="10" r="7" />

@@ -59,6 +59,17 @@ function cellKind(row: Row | undefined, prop: string, locked: boolean, layout: L
 
 
 
+const METHOD_TEXT = { full: 'all its planned costs', fixed: 'a fixed amount', rate: 'a rate per unit' } as const
+
+/** What a forwarded line is: the forwarding, and who is on the other side (ADR 0018). */
+function forwardedText(f: NonNullable<Row['forwarded']>): string {
+  const other =
+    f.side === 'charge'
+      ? `charged by ${f.source_code} ${f.source_name}`
+      : `passed on to ${f.receivers} cost center${f.receivers === 1 ? '' : 's'}, shown negative`
+  return `Cost forwarding ${f.code} ${f.name} (${METHOD_TEXT[f.method]}): ${other}. Set by the controller; read only.`
+}
+
 /** A year-only line's months aren't shown, so how it spreads isn't chosen on the sheet. */
 function spreadChoosable(row: Row): boolean {
   return row.kind === 'account' && row.entry_form !== 'annual' && row.total_editable
@@ -69,6 +80,7 @@ function spreadChoosable(row: Row): boolean {
 function badgeLabel(row: Row): string {
   if (row.not_planned) return 'Not planned'
   if (row.capacity) return 'From capacity'
+  if (row.forwarded) return 'Forwarded'
   if (!row.entry_form) return ''
   if (row.entry_form === 'annual') return 'Year only'
   const entry = row.entry_form === 'monthly' ? 'Monthly' : 'Year'
@@ -123,6 +135,7 @@ function basisText(row: Row): string {
   if (row.not_planned === 'set')
     return 'Not among this cost center’s accounts in this round. Shown for its comparison values, which count in the totals.'
   if (row.capacity) return 'Credited by capacity planning: planned hours × rate of the work centers. Change it on the Capacity page.'
+  if (row.forwarded) return forwardedText(row.forwarded)
   const text =
     row.entry_form === 'monthly'
       ? `Months are entered; a year total ${spreadText(row)}.`
@@ -727,7 +740,7 @@ function accountCell(h: H, row: Row | undefined, profiles: ProfileRef[], quarter
   const label = badgeLabel(row)
   const classes = row.not_planned
     ? 'pv-form off'
-    : row.capacity
+    : row.capacity || row.forwarded
     ? 'pv-form capacity'
     : `pv-form${form === 'monthly' ? ' monthly' : ''}${row.chosen_spread ? ' chosen' : ''}`
   const profile = row.spread === 'profile' ? profiles.find((p) => p.code === row.profile) : undefined

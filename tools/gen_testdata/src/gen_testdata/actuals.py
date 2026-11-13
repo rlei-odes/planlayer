@@ -4,7 +4,8 @@ Amounts are integer cents internally. GL lines are ledger-signed (debit positive
 positive, revenue negative. Every series has its own random generator, seeded from the series
 key, so changing one part of the data does not shift the rest.
 
-Activity credits are booked as actual hours x rate on the credit accounts (TD-21).
+Activity credits are booked as actual hours x rate on the credit accounts (TD-21). Cost
+forwarding is booked last, from the month's balances (TD-22).
 
 Patterns: growth, seasonality (August shutdown, Q4 sales peak, bonus months for personnel),
 noise, one-off spikes, negative corrections, months netting to exactly zero (a posting and its
@@ -20,6 +21,7 @@ from datetime import date
 
 from gen_testdata.master import (
     ACTIVITY_TYPES,
+    FORWARDINGS,
     LINE_REVENUE_ACCOUNT,
     Account,
     CostCenter,
@@ -56,6 +58,14 @@ def cents(value: int) -> str:
     sign = "-" if value < 0 else ""
     value = abs(value)
     return f"{sign}{value // 100}.{value % 100:02d}"
+
+
+def _cents(text: str) -> int:
+    """ "-12.34" -> -1234: the inverse of ``cents``."""
+    negative = text.startswith("-")
+    whole, frac = text.lstrip("-").split(".")
+    value = int(whole) * 100 + int(frac)
+    return -value if negative else value
 
 
 def micro(value: int) -> str:
@@ -187,10 +197,69 @@ class Rows:
                 cents(local),
                 self.currency[entity],
             )
+        # Each cost center's ledger balance per month, in local cents, for full forwarding.
+        balance: dict[tuple[str, date], int] = defaultdict(int)
+
+        def counted(lines: Iterator[tuple[object, ...]]) -> Iterator[tuple[object, ...]]:
+            for line in lines:
+                day = line[3]
+                assert isinstance(day, date)
+                balance[(str(line[4]), date(day.year, day.month, 1))] += _cents(str(line[6]))
+                yield line
+
         for cc in self.master.cost_centers:
             for account in self.master.accounts:
-                yield from self._cost_series(cc, account)
-        yield from self._credit_lines()
+                yield from counted(self._cost_series(cc, account))
+        yield from counted(self._credit_lines())
+        yield from self._forwarding_lines(balance)
+
+    def _forwarding_lines(
+        self, balance: dict[tuple[str, date], int]
+    ) -> Iterator[tuple[object, ...]]:
+        """Cost forwarding (ADR 0018, TD-22): per forwarding and month one document, the
+        receivers charged (debit) and the source credited (credit) with their sum, so the
+        document balances. Receivers outside the variant or their validity get nothing."""
+        by_name = {cc.name: cc for cc in self.master.cost_centers}
+        for f in FORWARDINGS:
+            source = by_name.get(f.source)
+            if source is None:
+                continue
+            for i, period in enumerate(self.periods):
+                if not source.valid_from <= period <= source.valid_to:
+                    continue
+                receivers = [
+                    (by_name[name], q)
+                    for name, q in f.receivers
+                    if name in by_name
+                    and by_name[name].entity == source.entity
+                    and by_name[name].valid_from <= period <= by_name[name].valid_to
+                ]
+                if f.method == "full":
+                    left = balance[(source.code, period)]
+                    charges = [round(left * q / 100) for _, q in receivers] if left > 0 else []
+                else:
+                    charges = [
+                        self._to_local(q * f.rate * 100 / 12, source.entity, i)
+                        for _, q in receivers
+                    ]
+                if not any(charges):
+                    continue
+                doc = self._doc_no(source.entity)
+                day = date(period.year, period.month, 28)
+                lines = [(cc.code, c) for (cc, _), c in zip(receivers, charges, strict=True)]
+                lines.append((source.code, -sum(charges)))
+                for n, (cc_code, amount) in enumerate(lines, start=1):
+                    balance[(cc_code, period)] += amount
+                    yield (
+                        doc,
+                        n,
+                        source.entity,
+                        day,
+                        cc_code,
+                        f.account,
+                        cents(amount),
+                        self.currency[source.entity],
+                    )
 
     def _cost_series(self, cc: CostCenter, account: Account) -> Iterator[tuple[object, ...]]:
         if cc.function not in account.functions:
