@@ -299,7 +299,7 @@ German terms in parentheses, as controllers know them.
   - [ ] A change log and undo for forwarding definitions (today `changed_by` / `changed_at` only; the values they write are audited and in the change log).
   - [ ] Publishing: warn when a full forwarding's source is still being planned, so the published charges may move.
   - [ ] Reciprocal forwarding (A to B and B to A by shares), solved iteratively; today a receiver by shares passes nothing on.
-  - [ ] Clearing a cost center's forwarding values before it stops being planned in the round (today the setup save may be refused by the lock).
+  - [x] A cost center no longer planned in the round leaves its forwardings: the setup save removes its charges and credits first and recomputes the rest; planned again, it gets them back.
   - [ ] Planners see a forwarding's other side in more detail (e.g. the receivers' list from the source's credit line).
 - [ ] **K-4 Usage factors (Auslastungsfaktoren)** (much later). When demand drops in a later round (e.g. machining_2 at 70% capacity), the activity output scales down, and each cost type gets a variability percentage: electricity scales 1:1 with machine hours, salaries and depreciation don't.
 - [ ] **K-5 Capex planning** as a module (T-24): planners add planned investments; later their depreciation feeds the cost center plans.
@@ -382,6 +382,13 @@ Sales output could optionally be used to feed into Income Statement, or manageme
 ### Order Backlog and Opportunities Module
 
 An optional module, fed by its own data source from the erp/crm. Concrete order backlog with customers, their countries, planned sales dates and values. Sales opportunities with customers, expected closing date, and probability. Both form the basis of the sales planning. Optional plan orders can be added, or the sums can be fed into the sales planning grid, where they get modified. A tooltip could show the original value from the OBOM, a conditional coloring could show where the plan value is below OBOM-level.
+
+### User documentation
+
+What the user docs (controllers, planners, admins) must say. Collected here as it comes up; written with E-11's install docs.
+
+- [ ] **Pasting columns in Firefox.** A column copied from a spreadsheet fills down the cells it is pasted into (receivers' quantities on the forwarding page; the planning grid). Firefox with `dom.event.clipboardevents.enabled = false` in `about:config`, as privacy-hardened profiles set it (arkenfox, LibreWolf), gives pages no paste events: the forwarding table still fills down by splitting what lands in the cell, but a paste can't be told apart from other input elsewhere. Chromium-based browsers paste as expected. Say which browsers are tested and that this setting must stay at its default for full paste support.
+- [ ] **Cost forwarding for controllers:** the three methods; a receiver by shares passes nothing on; the `ALOC-` accounts and putting the ERP's actual forwarding account in the same group, marked not planned; what planners see. Based on [docs/scenarios/cost-forwarding-2026.md](docs/scenarios/cost-forwarding-2026.md).
 
 ### Various
 

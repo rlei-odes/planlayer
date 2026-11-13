@@ -422,6 +422,24 @@ def _as_system(conn: Connection) -> Iterator[None]:
             conn.execute(select(func.set_config(name, old or "", True)))
 
 
+def release(conn: Connection, r: RoundRef, cost_centers: set[int]) -> None:
+    """Remove the forwarding values of cost centers about to stop being planned in the round,
+    while they still are: the lock refuses any write to a cost center not planned."""
+    if not cost_centers:
+        return
+    accounts = set(forwarded_accounts(conn, r.version_id))
+    if not accounts:
+        return
+    f = fact_cost_center
+    conn.execute(
+        delete(f).where(
+            f.c.version_id == r.version_id,
+            f.c.dim_cost_center.in_(cost_centers),
+            f.c.dim_account.in_(accounts),
+        )
+    )
+
+
 def follow(conn: Connection, r: RoundRef, cost_center_id: int) -> None:
     """Recompute the full forwardings fed by the cost center's plan values, and those
     downstream of them, after its values changed (ADR 0018)."""

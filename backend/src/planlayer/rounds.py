@@ -1154,7 +1154,14 @@ def save_setup(engine: Engine, actor: User, code: str, setup: Setup) -> None:
         for account in sorted(set(setup.not_planned_accounts) - now_excluded):
             _exclude(conn, r, account)
         if setup.planned_cost_centers is not None:
+            # Forwarding values leave cost centers no longer planned while they still are, then
+            # the forwardings are recomputed without them (ADR 0018). Imported here: forwarding
+            # builds on this module.
+            from planlayer.forwarding import recompute, release
+
+            release(conn, r, _planned_codes_dropped(conn, r, setup.planned_cost_centers))
             _set_planned(conn, r, setup.planned_cost_centers)
+            recompute(conn, r)
         _set_account_sets(conn, r, setup.account_sets)
         _clear_outside_sets(conn, r)
         _set_productive(conn, r, setup.productive_cost_centers)
@@ -1197,6 +1204,12 @@ def _set_periods(conn: Connection, r: RoundRef, grain: Grain, actuals_through: d
         .where(planning_round.c.version_id == r.version_id)
         .values(grain=grain, actuals_through=actuals_through)
     )
+
+
+def _planned_codes_dropped(conn: Connection, r: RoundRef, codes: list[str]) -> set[int]:
+    """The cost centers planned in the round now that ``codes`` no longer lists."""
+    wanted = {_member_id(conn, COST_CENTER, code, leaf=True) for code in codes}
+    return _round_members(conn, r.version_id, MODULE_COST_CENTER, enabled=True) - wanted
 
 
 def _set_planned(conn: Connection, r: RoundRef, codes: list[str]) -> None:

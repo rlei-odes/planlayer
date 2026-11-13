@@ -336,3 +336,22 @@ def test_full_forwarding_passes_on_what_the_rates_leave(client: TestClient) -> N
     assert page["sources"][0]["remaining"] == "0.00"
     grid = sheet(client, "CC1")
     assert rows(grid)["B"]["plan"][0]["value"] == "0.00"  # 1250 rent less 1000 and 250 passed on
+
+
+def test_a_cost_center_no_longer_planned_leaves_its_forwardings(client: TestClient) -> None:
+    enter(client, "CC1", "6000", 0, "1000")
+    client.post(PAGE, json=forwarding())
+
+    def planned(*codes: str) -> int:
+        setup = client.get(f"/api/rounds/{R}/setup").json()["setup"]
+        response = client.put(
+            f"/api/rounds/{R}/setup", json={**setup, "planned_cost_centers": list(codes)}
+        )
+        return response.status_code
+
+    assert planned("CC1") == 200
+    (f,) = client.get(PAGE).json()["forwardings"]
+    assert (f["passed_on"], f["receivers"][0]["year"]) == (None, None)
+    enter(client, "CC1", "6000", 1, "500")  # the source's edits still go through
+    assert planned("CC1", "CC2") == 200
+    assert plan(sheet(client, "CC2"), "9000")[:2] == ["600.00", "300.00"]

@@ -27,6 +27,8 @@ Key: `version_code, period, entity_code, cost_center_code, account_code, measure
 
 A forecast's rows cover the whole year: its closed months as `actual` rows (every account with actuals, for the cost centers in the publish scope), its open months as `plan` rows. The sum over a version is the full-year forecast; filter `origin = 'plan'` for the forecast months only. Budgets have only `plan` rows. Values are stored by month in every round, also in rounds planned by quarter.
 
+Credits are rows like any other, natural-positive: activity credits from capacity planning on the activity types' accounts, and cost forwarding (ADR 0018) on each forwarding's two accounts, the charge on the receivers and the credit on the source. A cost center's net cost subtracts its credit accounts, until the export sign rules (E-12) publish credits with their sign.
+
 A run replaces all rows of its round. With the scope "approved cost centers", only approved cost centers are present; with "whole round", every current value is, and `status` tells them apart.
 
 ## `fact_plan_capacity`
