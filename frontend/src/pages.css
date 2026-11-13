@@ -2015,7 +2015,7 @@ revo-grid.pl-revo .rgCell:hover .pl-mark.empty,
 }
 .fw-accounts {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
   gap: 12px;
 }
 .fw-account {
@@ -2027,7 +2027,7 @@ revo-grid.pl-revo .rgCell:hover .pl-mark.empty,
   min-width: 0;
 }
 .fw-acc-code {
-  width: 80px;
+  width: 150px;
   font-family: var(--mono);
 }
 .fw-small {
@@ -2066,4 +2066,86 @@ revo-grid.pl-revo .rgCell:hover .pl-mark.empty,
 }
 .fw-delete {
   margin-left: auto;
+}
+
+/* Charged by cost forwarding (ADR 0018): read only, a cost from another cost center. */
+.pv-form.charged {
+  background: var(--accent-tint);
+  color: var(--accent-ink);
+}
+
+/* Tree picker: many members of a hierarchy at once. */
+.tp {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  background: var(--surface);
+  margin: 4px 0;
+}
+.tp-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px;
+  border-bottom: 1px solid var(--line-2);
+}
+.tp-filter {
+  flex: 0 1 260px;
+}
+.tp-hint {
+  font-size: 12px;
+  margin-left: auto;
+}
+.tp-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+  max-height: 340px;
+  overflow-y: auto;
+}
+.tp-row label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 10px;
+  cursor: pointer;
+  user-select: none;
+}
+.tp-row label:hover {
+  background: var(--canvas);
+}
+.tp-row.group label {
+  font-weight: 600;
+}
+.tp-row.off label {
+  color: var(--ink-3);
+  cursor: default;
+}
+.tp-row .code {
+  margin-right: 0;
+}
+.tp-count {
+  font-size: 11.5px;
+  font-weight: 500;
+}
+.tp-empty {
+  padding: 8px 12px;
+}
+.tp-foot {
+  display: flex;
+  gap: 8px;
+  padding: 8px;
+  border-top: 1px solid var(--line-2);
+}
+.fw-add-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* A credit on the cost sheet (capacity, forwarding): green across the line, as on the capacity
+   sheet, in the sheet's regular weight so month figures fit. */
+revo-grid.pl-revo .rgCell.pl-credit {
+  background: var(--ok-tint);
+  color: var(--ok);
 }

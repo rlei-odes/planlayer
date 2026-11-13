@@ -28,14 +28,15 @@ Forwarding is the controller's work, done once the cost centers have planned, an
 
 ### Plan accounts of their own
 
-- Each forwarding charges and credits **its own two accounts**, so every forwarding is a line of its own on both sides. The controller chooses the account group they belong to; the page proposes free codes and names, which the controller may change. A code that doesn't exist yet becomes a manual account (ADR 0012) in that group. An existing account keeps its place in the hierarchy.
+- Each forwarding charges and credits **its own two accounts**, so every forwarding is a line of its own on both sides. The controller chooses the account group they belong to. The page proposes `ALOC-<code>` and `ALOC-<code>-CR`, named after the forwarding; the controller may change both. A code that doesn't exist yet becomes a manual account (ADR 0012) in that group. An existing leaf account may be chosen if no other forwarding or capacity planning uses it and it holds no plan values in the round; it keeps its place in the hierarchy.
 - An account is a forwarding account of at most one forwarding of a round, on one side. Forwarding accounts hold no actuals of their own.
 - Actuals of forwarding are booked by the ERP on its own accounts, typically in the same group. The controller marks those **not planned** in the round (ADR 0014). In a forecast, the closed months show them as actuals, and the open months the forwarding accounts' plan values, so the group adds up to the full year.
 
 ### Values are stored plan values, computed
 
 - A forwarding writes the charges onto each receiver's charge account and their sum onto the source's credit account, per month, as plan values in `fact_cost_center` (natural-positive, T-7). They are published with the round's other plan values.
-- **Full forwarding passes on what is left on the source:** per month, the source's planned costs in the round, including charges it receives from other forwardings, less its revenue, its capacity credits and the credits of its other forwardings. A building cost center can charge by m³ at a rate and pass the rest on in full; a productive cost center passes on only what its activity credits don't cover. So forwardings run in order: a full forwarding after the forwardings that charge its source or credit it. A set of forwardings where full forwardings depend on each other in a circle is refused on save; so are two full forwardings of one source (one forwarding with shares does that).
+- **Full forwarding passes on what is left on the source:** per month, the source's planned costs in the round, including charges it receives from other forwardings, less its revenue, its capacity credits and the credits of its other forwardings. A building cost center can charge by m³ at a rate and pass the rest on in full; a productive cost center passes on only what its activity credits don't cover. So forwardings run in order: a full forwarding after the forwardings that charge its source or credit it. Two full forwardings of one source are refused (one forwarding with shares does that).
+- **A receiver by shares passes nothing on:** a cost center that receives from a full or fixed forwarding is the source of no forwarding, and a source is no receiver of one. So no forwarding by shares comes back to its source, and none waits for another's result. Rate forwardings may charge a source, as the building charges Tooling before Tooling passes on its costs.
 - **Rounding:** each month's amount is split into cents by the largest remainder, so the source's credit is exactly the sum of the receivers' charges.
 - **Forecasts:** forwarding writes the open months only; the closed months hold actuals (ADR 0015).
 
@@ -64,6 +65,7 @@ Forwarding is the controller's work, done once the cost centers have planned, an
 - **Own accounts per forwarding:** the receiver sees what it is charged for, the source sees each factor's coverage, and BI can tell forwarded costs from direct ones. The group puts them where the actual forwarding is booked, so plan and actuals compare within the group.
 - **Stored values:** the cost center sheet, its totals, the published output and BI read one fact table, as with capacity credits (ADR 0013).
 - **Automatic for full forwarding:** a full forwarding that waits for the controller to recompute shows receivers stale charges while the source plans. The system user writes only values derived from the controller's definitions, so planners gain no way to write into other cost centers.
+- **No receiver by shares as a source:** it rules out loops by construction instead of solving them, and keeps the cost flow readable: service cost centers pass on, consuming cost centers receive. Rates stay free, because a rate charge doesn't depend on what the receiver plans.
 - **Past workflow status:** forwarding is typically run after approval. Refusing it on approved cost centers would mean reopening them all.
 
 ## Consequences

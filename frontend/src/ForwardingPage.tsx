@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { type ClipboardEvent, type KeyboardEvent, useCallback, useEffect, useRef, useState } from 'react'
 import { format } from './amounts'
 import { api, type Forwarding, type ForwardingIn, type ForwardingPage as Page } from './api'
 import Select, { type Option } from './Select'
+import TreePicker from './TreePicker'
 
 // Cost forwarding (ADR 0018), for the controller: a round's forwardings in a table, edited one at
 // a time with their receivers. Saving recomputes every forwarding of the round; the charges and
@@ -27,7 +28,8 @@ type Draft = {
   creditCode: string
   creditName: string
   receivers: Receiver[]
-  // Account names follow the forwarding's name until they are typed in.
+  // Account codes follow the forwarding's code, and names its name, until they are typed in.
+  codesTyped: boolean
   namesTyped: boolean
 }
 
@@ -38,7 +40,13 @@ const METHODS: { value: Method; label: string; hint: string }[] = [
 ]
 const METHOD_LABEL: Record<Method, string> = { full: 'All costs', fixed: 'Fixed amount', rate: 'Rate × quantity' }
 
-function newDraft(page: Page): Draft {
+/** The accounts a forwarding proposes: ALOC-<code> charges, ALOC-<code>-CR credits. */
+function accountCodes(code: string): { chargeCode: string; creditCode: string } {
+  const c = code.trim()
+  return c ? { chargeCode: `ALOC-${c}`, creditCode: `ALOC-${c}-CR` } : { chargeCode: '', creditCode: '' }
+}
+
+function newDraft(): Draft {
   return {
     original: null,
     code: '',
@@ -50,11 +58,12 @@ function newDraft(page: Page): Draft {
     rate: '',
     unit: '',
     group: '',
-    chargeCode: page.proposed_codes[0] ?? '',
+    chargeCode: '',
     chargeName: '',
-    creditCode: page.proposed_codes[1] ?? '',
+    creditCode: '',
     creditName: '',
     receivers: [],
+    codesTyped: false,
     namesTyped: false,
   }
 }
@@ -76,6 +85,7 @@ function draftOf(f: Forwarding): Draft {
     creditCode: f.credit_account.code,
     creditName: f.credit_account.name,
     receivers: f.receivers.map((r) => ({ cc: r.cost_center_code, quantity: r.quantity })),
+    codesTyped: true,
     namesTyped: true,
   }
 }
@@ -195,16 +205,12 @@ export default function ForwardingPage({ version }: { version: string }) {
     <div className="su fw">
       <div className="pg-head">
         <div>
-          <div className="su-eyebrow">Cost forwarding · {page.version_name}</div>
-          <h2 className="su-title">Passing costs on</h2>
-          <div className="pg-sub">
-            Service cost centers pass their costs on to the cost centers that use them. Receivers see a charge, the source a
-            credit, both read only on their sheets, whatever their status.
-          </div>
+          <div className="su-eyebrow">{page.version_name}</div>
+          <h2 className="su-title">Cost forwarding</h2>
         </div>
         {editable && (
           <div className="pg-actions">
-            <button type="button" className="su-btn primary" onClick={() => open(newDraft(page))}>
+            <button type="button" className="su-btn primary" onClick={() => open(newDraft())}>
               + New forwarding
             </button>
           </div>
@@ -220,23 +226,7 @@ export default function ForwardingPage({ version }: { version: string }) {
       {note && !draft && <div className={`su-note ${note.kind} fw-gap`}>{note.text}</div>}
 
       {page.forwardings.length === 0 && !draft ? (
-        <div className="su-card fw-empty">
-          <h3>No forwardings in this round yet</h3>
-          <p className="ink-3">Three ways to pass costs on:</p>
-          <ul>
-            <li>
-              <strong>All costs:</strong> a tooling cost center passes everything it plans to the lines it serves, by
-              percentages or portions.
-            </li>
-            <li>
-              <strong>Fixed amount:</strong> a year amount, split the same way, whatever the source plans.
-            </li>
-            <li>
-              <strong>Rate × quantity:</strong> 1,200 a year per m³ of building A, or a rate per PC or CAD licence. What the
-              rates don’t cover stays on the source.
-            </li>
-          </ul>
-        </div>
+        <div className="su-card fw-empty ink-3">No forwardings in this round.</div>
       ) : (
         <div className="tbl-card">
           <div className="tbl-scroll">
@@ -310,9 +300,8 @@ export default function ForwardingPage({ version }: { version: string }) {
 
       {page.sources.length > 0 && (
         <div className="tbl-card fw-gap">
-          <div className="fw-card-head">
-            <h3>What stays on the sources</h3>
-            <span className="ink-3">Planned costs in the round, charges received included, less what is passed on.</span>
+          <div className="fw-card-head" title="Planned costs in the round, charges received included, less credits and what is passed on">
+            <h3>Sources</h3>
           </div>
           <div className="tbl-scroll">
             <table className="tbl">
@@ -324,7 +313,7 @@ export default function ForwardingPage({ version }: { version: string }) {
                     Other credits
                   </th>
                   <th className="right">Passed on</th>
-                  <th className="right">Stays on the source</th>
+                  <th className="right">Remaining</th>
                 </tr>
               </thead>
               <tbody>
@@ -378,8 +367,15 @@ function Editor(p: {
   const source = page.sources.find((s) => s.cost_center_code === d.source)
   const sourceCosts = source?.costs ? Number(source.costs) : null
   const preview = previews(d, sourceCosts)
-  const listed = new Set([d.source, ...d.receivers.map((r) => r.cc)])
-  const addable = ccOptions.filter((o) => !listed.has(o.value))
+  const [picking, setPicking] = useState(false)
+  const cells = useRef<(HTMLInputElement | null)[]>([])
+  const listed = new Set(d.receivers.map((r) => r.cc))
+  // Not allowed as receivers: the source itself, and by shares, the sources of other forwardings
+  // (a receiver by shares passes nothing on, ADR 0018).
+  const excluded = new Set([
+    d.source,
+    ...(d.method === 'rate' ? [] : page.forwardings.filter((f) => f.code !== d.original).map((f) => f.source_code)),
+  ])
   const total = d.receivers.reduce((s, r) => s + value(r.quantity), 0)
   const quantityLabel = d.method === 'rate' ? `Quantity${d.unit ? ` (${d.unit})` : ''}` : d.shares === 'percent' ? 'Share %' : 'Portion'
   const over = d.method !== 'rate' && d.shares === 'percent' && total > 100
@@ -392,14 +388,41 @@ function Editor(p: {
     d.receivers.every((r) => saved.receivers.some((s) => s.cost_center_code === r.cc && s.quantity === number(r.quantity)))
 
   function rename(name: string) {
-    set(
-      d.namesTyped
-        ? { name }
-        : { name, chargeName: name ? `${name} charged` : '', creditName: name ? `${name} passed on` : '' },
-    )
+    set(d.namesTyped ? { name } : { name, chargeName: name, creditName: name })
+  }
+  function recode(code: string) {
+    set(d.codesTyped ? { code } : { code, ...accountCodes(code) })
   }
   function receiver(i: number, change: Partial<Receiver>) {
     set({ receivers: d.receivers.map((r, j) => (j === i ? { ...r, ...change } : r)) })
+  }
+  function focusCell(i: number) {
+    const cell = cells.current[Math.max(0, Math.min(i, d.receivers.length - 1))]
+    cell?.focus()
+    cell?.select()
+  }
+  // Enter and the arrow keys move between cells, as in a spreadsheet.
+  function keyDown(i: number, e: KeyboardEvent<HTMLInputElement>) {
+    const step = e.key === 'ArrowDown' || (e.key === 'Enter' && !e.shiftKey) ? 1 : e.key === 'ArrowUp' || e.key === 'Enter' ? -1 : 0
+    if (step === 0) return
+    e.preventDefault()
+    focusCell(i + step)
+  }
+  // A column pasted from a spreadsheet fills down from this cell; the first column of each line.
+  function paste(i: number, e: ClipboardEvent<HTMLInputElement>) {
+    const lines = e.clipboardData.getData('text/plain').replace(/\r/g, '').replace(/\n$/, '').split('\n')
+    if (lines.length < 2) return
+    e.preventDefault()
+    const values = lines.map((l) => l.split('\t')[0].trim())
+    set({
+      receivers: d.receivers.map((r, j) => (j >= i && j - i < values.length ? { ...r, quantity: values[j - i] } : r)),
+    })
+    focusCell(i + values.length - 1)
+  }
+  function addReceivers(codes: string[]) {
+    set({ receivers: [...d.receivers, ...codes.map((cc) => ({ cc, quantity: '' }))] })
+    setPicking(false)
+    setTimeout(() => focusCell(d.receivers.length), 0)
   }
 
   return (
@@ -409,7 +432,7 @@ function Editor(p: {
         <div className="fw-grid">
           <label className="su-field fw-code">
             Code
-            <input className="su-input" value={d.code} onChange={(e) => set({ code: e.target.value })} placeholder="TOOLS" />
+            <input className="su-input" value={d.code} onChange={(e) => recode(e.target.value)} placeholder="TOOLS" />
           </label>
           <label className="su-field fw-name">
             Name
@@ -438,7 +461,6 @@ function Editor(p: {
               </button>
             ))}
           </div>
-          <span className="ink-3">{METHODS.find((m) => m.value === d.method)?.hint}.</span>
         </div>
 
         <div className="fw-grid fw-gap">
@@ -475,29 +497,28 @@ function Editor(p: {
         </div>
 
         <div className="fw-accounts fw-gap">
-          <div className="su-field fw-group">
+          <div
+            className="su-field fw-group"
+            title="New account codes are created here. Put the ERP’s actual forwarding account in the same group and mark it not planned in Setup."
+          >
             Account group
             <Select value={d.group} label="Account group" placeholder="Where the lines show" options={groupOptions} searchable disabled={!editable} onChange={(v) => set({ group: v })} />
           </div>
           <label className="su-field">
             Charge account (receivers)
             <span className="fw-account">
-              <input className="su-input fw-acc-code" value={d.chargeCode} onChange={(e) => set({ chargeCode: e.target.value })} aria-label="Charge account code" />
+              <input className="su-input fw-acc-code" value={d.chargeCode} onChange={(e) => set({ chargeCode: e.target.value, codesTyped: true })} aria-label="Charge account code" />
               <input className="su-input" value={d.chargeName} onChange={(e) => set({ chargeName: e.target.value, namesTyped: true })} aria-label="Charge account name" placeholder="Name, if new" />
             </span>
           </label>
           <label className="su-field">
             Credit account (source)
             <span className="fw-account">
-              <input className="su-input fw-acc-code" value={d.creditCode} onChange={(e) => set({ creditCode: e.target.value })} aria-label="Credit account code" />
+              <input className="su-input fw-acc-code" value={d.creditCode} onChange={(e) => set({ creditCode: e.target.value, codesTyped: true })} aria-label="Credit account code" />
               <input className="su-input" value={d.creditName} onChange={(e) => set({ creditName: e.target.value, namesTyped: true })} aria-label="Credit account name" placeholder="Name, if new" />
             </span>
           </label>
         </div>
-        <p className="ink-3 fw-small">
-          A new code becomes an account in the group. Put the ERP’s actual forwarding account in the same group and mark it
-          not planned in Setup: forecasts then show actuals there and the plan on these accounts.
-        </p>
 
         <div className="tbl-card fw-receivers">
           <table className="tbl">
@@ -530,6 +551,12 @@ function Editor(p: {
                         inputMode="decimal"
                         value={r.quantity}
                         aria-label={`${quantityLabel} of ${r.cc}`}
+                        ref={(el) => {
+                          cells.current[i] = el
+                        }}
+                        onFocus={(e) => e.target.select()}
+                        onKeyDown={(e) => keyDown(i, e)}
+                        onPaste={(e) => paste(i, e)}
                         onChange={(e) => receiver(i, { quantity: e.target.value })}
                       />
                     </td>
@@ -552,17 +579,20 @@ function Editor(p: {
               })}
               <tr className="fw-add">
                 <td colSpan={d.method === 'rate' ? 5 : 6}>
-                  <Select
-                    variant="action"
-                    value=""
-                    display="Add receiver"
-                    label="Add a receiving cost center"
-                    icon={<span className="pl-plus">+</span>}
-                    options={addable}
-                    searchable
-                    disabled={!editable || addable.length === 0}
-                    onChange={(v) => set({ receivers: [...d.receivers, { cc: v, quantity: '' }] })}
-                  />
+                  {picking ? (
+                    <TreePicker
+                      nodes={page.cost_center_tree}
+                      taken={listed}
+                      excluded={excluded}
+                      label="Choose receiving cost centers"
+                      onAdd={addReceivers}
+                      onClose={() => setPicking(false)}
+                    />
+                  ) : (
+                    <button type="button" className="su-btn sm fw-add-btn" disabled={!editable} onClick={() => setPicking(true)}>
+                      <span className="pl-plus">+</span> Add receivers
+                    </button>
+                  )}
                 </td>
               </tr>
             </tbody>
@@ -588,9 +618,7 @@ function Editor(p: {
           </table>
         </div>
         {over && <div className="su-note error fw-gap">Percentages add up to more than 100.</div>}
-        {d.method === 'full' && d.source && sourceCosts === null && (
-          <p className="ink-3 fw-small">The year amounts show once saved: they follow what {d.source} plans.</p>
-        )}
+
       </fieldset>
 
       {p.note && <div className={`su-note ${p.note.kind} fw-gap`}>{p.note.text}</div>}

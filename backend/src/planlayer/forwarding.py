@@ -35,6 +35,7 @@ from planlayer.store.schema import (
     COST_CENTER,
     ENTITY,
     H_ACCOUNT,
+    H_COST_CENTER,
     NO_ENTITY,
     app_user,
     credit_account,
@@ -50,8 +51,6 @@ from planlayer.sync import rebuild_closure
 from planlayer.workflow import enabled_members, status_of
 
 MONTHS = 12
-# Proposed codes for a new forwarding's accounts: charge 9000, credit 9005, then 9010 / 9015, …
-PROPOSED_FROM, PROPOSED_STEP = 9000, 10
 
 
 @dataclass
@@ -132,6 +131,14 @@ class GroupOut:
 
 
 @dataclass
+class TreeNode:
+    code: str
+    name: str
+    depth: int
+    is_group: bool
+
+
+@dataclass
 class ForwardingPage:
     version_code: str
     version_name: str
@@ -143,7 +150,7 @@ class ForwardingPage:
     sources: list[SourceOut] = field(default_factory=list)
     cost_centers: list[tuple[str, str]] = field(default_factory=list)  # enabled in the round
     groups: list[GroupOut] = field(default_factory=list)
-    proposed_codes: tuple[str, str] = ("", "")
+    cost_center_tree: list["TreeNode"] = field(default_factory=list)
 
 
 @dataclass
@@ -496,7 +503,7 @@ def read_page(engine: Engine, user: User, version_code: str) -> ForwardingPage:
             if enabled.get(mid, False)
         ]
         groups = _groups(conn)
-        proposed = _proposed(conn)
+        tree = _cost_center_tree(conn, enabled)
 
     if r.status not in ("setup", "open"):
         reason: str | None = f"the planning round is {r.status}"
@@ -514,7 +521,7 @@ def read_page(engine: Engine, user: User, version_code: str) -> ForwardingPage:
         sources=sources,
         cost_centers=cost_centers,
         groups=groups,
-        proposed_codes=proposed,
+        cost_center_tree=tree,
     )
     for d in defs.values():
         weights = sum((q for q in d.receivers.values()), Decimal(0))
@@ -579,37 +586,52 @@ def _sum(values: Iterable[Decimal | None]) -> Decimal | None:
 
 def _groups(conn: Connection) -> list[GroupOut]:
     """The account groups in hierarchy order, with their depth."""
+    return [
+        GroupOut(code, name, depth)
+        for code, name, depth, is_group in _tree(conn, H_ACCOUNT, ACCOUNT)
+        if is_group
+    ]
+
+
+def _cost_center_tree(conn: Connection, enabled: dict[int, bool]) -> list[TreeNode]:
+    """The cost center hierarchy down to the cost centers planned in the round, for choosing
+    receivers: nodes without any of them are left out."""
+    rows = _tree(conn, H_COST_CENTER, COST_CENTER, keep=lambda mid: enabled.get(mid, False))
+    return [TreeNode(code, name, depth, is_group) for code, name, depth, is_group in rows]
+
+
+def _tree(
+    conn: Connection, hier_id: int, dim: int, keep: Callable[[int], bool] | None = None
+) -> list[tuple[str, str, int, bool]]:
+    """A hierarchy in order: (code, name, depth, is group). With ``keep``, only the leaves it
+    keeps and the groups above them."""
     edges = conn.execute(
-        select(member.c.member_id, member.c.code, member.c.name, hier_edge.c.parent_id)
-        .join(hier_edge, and_(hier_edge.c.member_id == member.c.member_id))
-        .where(
-            hier_edge.c.hier_id == H_ACCOUNT,
-            member.c.dim_id == ACCOUNT,
-            member.c.is_group.is_(True),
+        select(
+            member.c.member_id,
+            member.c.code,
+            member.c.name,
+            member.c.is_group,
+            hier_edge.c.parent_id,
         )
+        .join(hier_edge, hier_edge.c.member_id == member.c.member_id)
+        .where(hier_edge.c.hier_id == hier_id, member.c.dim_id == dim)
         .order_by(hier_edge.c.sort_order, member.c.code)
     ).all()
-    children: dict[int | None, list[tuple[int, str, str]]] = defaultdict(list)
-    for mid, code, name, parent in edges:
-        children[parent].append((mid, code, name))
-    out: list[GroupOut] = []
+    children: dict[int | None, list[tuple[int, str, str, bool]]] = defaultdict(list)
+    for mid, code, name, is_group, parent in edges:
+        children[parent].append((mid, code, name, is_group))
 
-    def walk(parent: int | None, depth: int) -> None:
-        for mid, code, name in children.get(parent, []):
-            out.append(GroupOut(code, name, depth))
-            walk(mid, depth + 1)
+    def walk(parent: int | None, depth: int) -> list[tuple[str, str, int, bool]]:
+        out: list[tuple[str, str, int, bool]] = []
+        for mid, code, name, is_group in children.get(parent, []):
+            below = walk(mid, depth + 1)
+            if is_group and (keep is None or below):
+                out += [(code, name, depth, True), *below]
+            elif not is_group and (keep is None or keep(mid)):
+                out.append((code, name, depth, False))
+        return out
 
-    walk(None, 0)
-    return out
-
-
-def _proposed(conn: Connection) -> tuple[str, str]:
-    """Free codes for a new forwarding's charge and credit accounts."""
-    taken = set(conn.execute(select(member.c.code).where(member.c.dim_id == ACCOUNT)).scalars())
-    n = PROPOSED_FROM
-    while str(n) in taken or str(n + 5) in taken:
-        n += PROPOSED_STEP
-    return str(n), str(n + 5)
+    return walk(None, 0)
 
 
 # --- Writing ------------------------------------------------------------------------------------
@@ -712,6 +734,40 @@ def _account(conn: Connection, r: RoundRef, given: AccountIn, group_id: int, min
     return account_id
 
 
+def _check_round(
+    conn: Connection,
+    defs: dict[str, _Def],
+    existing: _Def | None,
+    code: str,
+    method: rules.Method,
+    source_id: int,
+    receivers: set[int],
+) -> None:
+    """The round's forwardings with this one as saved: no receiver by shares passes costs on."""
+    others = {c: d for c, d in defs.items() if d is not existing}
+    round_: dict[str, tuple[rules.Method, int, set[int]]] = {
+        c: (d.method, d.source_id, set(d.receivers)) for c, d in others.items()
+    }
+    round_[code] = (method, source_id, receivers)
+    codes = dict(
+        conn.execute(
+            select(member.c.member_id, member.c.code).where(
+                member.c.member_id.in_(
+                    {source_id, *receivers, *(d.source_id for d in others.values())}
+                )
+            )
+        ).all()
+    )
+    named = {
+        c: (m, codes.get(s, str(s)), {codes.get(r, str(r)) for r in rs})
+        for c, (m, s, rs) in round_.items()
+    }
+    try:
+        rules.check_round(named)
+    except rules.ForwardingError as e:
+        raise EditError(str(e)) from None
+
+
 def _clear(conn: Connection, version_id: int, accounts: Iterable[int]) -> None:
     """Remove a forwarding's values from its accounts (while they still are its accounts)."""
     f = fact_cost_center
@@ -767,6 +823,7 @@ def save(
             rules.check(rule)
         except rules.ForwardingError as e:
             raise EditError(str(e)) from None
+        _check_round(conn, defs, existing, code, method, source_id, set(receivers))
         for value, places, label in (
             (rule.amount, 2, "an amount"),
             (rule.rate, 4, "a rate"),

@@ -55,6 +55,26 @@ def check[K: Hashable](f: Forwarding[K]) -> None:
                 raise ForwardingError("a rate forwarding needs a rate of at least 0")
 
 
+SHARED: frozenset[Method] = frozenset({"full", "fixed"})
+
+
+def check_round[F: Hashable, K: Hashable](
+    forwardings: Mapping[F, tuple[Method, K, set[K]]],
+) -> None:
+    """A cost center that receives by shares (all costs or a fixed amount) passes nothing on:
+    it is the source of no forwarding. So no forwarding by shares can come back to its source,
+    and none needs another's result. Rate forwardings may charge a source."""
+    sources = {source: f for f, (_, source, _) in forwardings.items()}
+    for f, (method, _, receivers) in forwardings.items():
+        if method not in SHARED:
+            continue
+        for cc in sorted(receivers, key=str):
+            if cc in sources:
+                raise ForwardingError(
+                    f"{cc} receives by shares from {f}, so it can't pass costs on ({sources[cc]})"
+                )
+
+
 def year_months(amount: Decimal) -> list[Decimal]:
     """A year's amount in twelve months, a twelfth each, the cents kept exact."""
     return spread(amount.quantize(CENT, ROUND_HALF_UP), equal(MONTHS))

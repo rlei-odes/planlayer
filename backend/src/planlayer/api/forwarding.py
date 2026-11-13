@@ -84,6 +84,13 @@ class CodeNameOut(BaseModel):
     name: str
 
 
+class TreeNodeOut(BaseModel):
+    code: str
+    name: str
+    depth: int
+    is_group: bool
+
+
 class GroupOut(BaseModel):
     code: str
     name: str
@@ -101,7 +108,7 @@ class ForwardingPageOut(BaseModel):
     sources: list[SourceOut]
     cost_centers: list[CodeNameOut]
     groups: list[GroupOut]
-    proposed_codes: list[str]  # free codes for a new forwarding's charge and credit accounts
+    cost_center_tree: list[TreeNodeOut]  # the hierarchy down to the cost centers planned
     batch_id: str | None = None
 
 
@@ -180,7 +187,10 @@ def _page_out(p: forwarding.ForwardingPage, batch_id: str | None = None) -> Forw
         ],
         cost_centers=[CodeNameOut(code=c, name=n) for c, n in p.cost_centers],
         groups=[GroupOut(code=g.code, name=g.name, depth=g.depth) for g in p.groups],
-        proposed_codes=list(p.proposed_codes),
+        cost_center_tree=[
+            TreeNodeOut(code=t.code, name=t.name, depth=t.depth, is_group=t.is_group)
+            for t in p.cost_center_tree
+        ],
         batch_id=batch_id,
     )
 

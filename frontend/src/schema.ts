@@ -255,7 +255,7 @@ export type ForwardingPageOut = {
   sources: SourceOut[]
   cost_centers: CodeNameOut[]
   groups: GroupOut[]
-  proposed_codes: string[]
+  cost_center_tree: TreeNodeOut[]
   batch_id?: string | null
 }
 
@@ -858,6 +858,13 @@ export type ThreadOut = {
   resolved_at: string | null
   resolved_by: PersonOut | null
   carried_from: string | null
+}
+
+export type TreeNodeOut = {
+  code: string
+  name: string
+  depth: number
+  is_group: boolean
 }
 
 export type UndoIn = {

@@ -48,6 +48,8 @@ function editable(row: Row | undefined, prop: string, layout: Layout): boolean {
 function cellKind(row: Row | undefined, prop: string, locked: boolean, layout: Layout): string {
   if (!row) return ''
   if (row.kind === 'group') return isClosed(prop, layout) ? 'pl-group pl-act' : 'pl-group'
+  // A credit (capacity, forwarding) is green across the line, as on the capacity sheet.
+  if (row.credit && !/^c\d+$/.test(prop) && !isClosed(prop, layout)) return 'pl-credit'
   if (/^c\d+$/.test(prop)) return 'pl-cmp'
   if (prop === COL_FY) return editable(row, prop, layout) ? 'pl-edit pl-total' : 'pl-plain pl-total'
   if (monthsOf(prop) === null) return ''
@@ -59,7 +61,7 @@ function cellKind(row: Row | undefined, prop: string, locked: boolean, layout: L
 
 
 
-const METHOD_TEXT = { full: 'all its planned costs', fixed: 'a fixed amount', rate: 'a rate per unit' } as const
+const METHOD_TEXT = { full: 'all that is left on its source', fixed: 'a fixed amount', rate: 'a rate per unit' } as const
 
 /** What a forwarded line is: the forwarding, and who is on the other side (ADR 0018). */
 function forwardedText(f: NonNullable<Row['forwarded']>): string {
@@ -80,7 +82,7 @@ function spreadChoosable(row: Row): boolean {
 function badgeLabel(row: Row): string {
   if (row.not_planned) return 'Not planned'
   if (row.capacity) return 'From capacity'
-  if (row.forwarded) return 'Forwarded'
+  if (row.forwarded) return row.forwarded.side === 'credit' ? 'Passed on' : 'Charged'
   if (!row.entry_form) return ''
   if (row.entry_form === 'annual') return 'Year only'
   const entry = row.entry_form === 'monthly' ? 'Monthly' : 'Year'
@@ -740,8 +742,10 @@ function accountCell(h: H, row: Row | undefined, profiles: ProfileRef[], quarter
   const label = badgeLabel(row)
   const classes = row.not_planned
     ? 'pv-form off'
-    : row.capacity || row.forwarded
+    : row.capacity || row.forwarded?.side === 'credit'
     ? 'pv-form capacity'
+    : row.forwarded
+    ? 'pv-form charged'
     : `pv-form${form === 'monthly' ? ' monthly' : ''}${row.chosen_spread ? ' chosen' : ''}`
   const profile = row.spread === 'profile' ? profiles.find((p) => p.code === row.profile) : undefined
   const badge = !form

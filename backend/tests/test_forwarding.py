@@ -132,7 +132,12 @@ def test_full_forwarding_charges_receivers_and_credits_the_source(client: TestCl
         "passed_on": "900.00",
         "remaining": "600.00",
     }
-    assert page["proposed_codes"] == ["9010", "9015"]
+    assert [(t["code"], t["depth"], t["is_group"]) for t in page["cost_center_tree"]] == [
+        ("NW", 0, True),
+        ("DEP", 1, True),
+        ("CC1", 2, False),
+        ("CC2", 2, False),
+    ]
 
     receiver = sheet(client, "CC2")
     assert plan(receiver, "9000")[:2] == ["600.00", "300.00"]
@@ -259,8 +264,26 @@ def test_refusals(client: TestClient) -> None:
         charge_account={"code": "9010", "name": "Back"},
         credit_account={"code": "9015", "name": "Back passed on"},
     )
+    # CC2 receives by shares from TOOLS: it passes nothing on, by shares or by rate.
     response = client.post(PAGE, json=back)
-    assert response.status_code == 422 and "circle" in response.text
+    assert response.status_code == 422 and "receives by shares from TOOLS" in response.text
+    response = client.post(PAGE, json=back | {"method": "rate", "shares": None, "rate": "1"})
+    assert response.status_code == 422
+    # Nor may a source become a receiver by shares.
+    other = forwarding(
+        "OTHER",
+        source_code="CC2",
+        method="rate",
+        shares=None,
+        rate="5",
+        receivers=[{"cost_center_code": "CC1", "quantity": "1"}],
+        charge_account={"code": "9020", "name": "Other"},
+        credit_account={"code": "9025", "name": "Other passed on"},
+    )
+    assert client.delete(f"{PAGE}/TOOLS").status_code == 200
+    assert client.post(PAGE, json=other).status_code == 200
+    response = client.post(PAGE, json=forwarding())  # CC2, a source, would receive by shares
+    assert response.status_code == 422 and "receives by shares" in response.text
 
 
 def test_change_and_delete(client: TestClient) -> None:

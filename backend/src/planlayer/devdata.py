@@ -190,30 +190,27 @@ def _hundreds(amount: Decimal) -> Decimal:
 
 
 # Cost forwarding (ADR 0018, TD-23) as the test warehouse books it (TD-22), plus a fixed amount:
-# code, name, method, source, receivers (cost center, share or quantity), rate or amount, unit,
-# charge and credit account.
+# code, name, method, source, receivers (cost center, share or quantity), rate or amount, unit. The
+# accounts are the page's proposal: ALOC-<code> and ALOC-<code>-CR, named after the forwarding.
 FORWARDINGS: tuple[
-    tuple[str, str, str, str, tuple[tuple[str, str], ...], str | None, str | None, str, str], ...
+    tuple[str, str, str, str, tuple[tuple[str, str], ...], str | None, str | None], ...
 ] = (
     ("BLDG-A", "Building A, production hall", "rate", "DE1280",
      (("DE1010", "1800"), ("DE1030", "1300"), ("DE1040", "1200"), ("DE1050", "700"),
-      ("DE1080", "1500"), ("DE1090", "500")), "95", "m²", "9000", "9005"),
+      ("DE1080", "1500"), ("DE1090", "500")), "95", "m²"),
     ("BLDG-B", "Building B, offices", "rate", "DE1280",
      (("DE1240", "220"), ("DE1250", "160"), ("DE1260", "200"), ("DE1230", "180"),
-      ("DE1110", "260"), ("DE1120", "240")), "150", "m²", "9010", "9015"),
+      ("DE1110", "260"), ("DE1120", "240")), "150", "m²"),
     ("IT-PC", "IT workplaces", "rate", "DE1260",
      (("DE1010", "12"), ("DE1020", "10"), ("DE1070", "8"), ("DE1080", "10"), ("DE1110", "24"),
       ("DE1120", "26"), ("DE1130", "8"), ("DE1160", "30"), ("DE1240", "18"), ("DE1250", "12"),
-      ("DE1230", "9")), "1500", "PC", "9020", "9025"),
+      ("DE1230", "9")), "1500", "PC"),
     ("IT-CAD", "CAD licences", "rate", "DE1260",
-     (("DE1110", "12"), ("DE1120", "14"), ("DE1130", "4"), ("DE1090", "3")), "6000", "licence",
-     "9030", "9035"),
+     (("DE1110", "12"), ("DE1120", "14"), ("DE1130", "4"), ("DE1090", "3")), "6000", "licence"),
     ("MGMT", "Plant management fee", "fixed", "DE1230",
-     (("DE1010", "3"), ("DE1030", "2"), ("DE1040", "2"), ("DE1050", "1")), "180000", None,
-     "9040", "9045"),
+     (("DE1010", "3"), ("DE1030", "2"), ("DE1040", "2"), ("DE1050", "1")), "180000", None),
     ("TOOLS", "Tooling", "full", "DE1090",
-     (("DE1010", "40"), ("DE1030", "25"), ("DE1040", "20"), ("DE1050", "15")), None, None,
-     "9050", "9055"),
+     (("DE1010", "40"), ("DE1030", "25"), ("DE1040", "20"), ("DE1050", "15")), None, None),
 )  # fmt: skip
 FORWARDING_GROUP = "FORWARDED"  # the test warehouse's group of 8800-8820
 ERP_FORWARDING_ACCOUNTS = ("8800", "8810", "8820")
@@ -239,7 +236,7 @@ def seed_forwarding(engine: Engine, round_code: str) -> list[str]:
         set_account_planned(engine, controller, round_code, account, planned=False)
     _plan_sources(engine, controller, round_code, sorted({f[3] for f in FORWARDINGS} & planned))
     created = []
-    for code, name, method, source, receivers, value, unit, charge, credit in FORWARDINGS:
+    for code, name, method, source, receivers, value, unit in FORWARDINGS:
         if code in have or source not in planned:
             continue
         given = forwarding.ForwardingIn(
@@ -248,8 +245,8 @@ def seed_forwarding(engine: Engine, round_code: str) -> list[str]:
             method=method,  # type: ignore[arg-type]
             source_code=source,
             group_code=FORWARDING_GROUP,
-            charge_account=forwarding.AccountIn(charge, f"{name} charged"),
-            credit_account=forwarding.AccountIn(credit, f"{name} passed on"),
+            charge_account=forwarding.AccountIn(f"ALOC-{code}", name),
+            credit_account=forwarding.AccountIn(f"ALOC-{code}-CR", name),
             receivers=[
                 forwarding.ReceiverIn(cc, Decimal(q)) for cc, q in receivers if cc in planned
             ],

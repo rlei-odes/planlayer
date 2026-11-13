@@ -14,7 +14,7 @@ planlayer seed-dev-forwarding --round B2026
 | 8810 *Forwarded building costs* | Facilities charging two buildings by m² |
 | 8820 *Forwarded IT services* | IT charging PCs and CAD licences |
 
-All three sit in the group *Internal cost forwarding*. The seed puts the plan forwardings' accounts (9000–9055) in the same group and marks 8800–8820 not planned in B2026.
+All three sit in the group *Internal cost forwarding*. The seed puts the plan forwardings' accounts (`ALOC-<code>` and `ALOC-<code>-CR`) in the same group and marks 8800–8820 not planned in B2026.
 
 | Forwarding (TD-23) | Method | Source | Shows |
 |---|---|---|---|
@@ -28,15 +28,15 @@ All three sit in the group *Internal cost forwarding*. The seed puts the plan fo
 Log in as `controller@`, choose *Budget 2026*, open *Round → Forwarding*.
 
 1. The table lists the six forwardings with method, source, basis, receivers and what each passes on.
-2. *What stays on the sources*: Tooling stays at 0.00; Facilities keeps about 25,000 (its costs exceed what the m² rates cover); IT keeps most of its costs; Executive Office keeps everything but the fee.
+2. *Sources*: Tooling remains at 0.00; Facilities keeps about 25,000 (its costs exceed what the m² rates cover); IT keeps most of its costs; Executive Office keeps everything but the fee.
 3. Click *TOOLS*. The editor shows percentages 40/25/20/15, 100 % in total, each receiver's year amount and status. Assembly Line 2 may be approved: it still takes the charge.
 
 ## 2. Both sides on the sheets
 
 Open *Planning*.
 
-1. **DE1010 Machining**, at the bottom: *Internal cost forwarding* holds 8800–8820 with last year's actuals, marked *Not planned*, and four *Forwarded* lines: building A, PCs, management fee, tooling. They are read only. Hover a badge: it names the forwarding and "charged by DE1090 Tooling".
-2. **DE1090 Tooling**: *Tooling passed on* (9055) is negative, and the group's subtotal is the building and CAD charges received less what is passed on. Last year's activity credits in the comparison column show negative too.
+1. **DE1010 Machining**, at the bottom: *Internal cost forwarding* holds 8800–8820 with last year's actuals, marked *Not planned*, and four *Charged* lines: building A, PCs, management fee, tooling. They are read only. Hover a badge: it names the forwarding and "charged by DE1090 Tooling".
+2. **DE1090 Tooling**: the *Passed on* line (ALOC-TOOLS-CR) is negative and green across, like the activity credits, and the group's subtotal is the building and CAD charges received less what is passed on. Last year's activity credits in the comparison column show negative too.
 3. Type into a forwarded line: nothing opens. Credits and charges are the controller's.
 
 ## 3. A full forwarding follows its source
@@ -49,8 +49,9 @@ Open *Planning*.
 
 1. On *TOOLS*, switch *Shares as* to *Portions* and enter 4/2/2/1: the year amounts preview with ≈, and *Save and recompute* stores them.
 2. Make the percentages add up to 101: the total turns red and *Save* is off.
-3. Create an *All costs* forwarding from DE1010 Machining to DE1090 Tooling: *Save* is refused, naming the circle (TOOLS passes Tooling's costs to Machining).
-4. *+ New forwarding*: the account codes are proposed (the next free 90x0 / 90x5), and the account names follow the name until typed in.
+3. Create any forwarding from DE1010 Machining: *Save* is refused, because Machining receives by shares from TOOLS and so passes nothing on. In the receiver picker of an *All costs* or *Fixed amount* forwarding, the other forwardings' sources are greyed out for the same reason.
+4. *+ New forwarding*: type the code `MAINT` and the name: the accounts follow as `ALOC-MAINT` and `ALOC-MAINT-CR`, named *Maintenance*, until you type into them.
+5. *Add receivers*: tick *Pump Production* for all its cost centers, filter by "Sales" and shift-click a range, then *Add*. Copy a column of numbers from a spreadsheet, click the first quantity and paste: it fills down. Enter and the arrow keys move between cells. A receiver left blank or at 0 gets nothing.
 
 ## 5. Into the next round
 
