@@ -381,6 +381,7 @@ function Editor(p: {
   const preview = previews(d, sourceCosts)
   const [picking, setPicking] = useState(false)
   const cells = useRef<(HTMLInputElement | null)[]>([])
+  const pastedInto = useRef<number | null>(null) // a cell the browser is pasting into
   const listed = new Set(d.receivers.map((r) => r.cc))
   // Not allowed as receivers: the source itself, and by shares, the sources of other forwardings
   // (a receiver by shares passes nothing on, ADR 0018).
@@ -423,12 +424,28 @@ function Editor(p: {
   // A column pasted from a spreadsheet fills down from this cell; the first column of each line.
   function paste(i: number, e: ClipboardEvent<HTMLInputElement>) {
     const values = pastedColumn(e.clipboardData)
-    if (values.length < 2) return
+    if (values.length < 2) {
+      // The clipboard didn't show its lines (Firefox, depending on the source): let the browser
+      // paste, and split what lands in the cell (Firefox turns line breaks into spaces).
+      pastedInto.current = i
+      return
+    }
     e.preventDefault()
+    fillDown(i, values)
+  }
+  function fillDown(i: number, values: string[]) {
     set({
       receivers: d.receivers.map((r, j) => (j >= i && j - i < values.length ? { ...r, quantity: values[j - i] } : r)),
     })
     focusCell(i + values.length - 1)
+  }
+  function typed(i: number, text: string, inputType: string | undefined) {
+    // A paste the handler above let through: the browser says so, or the handler noted it.
+    const pasted = inputType === 'insertFromPaste' || pastedInto.current === i
+    pastedInto.current = null
+    const values = text.trim().split(/\s+/)
+    if (pasted && values.length > 1) fillDown(i, values)
+    else receiver(i, { quantity: text })
   }
   function addReceivers(codes: string[]) {
     set({ receivers: [...d.receivers, ...codes.map((cc) => ({ cc, quantity: '' }))] })
@@ -568,7 +585,7 @@ function Editor(p: {
                         onFocus={(e) => e.target.select()}
                         onKeyDown={(e) => keyDown(i, e)}
                         onPaste={(e) => paste(i, e)}
-                        onChange={(e) => receiver(i, { quantity: e.target.value })}
+                        onChange={(e) => typed(i, e.target.value, (e.nativeEvent as InputEvent).inputType)}
                       />
                     </td>
                     {share !== null && <td className="num ink-2">{pct(share)}</td>}
