@@ -51,18 +51,24 @@ from planlayer.store.schema import (
     BASE_LAYER,
     COST_CENTER,
     ENTITY,
+    FTE,
     H_ACCOUNT,
     H_COST_CENTER,
+    HEADCOUNT,
     HOURS,
     NO_ENTITY,
+    STAFF_CATEGORY,
+    STAFF_TYPE,
     WORK_CENTER,
     closure,
     dataset_mapping,
     edge_override,
     fact_capacity,
     fact_cost_center,
+    fact_workforce,
     hier_edge,
     hierarchy,
+    hr_staff,
     installation,
     member,
     member_override,
@@ -124,6 +130,28 @@ FIELDS: dict[str, dict[str, pa.DataType]] = {
         "activity_type_code": pa.string(),
         "hours": pa.decimal128(18, 2),
     },
+    # Workforce planning (ADR 0020).
+    "staff_types": {"code": pa.string(), "name": pa.string(), "external": pa.bool_()},
+    "staff_categories": {"code": pa.string(), "name": pa.string()},
+    "staff": {
+        "code": pa.string(),
+        "cost_center_code": pa.string(),
+        "title": pa.string(),
+        "staff_type_code": pa.string(),
+        "staff_category_code": pa.string(),
+        "person_name": pa.string(),
+        "entry_date": pa.date32(),
+        "leave_date": pa.date32(),
+        "contract_percent": pa.decimal128(5, 2),
+    },
+    "workforce_actuals": {
+        "period": pa.date32(),
+        "cost_center_code": pa.string(),
+        "staff_type_code": pa.string(),
+        "staff_category_code": pa.string(),
+        "headcount": pa.decimal128(18, 2),
+        "fte": pa.decimal128(18, 2),
+    },
 }
 REQUIRED: dict[str, tuple[str, ...]] = {
     "entities": ("code", "name"),
@@ -134,6 +162,16 @@ REQUIRED: dict[str, tuple[str, ...]] = {
     "work_centers": ("code", "name"),
     "work_center_rates": ("work_center_code", "activity_type_code", "rate"),
     "capacity_actuals": ("period", "work_center_code", "activity_type_code", "hours"),
+    "staff_types": ("code", "name"),
+    "staff_categories": ("code", "name"),
+    "staff": ("code", "cost_center_code", "title", "staff_type_code", "staff_category_code"),
+    "workforce_actuals": (
+        "period",
+        "cost_center_code",
+        "staff_type_code",
+        "staff_category_code",
+        "headcount",
+    ),
 }
 DATASETS = tuple(FIELDS)
 # Member datasets: dimension and hierarchy (None: no hierarchy). Work centers and activity types
@@ -144,6 +182,8 @@ DIMENSIONS: dict[str, tuple[int, int | None]] = {
     "accounts": (ACCOUNT, H_ACCOUNT),
     "activity_types": (ACTIVITY_TYPE, None),
     "work_centers": (WORK_CENTER, None),
+    "staff_types": (STAFF_TYPE, None),
+    "staff_categories": (STAFF_CATEGORY, None),
 }
 LABEL = {
     ENTITY: "entity",
@@ -151,6 +191,8 @@ LABEL = {
     ACCOUNT: "account",
     ACTIVITY_TYPE: "activity type",
     WORK_CENTER: "work center",
+    STAFF_TYPE: "staff type",
+    STAFF_CATEGORY: "staff category",
 }
 # Member attributes kept on ``member``, as codes.
 ATTRIBUTES = (
@@ -162,6 +204,7 @@ ATTRIBUTES = (
     "cost_center_code",
     "account_code",
     "variable_account_code",
+    "external",
 )
 
 
@@ -265,7 +308,7 @@ def delete_mapping(engine: Engine, actor: Actor, dataset: str) -> None:
 
 
 # Datasets of values per period: synced for a window of fiscal years.
-PERIOD_DATASETS = ("actuals", "capacity_actuals")
+PERIOD_DATASETS = ("actuals", "capacity_actuals", "workforce_actuals")
 
 
 @dataclass(frozen=True)
@@ -448,6 +491,41 @@ def default_mappings(schema: str) -> list[Mapping]:
                 "hours": "actual_hours",
             },
         ),
+        # Workforce planning (ADR 0020): staff types are Planlayer's seeded ones.
+        Mapping(
+            "staff_categories",
+            f"SELECT job_family, job_family_name FROM {s}.v_job_families",
+            {"code": "job_family", "name": "job_family_name"},
+        ),
+        Mapping(
+            "staff",
+            "SELECT personnel_no, cost_center, job_title, employee_name, employee_group, "
+            f"job_family, entry_date, exit_date, contract_pct FROM {s}.v_staff",
+            {
+                "code": "personnel_no",
+                "cost_center_code": "cost_center",
+                "title": "job_title",
+                "person_name": "employee_name",
+                "staff_type_code": "employee_group",
+                "staff_category_code": "job_family",
+                "entry_date": "entry_date",
+                "leave_date": "exit_date",
+                "contract_percent": "contract_pct",
+            },
+        ),
+        Mapping(
+            "workforce_actuals",
+            "SELECT snapshot_month, cost_center, employee_group, job_family, headcount, fte "
+            f"FROM {s}.v_workforce_actuals",
+            {
+                "period": "snapshot_month",
+                "cost_center_code": "cost_center",
+                "staff_type_code": "employee_group",
+                "staff_category_code": "job_family",
+                "headcount": "headcount",
+                "fte": "fte",
+            },
+        ),
     ]
 
 
@@ -500,6 +578,9 @@ class SyncPlan:
     actuals: dict[tuple[date, str, str, str], Decimal] = field(default_factory=dict)
     rates: dict[tuple[str, str], Decimal] | None = None  # None: rates not mapped
     capacity: dict[tuple[date, str, str], Decimal] | None = None  # None: hours not mapped
+    staff: list[dict[str, Any]] | None = None  # None: HR's staff list not mapped
+    # Month-end FTE and headcount per period, cost center, staff type and category.
+    workforce: dict[tuple[date, str, str, str], tuple[Decimal, Decimal | None]] | None = None
 
 
 def _members(
@@ -772,7 +853,75 @@ def plan(
                 Decimal, r["hours"]
             )
         p.capacity = dict(hours)
+    _plan_workforce(p, maps, adapter, existing)
     return p
+
+
+def _plan_workforce(
+    p: SyncPlan,
+    maps: dict[str, Mapping],
+    adapter: SourceAdapter,
+    existing: dict[tuple[int, str], Any],
+) -> None:
+    """HR's staff list and workforce actuals (ADR 0020): every code they name must be known."""
+    known = {dim: _leaves(existing, p, dim) for dim in (COST_CENTER, STAFF_TYPE, STAFF_CATEGORY)}
+
+    def report_unknown(dataset: str, rows: list[dict[str, Any]]) -> None:
+        for fld, dim in (
+            ("cost_center_code", COST_CENTER),
+            ("staff_type_code", STAFF_TYPE),
+            ("staff_category_code", STAFF_CATEGORY),
+        ):
+            p.problems += [
+                f"{dataset}: unknown {LABEL[dim]} {c}"
+                for c in sorted({str(r[fld]) for r in rows} - known[dim])
+            ]
+
+    if "staff" in maps:
+        try:
+            rows = read(adapter, maps["staff"])
+        except SOURCE_ERRORS as e:
+            p.problems.append(_failed("staff", e))
+            rows = []
+        report_unknown("staff", rows)
+        seen: set[str] = set()
+        for r in rows:
+            code, percent = str(r["code"]), r.get("contract_percent")
+            if code in seen:
+                p.problems.append(f"staff: duplicate code {code}")
+            seen.add(code)
+            if percent is not None and not 0 < percent <= 100:
+                p.problems.append(f"staff: {code} has a contract percentage of {percent}")
+            if r.get("entry_date") and r.get("leave_date") and r["leave_date"] < r["entry_date"]:
+                p.problems.append(f"staff: {code} leaves before entering")
+            if not str(r["title"] or "").strip():
+                p.problems.append(f"staff: {code} has no title")
+        p.staff = rows
+    if "workforce_actuals" in maps:
+        try:
+            rows = read(adapter, maps["workforce_actuals"], window=p.window)
+        except SOURCE_ERRORS as e:
+            p.problems.append(_failed("workforce_actuals", e))
+            rows = []
+        report_unknown("workforce_actuals", rows)
+        cells: dict[tuple[date, str, str, str], tuple[Decimal, Decimal | None]] = {}
+        for r in rows:
+            key = (
+                r["period"],
+                str(r["cost_center_code"]),
+                str(r["staff_type_code"]),
+                str(r["staff_category_code"]),
+            )
+            heads, fte = cast(Decimal, r["headcount"]), cast(Decimal | None, r.get("fte"))
+            if heads < 0 or (fte is not None and fte < 0):
+                p.problems.append(f"workforce_actuals: negative values for {'/'.join(key[1:])}")
+            # Several rows per cell (e.g. per person) add up.
+            before = cells.get(key)
+            if before is not None:
+                fte = fte if before[1] is None else before[1] + (fte or Decimal(0))
+                heads += before[0]
+            cells[key] = (heads, fte)
+        p.workforce = cells
 
 
 # How a changed member's fields read in the sync preview.
@@ -784,6 +933,7 @@ _FIELD_TEXT = {
     "cost_center_code": "cost center",
     "account_code": "account",
     "variable_account_code": "variable account",
+    "external": "external",
 }
 
 
@@ -893,6 +1043,11 @@ def run(
         if p.capacity is not None:
             hours = _write_capacity_actuals(conn, p.capacity, ids, entity, p.window)
             steps.done("write rates and actual hours", f"{hours} cells")
+        if p.staff is not None:
+            _write_staff(conn, p.staff, ids)
+        if p.workforce is not None:
+            cells = _write_workforce_actuals(conn, p.workforce, ids, entity, p.window)
+            steps.done("write staff and workforce actuals", f"{cells} cells")
         summary = {
             "window": [p.window.first, p.window.last] if p.window else None,
             "datasets": p.datasets,
@@ -1216,3 +1371,76 @@ def _entity_of_cost_center() -> Any:
         .where(cc.c.dim_id == COST_CENTER, cc.c.code == member.c.cost_center_code)
         .scalar_subquery()
     )
+
+
+def _write_staff(
+    conn: Connection, rows: list[dict[str, Any]], ids: dict[tuple[int, str], int]
+) -> None:
+    """HR's staff list replaces the stored one; rounds keep their own positions."""
+    conn.execute(delete(hr_staff))
+    insert_all(
+        conn,
+        hr_staff,
+        [
+            {
+                "code": str(r["code"]),
+                "cost_center_id": ids[(COST_CENTER, str(r["cost_center_code"]))],
+                "title": str(r["title"]).strip(),
+                "person_name": r.get("person_name"),
+                "staff_type_id": ids[(STAFF_TYPE, str(r["staff_type_code"]))],
+                "staff_category_id": ids[(STAFF_CATEGORY, str(r["staff_category_code"]))],
+                "entry_date": r.get("entry_date"),
+                "leave_date": r.get("leave_date"),
+                "contract_percent": r.get("contract_percent"),
+            }
+            for r in rows
+        ],
+    )
+
+
+def _write_workforce_actuals(
+    conn: Connection,
+    cells: dict[tuple[date, str, str, str], tuple[Decimal, Decimal | None]],
+    ids: dict[tuple[int, str], int],
+    entity: str | None,
+    window: Window | None,
+) -> int:
+    """Actual FTE and headcount of the window's periods, on the cost center's entity; with an
+    entity filter, only that entity's cost centers."""
+    vid = actuals_version_id(conn)
+    entities = {
+        code: ids.get((ENTITY, ent or NO_ENTITY))
+        for code, ent in conn.execute(
+            select(member.c.code, member.c.entity_code).where(member.c.dim_id == COST_CENTER)
+        )
+    }
+    f = fact_workforce
+    stmt = delete(f).where(f.c.version_id == vid)
+    if entity is not None:
+        stmt = stmt.where(f.c.dim_entity == ids[(ENTITY, entity)])
+    if window is not None:
+        stmt = stmt.where(f.c.period.between(window.period_from, window.period_to))
+    conn.execute(stmt)
+    rows = []
+    for (p, cc, t, c), (heads, fte) in cells.items():
+        ent = entities.get(cc)
+        if ent is None or (entity is not None and ent != ids[(ENTITY, entity)]):
+            continue
+        for measure, value in ((HEADCOUNT, heads), (FTE, fte)):
+            if value is None:
+                continue
+            rows.append(
+                {
+                    "version_id": vid,
+                    "layer_id": BASE_LAYER,
+                    "measure_id": measure,
+                    "period": p,
+                    "dim_entity": ent,
+                    "dim_cost_center": ids[(COST_CENTER, cc)],
+                    "dim_staff_type": ids[(STAFF_TYPE, t)],
+                    "dim_staff_category": ids[(STAFF_CATEGORY, c)],
+                    "amount": value,
+                }
+            )
+    insert_all(conn, f, rows)
+    return len(rows)

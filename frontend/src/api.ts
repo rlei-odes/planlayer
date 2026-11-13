@@ -41,6 +41,12 @@ export type CapacityUnit = S.CapacityUnitOut
 export type CapacitySheet = S.CapacitySheetOut
 export type CapacityRow = S.CapacityRowOut
 export type HoursEdit = S.HoursEditIn
+// Workforce planning (ADR 0020).
+export type WorkforceSheet = S.WorkforceSheetOut
+export type WorkforceRow = S.WorkforceRowOut
+export type WorkforceEdit = S.WorkforceEditIn
+export type Position = S.PositionOut
+export type PositionIn = S.WorkforcePositionIn
 // Published signs (ADR 0019).
 export type Signs = S.SignsOut
 // Cost forwarding (ADR 0018).
@@ -100,6 +106,7 @@ const r = (code: string) => `/api/responsibilities/${encodeURIComponent(code)}`
 const v = (version: string) => `/api/versions/${encodeURIComponent(version)}`
 const cc = (version: string, code: string) => `${v(version)}/cost-centers/${encodeURIComponent(code)}`
 const cap = (version: string, code: string) => `${v(version)}/capacity/${encodeURIComponent(code)}`
+const wf = (version: string, code: string) => `${v(version)}/workforce/${encodeURIComponent(code)}`
 const fw = (version: string) => `${v(version)}/forwarding`
 
 /** A line as query parameters: only the fields it has. */
@@ -187,6 +194,27 @@ export const api = {
   },
   addLine: (version: string, code: string, line: S.LineIn) =>
     post(`${cap(version, code)}/lines`, line).then((r) => json<CapacitySheet>(r)),
+  workforceSheet: (version: string, code: string) => fetch(wf(version, code)).then((r) => json<WorkforceSheet>(r)),
+  async workforceEdit(version: string, code: string, edits: WorkforceEdit[]): Promise<WorkforceSheet> {
+    const response = await post(`${wf(version, code)}/edits`, { edits })
+    if (response.status === 409) throw new ConflictError((await response.json()) as Conflict[])
+    return json<WorkforceSheet>(response)
+  },
+  async workforceUndo(version: string, code: string, batchId: string): Promise<WorkforceSheet> {
+    const response = await post(`${wf(version, code)}/undo`, { batch_id: batchId })
+    if (response.status === 409) throw new ConflictError((await response.json()) as Conflict[])
+    return json<WorkforceSheet>(response)
+  },
+  addWorkforceLine: (version: string, code: string, line: S.WorkforceLineIn) =>
+    post(`${wf(version, code)}/lines`, line).then((r) => json<WorkforceSheet>(r)),
+  addPosition: (version: string, code: string, p: PositionIn) =>
+    post(`${wf(version, code)}/positions`, p).then((r) => json<WorkforceSheet>(r)),
+  changePosition: (version: string, code: string, id: number, p: PositionIn) =>
+    send('PUT', `${wf(version, code)}/positions/${id}`, p).then((r) => json<WorkforceSheet>(r)),
+  deletePosition: (version: string, code: string, id: number) =>
+    send('DELETE', `${wf(version, code)}/positions/${id}`).then((r) => json<WorkforceSheet>(r)),
+  staffFromHr: (version: string, code: string) => post(`${wf(version, code)}/hr`, {}).then((r) => json<WorkforceSheet>(r)),
+  workforceFromHr: (version: string) => post(`${v(version)}/workforce/hr`, {}).then((r) => json<S.HrTakenOut>(r)),
   costCenters: (version: string) => fetch(`${v(version)}/cost-centers`).then((r) => json<PlanningUnit[]>(r)),
   setEnabled: (version: string, code: string, enabled: boolean) =>
     post(`${cc(version, code)}/enabled`, { enabled }).then((r) => json<null>(r)),

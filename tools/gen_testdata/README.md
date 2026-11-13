@@ -37,6 +37,7 @@ Each run replaces the generator's own tables and views; nothing else in the sche
 - **Products:** 5 lines → 40 groups → 400 SKUs. Each SKU sells in 3–9 of the 12 countries.
 - **Countries:** 12 countries in 4 regions. Each country is served by one entity and booked on one sales cost center.
 - **Capacity (ADR 0013):** four activity types (machine hours, measurement and quality control, repair work, engineering hours), each crediting one of those accounts, and 32 work centers on 27 production and engineering cost centers with an hourly rate per activity type they output (a few output two). Gold views: `v_activity_types`, `v_work_centers`, `v_work_center_rates`, `v_capacity_actuals`.
+- **HR (TD-24, ADR 0020):** five job families (technicians, engineers, sales, office, management) and a personnel list of about 460 people at the anchor, 780 over the actuals' years. Each cost center has 6–14 seats in production, 3–7 in sales and 2–6 in administration; a seat is held by one person after the other, the next entering one to three months after the last one left, so the month-end figures show turnover. Most people are employees (`EMP`) at 100, 80, 60 or 50 %; production technicians include apprentices (`APP`) and agency staff (`TMP`); some engineers are freelancers (`FRL`), most without a contract percentage. HR lists nobody who enters after the anchor. Exits up to four months after it are announced; people of a cost center that closes leave by its closure. Names are made up. Staff types are Planlayer's seeded codes. Gold views: `v_job_families`, `v_staff`, `v_workforce_actuals` (month-end headcount and FTE per cost center, staff type and family).
 
 ## Patterns in the actuals
 
@@ -83,5 +84,8 @@ The `small` variant keeps the moved and the new cost center.
 | `v_work_centers` | work_center_code, work_center_name, cost_center_code |
 | `v_work_center_rates` | work_center_code, activity_type_code, rate |
 | `v_capacity_actuals` | posting_month, work_center, activity_type, actual_hours |
+| `v_job_families` | job_family, job_family_name |
+| `v_staff` | personnel_no, cost_center, job_title, employee_name, employee_group, job_family, entry_date, exit_date, contract_pct |
+| `v_workforce_actuals` | snapshot_month, cost_center, employee_group, job_family, headcount (integer), fte |
 
 The fact views name their columns as a warehouse would, not as Planlayer's fields, so mapping them is part of setting up a source.

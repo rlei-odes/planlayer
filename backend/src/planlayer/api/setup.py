@@ -15,6 +15,7 @@ from planlayer.api.planning import Version, version_out
 from planlayer.domain.entry_forms import Form
 from planlayer.domain.periods import fiscal_year_of
 from planlayer.domain.spreading import Profile, SpreadError
+from planlayer.domain.workforce import Mode
 
 router = APIRouter(prefix="/api")
 
@@ -68,6 +69,8 @@ class SetupIO(BaseModel):
     account_sets: list[AccountSetIO] = []
     grain: Literal["month", "quarter"] = "month"  # ADR 0015
     actuals_through: date | None = None  # forecasts: the last closed month
+    # Workforce planning's mode (ADR 0020); null: the round doesn't plan its workforce.
+    workforce_mode: Mode | None = None
 
 
 class CarryOverIn(BaseModel):
@@ -80,6 +83,7 @@ class CarryOverIn(BaseModel):
     capacity: bool = True
     sheets: bool = True
     forwarding: bool = True  # cost forwardings (ADR 0018)
+    workforce: bool = True  # lines added to workforce sheets, positions (ADR 0020)
     values: bool = False
     uplift: Annotated[Decimal, Field(ge=-100, le=1000)] = Decimal(0)  # percent
 
@@ -233,6 +237,7 @@ def setup(request: Request, user: CurrentUser, code: str) -> SetupOut:
             ],
             grain=s.grain,
             actuals_through=s.actuals_through,
+            workforce_mode=s.workforce_mode,
         ),
         latest_actuals=v.latest_actuals,
         actuals_available=v.actuals_available,
@@ -270,6 +275,7 @@ def save_setup(request: Request, user: CurrentUser, code: str, body: SetupIO) ->
                 ],
                 grain=body.grain,
                 actuals_through=body.actuals_through,
+                workforce_mode=body.workforce_mode,
             ),
         )
     except HANDLED as e:

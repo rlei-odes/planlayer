@@ -44,6 +44,16 @@ export const CapacityIcon = () => (
   </Icon>
 )
 
+// Two people: the cost center's workforce.
+export const WorkforceIcon = () => (
+  <Icon>
+    <circle cx="7.5" cy="7" r="2.6" />
+    <path d="M2.8 16.5c.6-2.7 2.4-4.2 4.7-4.2s4.1 1.5 4.7 4.2" />
+    <circle cx="13.8" cy="8" r="2.1" />
+    <path d="M13.3 12.4c2 0 3.4 1.2 3.9 3.4" />
+  </Icon>
+)
+
 // One source branching to several receivers: costs passed on.
 export const ForwardingIcon = () => (
   <Icon>

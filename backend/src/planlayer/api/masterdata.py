@@ -23,8 +23,20 @@ Dataset = Literal[
     "work_centers",
     "work_center_rates",
     "capacity_actuals",
+    "staff_types",
+    "staff_categories",
+    "staff",
+    "workforce_actuals",
 ]
-MemberDataset = Literal["entities", "cost_centers", "accounts", "activity_types", "work_centers"]
+MemberDataset = Literal[
+    "entities",
+    "cost_centers",
+    "accounts",
+    "activity_types",
+    "work_centers",
+    "staff_types",
+    "staff_categories",
+]
 REFERENCE_FIELDS = ("cost_center_code", "account_code", "variable_account_code")
 PREVIEW_ROWS = 20
 
@@ -353,6 +365,7 @@ class MemberOut(BaseModel):
     cost_center_code: str | None  # work centers
     account_code: str | None  # activity types: the account credited
     variable_account_code: str | None
+    external: bool | None = None  # staff types: external staff (ADR 0020)
 
 
 class MemberIn(BaseModel):
@@ -366,6 +379,7 @@ class MemberIn(BaseModel):
     cost_center_code: str | None = None
     account_code: str | None = None
     variable_account_code: str | None = None
+    external: bool | None = None  # staff types
 
 
 class MemberChange(BaseModel):
@@ -379,6 +393,7 @@ class MemberChange(BaseModel):
     cost_center_code: str | None = None
     account_code: str | None = None
     variable_account_code: str | None = None
+    external: bool | None = None
 
 
 @router.get("/members/{dataset}", responses={403: {}})
@@ -405,6 +420,7 @@ def add_member(request: Request, user: CurrentUser, dataset: MemberDataset, body
             owner=body.owner,
             account_type=body.account_type,
             references={f: getattr(body, f) for f in REFERENCE_FIELDS},
+            external=body.external,
         )
     except HANDLED as e:
         raise _http(e) from None
@@ -420,7 +436,7 @@ def change_member(
             masterdata.rename(engine, user, dataset, code, body.name)
         if "parent" in given:
             masterdata.move(engine, user, dataset, code, body.parent)
-        if given & {"entity_code", "owner", "account_type", *REFERENCE_FIELDS}:
+        if given & {"entity_code", "owner", "account_type", "external", *REFERENCE_FIELDS}:
             masterdata.set_attributes(
                 engine,
                 user,
@@ -430,6 +446,7 @@ def change_member(
                 owner=body.owner,
                 account_type=body.account_type,
                 references={f: getattr(body, f) for f in REFERENCE_FIELDS},
+                external=body.external,
             )
     except HANDLED as e:
         raise _http(e) from None

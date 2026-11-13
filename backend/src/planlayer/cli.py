@@ -94,6 +94,11 @@ def main(argv: list[str] | None = None) -> None:
         help="the test company's cost forwardings in a round (development)",
     )
     forwarding_cmd.add_argument("--round", required=True, help="the planning round")
+    workforce_cmd = commands.add_parser(
+        "seed-dev-workforce",
+        help="positions from HR, replacements and new positions in a round (development)",
+    )
+    workforce_cmd.add_argument("--round", required=True, help="the planning round")
     types_cmd = commands.add_parser(
         "api-types", help="write the frontend's TypeScript types from the API schema"
     )
@@ -210,6 +215,19 @@ def main(argv: list[str] | None = None) -> None:
             finally:
                 engine.dispose()
             print(f"created {len(made)} forwarding(s) in {args.round}: {', '.join(made) or '-'}")
+        case "seed-dev-workforce":
+            settings = Settings()  # type: ignore[call-arg]
+            if settings.environment == "production":
+                raise SystemExit("seed-dev-workforce is refused in production")
+            engine = create_app_engine(settings)
+            try:
+                taken, replaced, new = devdata.seed_workforce(engine, args.round)
+            finally:
+                engine.dispose()
+            print(
+                f"{args.round}: {taken} position(s) from HR, {replaced} replacement(s), "
+                f"{new} new position(s)"
+            )
         case "api-types":
             from planlayer.api.typescript import app_schema, typescript
 

@@ -5,7 +5,17 @@ import PlannerPreview, { Bars } from './PlannerPreview'
 import type { LatestActualsOut } from './schema'
 import Select, { type Option } from './Select'
 import { AccountsTab, CostCentersTab } from './ScopeTabs'
-import type { CarryOver, ComparisonColumn, NewRound, Profile, Rule, Scope, SetupDraft, SetupView } from './setupTypes'
+import type {
+  CarryOver,
+  ComparisonColumn,
+  NewRound,
+  Profile,
+  Rule,
+  Scope,
+  SetupDraft,
+  SetupView,
+  WorkforceMode,
+} from './setupTypes'
 
 // The yearly planning setup (E-03, ADR 0007): what a round plans and in what form, with a live
 // preview of the planner's sheet. Edits stay a draft until saved; the save is all or nothing.
@@ -310,6 +320,13 @@ export default function SetupPage({
             <EntryForms draft={draft} setDraft={setDraft} accounts={accounts} profiles={profiles} rounds={rounds} current={code} />
             <Comparisons draft={draft} setDraft={setDraft} rounds={rounds} current={code} actuals={view.actuals_available} />
             <Profiles profiles={profiles} periods={view.periods} fiscalYear={round.fiscal_year} onChanged={() => void loadProfiles()} />
+            <Workforce
+              draft={draft}
+              setDraft={setDraft}
+              saved={view.setup.workforce_mode ?? null}
+              round={round}
+              onNote={setNote}
+            />
           </div>
 
           <PlannerPreview
@@ -819,6 +836,101 @@ function profileCode(name: string): string {
   return name.toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 20)
 }
 
+const WORKFORCE_MODES: { value: WorkforceMode | ''; label: string; text: string }[] = [
+  { value: '', label: 'Off', text: 'No workforce sheet in this round.' },
+  { value: 'fte', label: 'FTE', text: 'Planners type full-time equivalents per staff type × category and month.' },
+  { value: 'headcount', label: 'Headcount', text: 'Planners type heads per staff type × category and month.' },
+  { value: 'both', label: 'FTE and headcount', text: 'Both, side by side on one sheet.' },
+  {
+    value: 'positions',
+    label: 'Positions',
+    text: 'Planners list each position: who, from when to when, at what contract %. FTE and headcount roll up from them.',
+  },
+]
+
+/** Workforce planning (ADR 0020): the round's mode, and HR's staff as a start for positions. */
+function Workforce({
+  draft,
+  setDraft,
+  saved,
+  round,
+  onNote,
+}: {
+  draft: SetupDraft
+  setDraft: (d: SetupDraft) => void
+  saved: WorkforceMode | null
+  round: Version
+  onNote: (n: { kind: 'ok' | 'error' | 'warn'; text: string }) => void
+}) {
+  const [taking, setTaking] = useState(false)
+  const mode = draft.workforce_mode ?? ''
+  const changing = saved !== null && (draft.workforce_mode ?? null) !== saved
+
+  async function takeAll() {
+    setTaking(true)
+    try {
+      const { added } = await api.workforceFromHr(round.code)
+      onNote({
+        kind: 'ok',
+        text: added
+          ? `${added} people from HR’s staff list added as positions of their cost centers.`
+          : 'Every person in HR’s staff list is a position already, or their cost center can’t be changed.',
+      })
+    } catch (e) {
+      onNote({ kind: 'error', text: e instanceof Error ? e.message : String(e) })
+    } finally {
+      setTaking(false)
+    }
+  }
+
+  return (
+    <section className="su-card">
+      <h3>
+        <span className="su-step">6</span> Workforce planning
+      </h3>
+      <p className="su-hint">
+        FTE and headcount per cost center, by staff type and category, as month-end levels: the year shows December’s
+        value, and a year value typed fills every month. Cost center owners and their deputies plan it next to their
+        costs, under the same status.
+      </p>
+      <div className="su-body wf-modes" role="radiogroup" aria-label="Workforce mode">
+        {WORKFORCE_MODES.map((m) => (
+          <label key={m.value} className={`wf-mode${mode === m.value ? ' on' : ''}`}>
+            <input
+              type="radio"
+              name="workforce-mode"
+              checked={mode === m.value}
+              onChange={() => setDraft({ ...draft, workforce_mode: m.value === '' ? null : m.value })}
+            />
+            <span>
+              <strong>{m.label}</strong>
+              <span className="su-hint">{m.text}</span>
+            </span>
+          </label>
+        ))}
+      </div>
+      {changing && (
+        <div className="su-note warn">
+          {round.status === 'setup'
+            ? 'Saving clears the workforce values, lines and positions this round has so far.'
+            : 'An open round with workforce values or positions keeps its mode; the save is refused while there are any.'}
+        </div>
+      )}
+      {saved === 'positions' && !changing && (
+        <div className="su-body su-row">
+          <button type="button" className="su-btn" disabled={taking || round.status === 'closed'} onClick={() => void takeAll()}>
+            {taking ? 'Adding…' : 'Add staff from HR'}
+          </button>
+          <span className="su-hint">
+            For every planned cost center: the people in HR’s staff list active in {round.fiscal_year} who aren’t
+            positions yet. Planners can do the same on their sheet.
+          </span>
+        </div>
+      )}
+    </section>
+  )
+}
+
 const DATE_TIME = new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeStyle: 'short' })
 
 /** How the round was created: from which round, by whom, and what it carried over. */
@@ -873,7 +985,8 @@ const CARRY: { key: keyof Omit<CarryOver, 'uplift'>; label: string; hint: string
   { key: 'capacity', label: 'Capacity', hint: 'productive cost centers and their plan rates and lines' },
   { key: 'sheets', label: 'Sheets', hint: 'accounts added to sheets, line spreads' },
   { key: 'forwarding', label: 'Cost forwarding', hint: 'forwardings with their receivers, recomputed in the new round' },
-  { key: 'values', label: 'Plan values', hint: 'moved to the new year month by month, with an uplift; planned hours too, without' },
+  { key: 'workforce', label: 'Workforce', hint: 'positions still there in the new year, lines added to workforce sheets' },
+  { key: 'values', label: 'Plan values', hint: 'moved to the new year month by month, with an uplift; planned hours, FTE and headcount too, without' },
 ]
 const NO_CARRY: CarryOver = {
   setup: true,
@@ -883,6 +996,7 @@ const NO_CARRY: CarryOver = {
   capacity: true,
   sheets: true,
   forwarding: true,
+  workforce: true,
   values: false,
   uplift: '0',
 }

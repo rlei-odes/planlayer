@@ -65,6 +65,7 @@ class PublishPreviewOut(BaseModel):
     changes: list[ChangeOut]
     fingerprint: str
     hours_rows: int  # planned hours written to fact_plan_capacity (ADR 0016)
+    workforce_rows: int  # FTE and headcount written to fact_plan_workforce (ADR 0020)
 
 
 class PublishRunIn(BaseModel):

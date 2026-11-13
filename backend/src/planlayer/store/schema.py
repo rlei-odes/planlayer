@@ -45,9 +45,11 @@ metadata = MetaData(schema=APP_SCHEMA, naming_convention=NAMING_CONVENTION)
 # registry (D-04, E-03) replaces these constants.
 ENTITY, COST_CENTER, ACCOUNT = 1, 2, 3
 WORK_CENTER, ACTIVITY_TYPE = 4, 5  # capacity planning (ADR 0013)
+STAFF_TYPE, STAFF_CATEGORY = 6, 7  # workforce planning (ADR 0020)
 H_COST_CENTER, H_ACCOUNT = 1, 2
 BASE_LAYER = 1  # T-23
 AMOUNT, HOURS = 1, 2  # measures, T-23
+FTE, HEADCOUNT = 3, 4  # workforce planning (ADR 0020)
 
 AMOUNT_TYPE = Numeric(18, 2)  # T-12
 
@@ -98,6 +100,7 @@ member = Table(
     Column("source_name", Text),
     # ADR 0014: since when the source no longer delivers a synced member; NULL while it does.
     Column("missing_since", DateTime(timezone=True)),
+    Column("external", Boolean),  # staff types (ADR 0020): external staff, e.g. freelancers
     UniqueConstraint("dim_id", "code"),
 )
 
@@ -147,6 +150,7 @@ version = Table(
 
 MODULE_COST_CENTER = "cost_center"
 MODULE_CAPACITY = "capacity"  # its enabled members are the productive cost centers (ADR 0013)
+MODULE_WORKFORCE = "workforce"  # FTE, headcount or positions (ADR 0020)
 
 # A plan version for one fiscal year, one-to-one; the version's code and name are the round's.
 planning_round = Table(
@@ -174,6 +178,8 @@ round_module = Table(
     Column("module", Text, nullable=False),
     # Entry form of accounts without a setting of their own or of a group above them.
     Column("default_form", Text, nullable=False, server_default="monthly"),
+    # Workforce planning's mode (ADR 0020): fte / headcount / both / positions.
+    Column("mode", Text),
     PrimaryKeyConstraint("version_id", "module"),
 )
 
@@ -803,4 +809,117 @@ forwarding_account = Table(
     Column("account_id", Integer),
     Column("side", Text),  # charge / credit
     Column("forwarding_id", Integer),
+)
+
+
+# --- Workforce planning (ADR 0020) ---------------------------------------------------------------
+
+# FTE and headcount per line and month, as levels at month end: planned values, actuals synced
+# from HR, and in a positions round the positions' roll-up.
+fact_workforce = Table(
+    "fact_workforce",
+    metadata,
+    Column("version_id", SmallInteger, ForeignKey("version.version_id"), nullable=False),
+    Column("layer_id", SmallInteger, nullable=False),
+    Column("measure_id", SmallInteger, nullable=False),
+    Column("period", Date, nullable=False),
+    Column("dim_entity", Integer, ForeignKey("member.member_id"), nullable=False),
+    Column("dim_cost_center", Integer, ForeignKey("member.member_id"), nullable=False),
+    Column("dim_staff_type", Integer, ForeignKey("member.member_id"), nullable=False),
+    Column("dim_staff_category", Integer, ForeignKey("member.member_id"), nullable=False),
+    Column("amount", AMOUNT_TYPE, nullable=False),
+    Column("row_version", BigInteger, nullable=False, server_default="1"),
+    PrimaryKeyConstraint(
+        "version_id", "layer_id", "measure_id", "period", "dim_entity", "dim_cost_center",
+        "dim_staff_type", "dim_staff_category",
+    ),
+)  # fmt: skip
+
+workforce_change_log = Table(
+    "workforce_change_log",
+    metadata,
+    Column("id", BigInteger, primary_key=True),
+    Column("at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("actor", Text),
+    Column("batch_id", Text),
+    Column("op", Text, nullable=False),
+    Column("version_id", SmallInteger, nullable=False),
+    Column("measure_id", SmallInteger, nullable=False),
+    Column("period", Date, nullable=False),
+    Column("dim_cost_center", Integer, nullable=False),
+    Column("dim_staff_type", Integer, nullable=False),
+    Column("dim_staff_category", Integer, nullable=False),
+    Column("old_amount", AMOUNT_TYPE),
+    Column("new_amount", AMOUNT_TYPE),
+)
+
+# A staff type x category line a planner added to a cost center's workforce sheet.
+workforce_line = Table(
+    "workforce_line",
+    metadata,
+    Column("version_id", SmallInteger, nullable=False),
+    Column("module", Text, nullable=False, server_default=MODULE_WORKFORCE),
+    Column("cost_center_id", Integer, ForeignKey("member.member_id"), nullable=False),
+    Column("staff_type_id", Integer, ForeignKey("member.member_id"), nullable=False),
+    Column("staff_category_id", Integer, ForeignKey("member.member_id"), nullable=False),
+    Column("changed_by", Text),
+    Column("changed_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    PrimaryKeyConstraint("version_id", "cost_center_id", "staff_type_id", "staff_category_id"),
+    _module_fk(),
+)
+
+# A position of a cost center in a round with mode ``positions``; logged by a trigger.
+workforce_position = Table(
+    "workforce_position",
+    metadata,
+    Column("position_id", Integer, Identity(), primary_key=True),
+    Column("version_id", SmallInteger, nullable=False),
+    Column("module", Text, nullable=False, server_default=MODULE_WORKFORCE),
+    Column("cost_center_id", Integer, ForeignKey("member.member_id"), nullable=False),
+    Column("code", Text),  # HR's position or personnel number; unique in the round
+    Column("title", Text, nullable=False),
+    Column("person_name", Text),
+    Column("staff_type_id", Integer, ForeignKey("member.member_id"), nullable=False),
+    Column("staff_category_id", Integer, ForeignKey("member.member_id"), nullable=False),
+    Column("entry_date", Date),  # None: before the fiscal year
+    Column("leave_date", Date),  # None: stays
+    Column("contract_percent", Numeric(5, 2)),
+    Column("is_plan", Boolean, nullable=False, server_default="false"),
+    Column("is_replacement", Boolean, nullable=False, server_default="false"),
+    Column("description", Text),
+    Column("changed_by", Text),
+    Column("changed_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    UniqueConstraint("version_id", "code"),
+    _module_fk(),
+)
+
+workforce_position_log = Table(
+    "workforce_position_log",
+    metadata,
+    Column("id", BigInteger, primary_key=True),
+    Column("at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("actor", Text),
+    Column("batch_id", Text),
+    Column("op", Text, nullable=False),
+    Column("version_id", SmallInteger, nullable=False),
+    Column("cost_center_id", Integer, nullable=False),
+    Column("position_id", Integer, nullable=False),
+    Column("old", JSONB),
+    Column("new", JSONB),
+)
+
+# HR's list of people (dataset ``staff``), replaced by each sync; holds names, so row-level
+# security shows it only to those who read the cost center.
+hr_staff = Table(
+    "hr_staff",
+    metadata,
+    Column("code", Text, primary_key=True),
+    Column("cost_center_id", Integer, ForeignKey("member.member_id"), nullable=False),
+    Column("title", Text, nullable=False),
+    Column("person_name", Text),
+    Column("staff_type_id", Integer, ForeignKey("member.member_id"), nullable=False),
+    Column("staff_category_id", Integer, ForeignKey("member.member_id"), nullable=False),
+    Column("entry_date", Date),
+    Column("leave_date", Date),
+    Column("contract_percent", Numeric(5, 2)),
 )

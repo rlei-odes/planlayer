@@ -18,6 +18,7 @@ from planlayer.access import AccessError, User
 from planlayer.store.schema import (
     COST_CENTER,
     NO_ENTITY,
+    STAFF_TYPE,
     closure,
     edge_override,
     hier_edge,
@@ -64,6 +65,7 @@ class MemberRow:
     account_code: str | None
     variable_account_code: str | None
     missing_since: datetime | None = None  # synced, but no longer delivered by the source
+    external: bool | None = None  # staff types (ADR 0020)
 
 
 def tree(engine: Engine, user: User, dataset: str) -> list[MemberRow]:
@@ -120,6 +122,7 @@ def tree(engine: Engine, user: User, dataset: str) -> list[MemberRow]:
             r.account_code,
             r.variable_account_code,
             r.missing_since,
+            r.external,
         )
 
     def visit(m: int, depth: int) -> None:
@@ -181,9 +184,11 @@ def add_member(
     owner: str | None = None,
     account_type: str | None = None,
     references: dict[str, str | None] | None = None,
+    external: bool | None = None,
 ) -> None:
     """A manual member; the same page builds master data from scratch. ``references`` are
-    a work center's cost center and an activity type's accounts, by code."""
+    a work center's cost center and an activity type's accounts, by code; ``external`` marks
+    a staff type of external staff."""
     require_editor(user)
     dim, hier_id = _dimension(dataset)
     code, name = code.strip(), name.strip()
@@ -210,6 +215,7 @@ def add_member(
                 else None,
                 owner=owner,
                 account_type=account_type,
+                external=bool(external) if dim == STAFF_TYPE else None,
                 **refs,
             )
             .returning(member.c.member_id)
@@ -321,6 +327,7 @@ def set_attributes(
     owner: str | None = None,
     account_type: str | None = None,
     references: dict[str, str | None] | None = None,
+    external: bool | None = None,
 ) -> None:
     """Attributes of a manual member; a synced member's come from the source (its planner is
     set on the responsibilities page)."""
@@ -341,6 +348,7 @@ def set_attributes(
                 else None,
                 owner=owner,
                 account_type=account_type,
+                external=bool(external) if dim == STAFF_TYPE else None,
                 **refs,
             )
         )

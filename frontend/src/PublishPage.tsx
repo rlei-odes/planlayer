@@ -191,6 +191,19 @@ export default function PublishPage({ round }: { round: Version }) {
               </div>
               <div className="pv-notes">
                 {nothing && <div className="su-note ok">The output already holds exactly these rows. Nothing to publish.</div>}
+                {(preview.hours_rows > 0 || preview.workforce_rows > 0) && (
+                  <div className="su-hint">
+                    With them:{' '}
+                    {[
+                      preview.hours_rows > 0 && `${preview.hours_rows.toLocaleString('en-US')} rows of planned hours`,
+                      preview.workforce_rows > 0 &&
+                        `${preview.workforce_rows.toLocaleString('en-US')} rows of FTE and headcount (no names)`,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
+                    .
+                  </div>
+                )}
                 {preview.changed + preview.removed > 0 && (
                   <div className="su-note warn">
                     {preview.changed > 0 && `${preview.changed} existing row${preview.changed === 1 ? '' : 's'} will be overwritten`}

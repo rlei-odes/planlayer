@@ -28,6 +28,13 @@ export type AddAccountIn = {
   account_code: string
 }
 
+export type BuildUpOut = {
+  entering: number[]
+  new: number[]
+  replacements: number[]
+  leaving: number[]
+}
+
 export type CapacityRowOut = {
   kind: "group" | "line" | "credit"
   activity_type_code: string
@@ -87,6 +94,7 @@ export type CarryOverInInput = {
   capacity?: boolean
   sheets?: boolean
   forwarding?: boolean
+  workforce?: boolean
   values?: boolean
   uplift?: number | string
 }
@@ -99,6 +107,7 @@ export type CarryOverInOutput = {
   capacity?: boolean
   sheets?: boolean
   forwarding?: boolean
+  workforce?: boolean
   values?: boolean
   uplift?: string
 }
@@ -163,7 +172,7 @@ export type CreatedOut = {
 }
 
 export type DatasetOut = {
-  dataset: "entities" | "cost_centers" | "accounts" | "actuals" | "activity_types" | "work_centers" | "work_center_rates" | "capacity_actuals"
+  dataset: "entities" | "cost_centers" | "accounts" | "actuals" | "activity_types" | "work_centers" | "work_center_rates" | "capacity_actuals" | "staff_types" | "staff_categories" | "staff" | "workforce_actuals"
   fields: FieldOut[]
   has_hierarchy: boolean
   mapping: MappingIO | null
@@ -313,6 +322,10 @@ export type HoursEditsIn = {
   edits: HoursEditIn[]
 }
 
+export type HrTakenOut = {
+  added: number
+}
+
 export type InactiveLineOut = {
   work_center_code: string
   work_center_name: string
@@ -440,6 +453,7 @@ export type MemberChange = {
   cost_center_code?: string | null
   account_code?: string | null
   variable_account_code?: string | null
+  external?: boolean | null
 }
 
 export type MemberIn = {
@@ -453,6 +467,7 @@ export type MemberIn = {
   cost_center_code?: string | null
   account_code?: string | null
   variable_account_code?: string | null
+  external?: boolean | null
 }
 
 export type MemberOut = {
@@ -474,6 +489,7 @@ export type MemberOut = {
   cost_center_code: string | null
   account_code: string | null
   variable_account_code: string | null
+  external?: boolean | null
 }
 
 export type MyNotesOut = {
@@ -598,6 +614,23 @@ export type PlanningUnit = {
   can_write: boolean
 }
 
+export type PositionOut = {
+  position_id: number
+  code: string | null
+  title: string
+  person_name: string | null
+  staff_type_code: string
+  staff_category_code: string
+  entry_date: string | null
+  leave_date: string | null
+  contract_percent: string | null
+  is_plan: boolean
+  is_replacement: boolean
+  description: string | null
+  counted: boolean[]
+  changed_by: string | null
+}
+
 export type ProfileIOInput = {
   code: string
   name: string
@@ -624,6 +657,7 @@ export type PublishPreviewOut = {
   changes: ChangeOut[]
   fingerprint: string
   hours_rows: number
+  workforce_rows: number
 }
 
 export type PublishRunIn = {
@@ -778,6 +812,7 @@ export type SetupIO = {
   account_sets?: AccountSetIO[]
   grain?: "month" | "quarter"
   actuals_through?: string | null
+  workforce_mode?: "fte" | "headcount" | "both" | "positions" | null
 }
 
 export type SetupOut = {
@@ -816,6 +851,12 @@ export type SourceOut = {
 
 export type SpreadIn = {
   spread: LineSpreadIO | null
+}
+
+export type StaffTypeOut = {
+  code: string
+  name: string
+  external: boolean
 }
 
 export type StatusRowOut = {
@@ -936,6 +977,78 @@ export type WindowOut = {
   last: number
   period_from: string
   before: string
+}
+
+export type WorkforceEditIn = {
+  staff_type_code: string
+  staff_category_code: string
+  measure: "fte" | "headcount"
+  month?: number | null
+  quarter?: number | null
+  value: string | null
+  expected: (number | null)[]
+}
+
+export type WorkforceEditsIn = {
+  edits: WorkforceEditIn[]
+}
+
+export type WorkforceLineIn = {
+  staff_type_code: string
+  staff_category_code: string
+}
+
+export type WorkforcePositionIn = {
+  title: string
+  staff_type_code: string
+  staff_category_code: string
+  code?: string | null
+  person_name?: string | null
+  entry_date?: string | null
+  leave_date?: string | null
+  contract_percent?: string | null
+  is_plan?: boolean
+  is_replacement?: boolean
+  description?: string | null
+}
+
+export type WorkforceRowOut = {
+  kind: "line" | "group" | "total"
+  measure: "fte" | "headcount"
+  staff_type_code: string | null
+  staff_type_name: string | null
+  staff_category_code: string | null
+  staff_category_name: string | null
+  external: boolean
+  plan: CellOut[]
+  comparisons: ((string | null)[])[]
+  editable: boolean
+}
+
+export type WorkforceSheetOut = {
+  version_code: string
+  version_name: string
+  fiscal_year: number
+  round_status: "setup" | "open" | "closed"
+  deadline: string | null
+  cost_center_code: string
+  cost_center_name: string
+  status: "not_started" | "in_progress" | "submitted" | "approved"
+  lock_reason: string | null
+  mode: "fte" | "headcount" | "both" | "positions"
+  periods: string[]
+  comparisons: ComparisonOut[]
+  rows: WorkforceRowOut[]
+  version_kind: string
+  grain: "month" | "quarter"
+  actuals_through: string | null
+  closed_months: number
+  staff_types: StaffTypeOut[]
+  staff_categories: CodeName[]
+  positions: PositionOut[]
+  build_up: BuildUpOut | null
+  hr_available: number
+  batch_id?: string | null
 }
 
 export type YearCountOut = {

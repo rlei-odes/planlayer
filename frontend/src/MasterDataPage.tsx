@@ -31,6 +31,10 @@ const DATASET_LABEL: Record<Dataset, string> = {
   work_centers: 'Work centers',
   work_center_rates: 'Work center rates',
   capacity_actuals: 'Work center actual hours',
+  staff_types: 'Staff types',
+  staff_categories: 'Staff categories',
+  staff: 'Staff (HR)',
+  workforce_actuals: 'Workforce actuals',
 }
 // Datasets grouped by the module that needs them, so the admin sees what a setup requires.
 const DATASET_GROUPS: { title: string; hint: string; datasets: Dataset[] }[] = [
@@ -49,21 +53,29 @@ const DATASET_GROUPS: { title: string; hint: string; datasets: Dataset[] }[] = [
     hint: 'Only needed when productive cost centers plan their work centers’ hours.',
     datasets: ['activity_types', 'work_centers', 'work_center_rates', 'capacity_actuals'],
   },
+  {
+    title: 'Workforce planning',
+    hint: 'Only needed when a round plans FTE, headcount or positions. Staff types come seeded (Employee, Apprentice, Temporary, Freelancer); map them only if HR has its own.',
+    datasets: ['staff_types', 'staff_categories', 'staff', 'workforce_actuals'],
+  },
 ]
 // Values per period: synced for a window of fiscal years, chosen on Sync.
-const PERIOD_DATASETS: Dataset[] = ['actuals', 'capacity_actuals']
+const PERIOD_DATASETS: Dataset[] = ['actuals', 'capacity_actuals', 'workforce_actuals']
 const DIMENSIONS: Option<MemberDataset>[] = [
   { value: 'cost_centers', label: 'Cost centers' },
   { value: 'accounts', label: 'Accounts' },
   { value: 'entities', label: 'Entities' },
   { value: 'work_centers', label: 'Work centers' },
   { value: 'activity_types', label: 'Activity types' },
+  { value: 'staff_types', label: 'Staff types' },
+  { value: 'staff_categories', label: 'Staff categories' },
 ]
 const ATTRIBUTE_HEAD: Partial<Record<MemberDataset, string>> = {
   accounts: 'Type',
   cost_centers: 'Entity · owner',
   work_centers: 'Cost center',
   activity_types: 'Credited account',
+  staff_types: 'Kind',
 }
 
 function attributes(dataset: MemberDataset, r: MemberRow): string {
@@ -74,6 +86,11 @@ function attributes(dataset: MemberDataset, r: MemberRow): string {
       return r.cost_center_code ?? ''
     case 'activity_types':
       return [r.account_code, r.variable_account_code && `variable: ${r.variable_account_code}`].filter(Boolean).join(' · ')
+    case 'staff_types':
+      return r.external ? 'external (contract % optional)' : 'internal'
+    case 'staff_categories':
+      return ''
+
     default:
       return [r.entity_code, r.owner].filter(Boolean).join(' · ')
   }
@@ -726,6 +743,7 @@ const BLANK = {
   account_type: '',
   cost_center_code: '',
   account_code: '',
+  external: false,
 }
 
 function Members() {
@@ -816,6 +834,7 @@ function Members() {
                   account_type: draft.account_type || null,
                   cost_center_code: draft.cost_center_code || null,
                   account_code: draft.account_code || null,
+                  external: dataset === 'staff_types' ? draft.external : null,
                 }),
               `${draft.code} added.`,
             ).then((ok) => ok && setDraft({ ...draft, code: '', name: '' }))
@@ -886,6 +905,12 @@ function Members() {
             )}
           </div>
           <div className="su-row md-add-foot">
+            {dataset === 'staff_types' && (
+              <label className="md-check">
+                <input type="checkbox" checked={draft.external} onChange={(e) => setDraft({ ...draft, external: e.target.checked })} />
+                External staff, e.g. freelancers: the contract percentage is optional
+              </label>
+            )}
             {tree && (
               <label className="md-check">
                 <input type="checkbox" checked={draft.is_group} onChange={(e) => setDraft({ ...draft, is_group: e.target.checked })} />

@@ -13,7 +13,9 @@ from pathlib import Path
 import psycopg
 from psycopg import sql
 
+from gen_testdata import hr
 from gen_testdata.actuals import Rows
+from gen_testdata.hr import JOB_FAMILIES
 from gen_testdata.master import ACTIVITY_TYPES, FUNCTION_ROOT, FUNCTIONS, REGIONS, Account, Master
 
 BRONZE_TABLES = {
@@ -60,6 +62,18 @@ BRONZE_TABLES = {
     "leistung_ist": (
         "periode date, arbpl text, lstar text, menge numeric(18,2), "
         "PRIMARY KEY (periode, arbpl, lstar)"
+    ),
+    # Workforce planning (ADR 0020, TD-24): HR's job families, personnel master and month-end
+    # headcount (Stichtag).
+    "jobfamilie": "jobfamilie text PRIMARY KEY, bezeichnung text",
+    "personal": (
+        "personalnr text PRIMARY KEY, kostl text, stellenbez text, name text, "
+        "mitarbeitergruppe text, jobfamilie text, eintritt date, austritt date, "
+        "beschaeftigungsgrad numeric(5,2)"
+    ),
+    "personal_stichtag": (
+        "stichtag date, kostl text, mitarbeitergruppe text, jobfamilie text, koepfe int, "
+        "fte numeric(18,2), PRIMARY KEY (stichtag, kostl, mitarbeitergruppe, jobfamilie)"
     ),
 }
 
@@ -193,6 +207,19 @@ GOLD_VIEWS = {
         SELECT periode AS posting_month, arbpl AS work_center, lstar AS activity_type,
                menge AS actual_hours
         FROM {b}.leistung_ist""",
+    "v_job_families": """
+        SELECT jobfamilie AS job_family, bezeichnung AS job_family_name FROM {b}.jobfamilie""",
+    "v_staff": """
+        SELECT personalnr AS personnel_no, kostl AS cost_center, stellenbez AS job_title,
+               name AS employee_name, mitarbeitergruppe AS employee_group,
+               jobfamilie AS job_family, eintritt AS entry_date, austritt AS exit_date,
+               beschaeftigungsgrad AS contract_pct
+        FROM {b}.personal""",
+    "v_workforce_actuals": """
+        SELECT stichtag AS snapshot_month, kostl AS cost_center,
+               mitarbeitergruppe AS employee_group, jobfamilie AS job_family,
+               koepfe AS headcount, fte
+        FROM {b}.personal_stichtag""",
 }
 
 # Views exported to files, with the order that makes files reproducible.
@@ -214,6 +241,9 @@ EXPORT_ORDER = {
     "v_work_centers": "work_center_code",
     "v_work_center_rates": "work_center_code, activity_type_code",
     "v_capacity_actuals": "posting_month, work_center, activity_type",
+    "v_job_families": "job_family",
+    "v_staff": "personnel_no",
+    "v_workforce_actuals": "snapshot_month, cost_center, employee_group, job_family",
 }
 
 
@@ -245,6 +275,7 @@ def load(
             cur.execute(sql.SQL("CREATE TABLE {}.{} (" + columns + ")").format(b, name))
 
         cal = master.calendar
+        people = hr.staff(master, rows.seed)
         data: dict[str, Iterable[tuple[object, ...]]] = {
             "generator_run": [
                 (master.variant.name, rows.seed, date_mode, cal.anchor, cal.fiscal_start_month)
@@ -290,6 +321,9 @@ def load(
                 for activity, rate, _hours in w.outputs
             ],
             "leistung_ist": rows.capacity_hours(),
+            "jobfamilie": list(JOB_FAMILIES),
+            "personal": hr.staff_rows(people),
+            "personal_stichtag": hr.snapshot_rows(people, cal.periods),
         }
         counts: dict[str, int] = {}
         for table, table_rows in data.items():
@@ -355,7 +389,15 @@ def export(conn: psycopg.Connection, out: Path, gold: str = "gold") -> list[Path
             for col in cur.description or []:
                 if col.name in ("amount_eur", "value", "rate_to_eur"):
                     types[col.name] = pa.decimal128(18, 3 if col.name == "value" else 2)
-                elif col.name in ("period", "posting_month", "valid_from", "valid_to"):
+                elif col.name in (
+                    "period",
+                    "posting_month",
+                    "valid_from",
+                    "valid_to",
+                    "snapshot_month",
+                    "entry_date",
+                    "exit_date",
+                ):
                     types[col.name] = pa.date32()
                 elif col.name == "is_group":
                     types[col.name] = pa.bool_()

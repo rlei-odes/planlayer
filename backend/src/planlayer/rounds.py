@@ -37,6 +37,7 @@ from planlayer.domain.periods import (
 )
 from planlayer.domain.spreading import Profile
 from planlayer.domain.workflow import RoundStatus, round_transition
+from planlayer.domain.workforce import Mode
 from planlayer.store.bulk import insert_all
 from planlayer.store.schema import (
     ACCOUNT,
@@ -47,6 +48,7 @@ from planlayer.store.schema import (
     H_COST_CENTER,
     MODULE_CAPACITY,
     MODULE_COST_CENTER,
+    MODULE_WORKFORCE,
     account_set,
     account_set_account,
     account_set_assignment,
@@ -230,6 +232,7 @@ class CarryOver:
     capacity: bool = True  # productive cost centers and their capacity lines
     sheets: bool = True  # accounts added to sheets, line spreads
     forwarding: bool = True  # cost forwardings (ADR 0018), recomputed in the new round
+    workforce: bool = True  # lines added to workforce sheets and positions (ADR 0020)
     values: bool = False  # plan values, moved to the new year and raised by ``uplift``
     uplift: Decimal = Decimal(0)  # percent
 
@@ -248,6 +251,7 @@ CARRY_ITEMS = (
     "capacity",
     "sheets",
     "forwarding",
+    "workforce",
     "values",
 )
 
@@ -369,6 +373,11 @@ def create_round(
 
             target = get_round(conn, code)
             hours = carry_hours(conn, source, target, productive(conn, vid) & planned)
+        if carry.workforce:
+            # Imported here: workforce planning builds on this module.
+            from planlayer.workforce import carry as carry_workforce
+
+            carry_workforce(conn, source, get_round(conn, code), planned, carry.values)
         if carry.forwarding:
             # After the values: full forwardings pass on the carried costs. Imported here:
             # forwarding builds on this module.
@@ -932,6 +941,8 @@ class Setup:
     account_sets: list[AccountSet] = field(default_factory=list)
     grain: Grain = "month"
     actuals_through: date | None = None  # forecasts: the last closed month (ADR 0015)
+    # Workforce planning's mode (ADR 0020); None: the round doesn't plan its workforce.
+    workforce_mode: Mode | None = None
 
 
 @dataclass
@@ -1060,6 +1071,12 @@ def setup_of(engine: Engine, user: User, code: str) -> SetupView:
                 .order_by(member.c.code)
             ).scalars()
         )
+        workforce: Mode | None = conn.execute(
+            select(round_module.c.mode).where(
+                round_module.c.version_id == r.version_id,
+                round_module.c.module == MODULE_WORKFORCE,
+            )
+        ).scalar()
     return SetupView(
         r,
         copied,
@@ -1074,6 +1091,7 @@ def setup_of(engine: Engine, user: User, code: str) -> SetupView:
             sets,
             r.grain,
             r.actuals_through,
+            workforce,
         ),
         actuals,
         len(enabled),
@@ -1166,6 +1184,10 @@ def save_setup(engine: Engine, actor: User, code: str, setup: Setup) -> None:
         _clear_outside_sets(conn, r)
         _set_productive(conn, r, setup.productive_cost_centers)
         _set_periods(conn, r, setup.grain, setup.actuals_through)
+        # Imported here: workforce planning builds on this module.
+        from planlayer.workforce import set_mode
+
+        set_mode(conn, r, setup.workforce_mode)
         conn.execute(
             update(planning_round)
             .where(planning_round.c.version_id == r.version_id)

@@ -7,6 +7,7 @@ symbolic schema ``OUT_SCHEMA``, translated by the output engine like the app sto
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     Column,
     Connection,
     Date,
@@ -106,6 +107,50 @@ dim_activity_type = Table(
     Column("account_code", Text),  # the account its credits go to
 )
 
+# FTE and headcount at month end per staff type and category (ADR 0020); positions are not
+# published. A forecast's closed months as actuals.
+fact_plan_workforce = Table(
+    "fact_plan_workforce",
+    out_metadata,
+    Column("version_code", Text, nullable=False),
+    Column("fiscal_year", Integer, nullable=False),
+    Column("period", Date, nullable=False),
+    Column("entity_code", Text, nullable=False),
+    Column("cost_center_code", Text, nullable=False),
+    Column("staff_type_code", Text, nullable=False),
+    Column("staff_category_code", Text, nullable=False),
+    Column("measure", Text, nullable=False),  # fte / headcount
+    Column("amount", Numeric(18, 2), nullable=False),
+    Column("status", Text, nullable=False),
+    Column("origin", Text, nullable=False),
+    Column("published_at", DateTime(timezone=True), nullable=False),
+    Column("publish_run_id", BigInteger, nullable=False),
+    PrimaryKeyConstraint(
+        "version_code",
+        "period",
+        "entity_code",
+        "cost_center_code",
+        "staff_type_code",
+        "staff_category_code",
+        "measure",
+    ),
+)
+
+dim_staff_type = Table(
+    "dim_staff_type",
+    out_metadata,
+    Column("code", Text, primary_key=True),
+    Column("name", Text, nullable=False),
+    Column("external", Boolean),  # external staff, e.g. freelancers
+)
+
+dim_staff_category = Table(
+    "dim_staff_category",
+    out_metadata,
+    Column("code", Text, primary_key=True),
+    Column("name", Text, nullable=False),
+)
+
 dim_version = Table(
     "dim_version",
     out_metadata,
@@ -190,4 +235,17 @@ def ensure(conn: Connection, schema: str) -> None:
         LEFT JOIN {s}.dim_cost_center cc ON cc.code = f.cost_center_code
         LEFT JOIN {s}.dim_work_center w ON w.code = f.work_center_code
         LEFT JOIN {s}.dim_activity_type t ON t.code = f.activity_type_code
+    """)
+    conn.exec_driver_sql(f"""
+        CREATE OR REPLACE VIEW {s}.v_plan_workforce AS
+        SELECT f.version_code, v.name AS version_name, f.fiscal_year, f.period,
+               f.entity_code, f.cost_center_code, cc.name AS cost_center_name,
+               f.staff_type_code, t.name AS staff_type_name, t.external,
+               f.staff_category_code, c.name AS staff_category_name,
+               f.measure, f.amount, f.status, f.origin, f.published_at
+        FROM {s}.fact_plan_workforce f
+        LEFT JOIN {s}.dim_version v ON v.code = f.version_code
+        LEFT JOIN {s}.dim_cost_center cc ON cc.code = f.cost_center_code
+        LEFT JOIN {s}.dim_staff_type t ON t.code = f.staff_type_code
+        LEFT JOIN {s}.dim_staff_category c ON c.code = f.staff_category_code
     """)

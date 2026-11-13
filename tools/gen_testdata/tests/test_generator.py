@@ -184,3 +184,32 @@ def test_cost_forwarding_balances_and_passes_on_toolings_costs() -> None:
     left = sum(float(str(r[6])) for r in month if r[4] == tooling and r[5] != "8800")
     passed = -sum(float(str(r[6])) for r in forwarded if r[4] == tooling and r[5] == "8800")
     assert abs(passed - left) < 0.02  # 40 + 25 + 20 + 15 %
+
+
+# --- HR (TD-24) -----------------------------------------------------------------------------------
+
+
+def test_staff_and_month_end_snapshots() -> None:
+    from gen_testdata import hr
+
+    master = build()
+    people = hr.staff(master, 42)
+    assert people == hr.staff(master, 42)  # deterministic
+    codes = [p.code for p in people]
+    assert len(codes) == len(set(codes))
+    anchor = master.calendar.periods[-1]
+    active = [p for p in people if p.counts(anchor)]
+    assert 380 <= len(active) <= 520  # ~400 employees (TD-01)
+    assert {p.staff_type for p in active} == {"EMP", "APP", "TMP", "FRL"}
+    assert all(p.entry <= master.calendar.anchor for p in people)  # HR knows no future hires
+    assert any(p.exit and p.exit > master.calendar.anchor for p in active)  # announced exits
+    assert all(p.percent is not None for p in people if p.staff_type != "FRL")
+    valid = {c.code: c for c in master.cost_centers}
+    for p in people:  # nobody works in a cost center outside its validity
+        assert p.entry >= valid[p.cost_center].valid_from
+        assert p.exit is None or p.exit <= valid[p.cost_center].valid_to
+    # The snapshot is exactly the people counted at month end.
+    rows = list(hr.snapshot_rows(people, master.calendar.periods))
+    assert sum(r[4] for r in rows if r[0] == anchor) == len(active)
+    closed = master.cc_by_name(m.NEXT_CLOSED_CC)
+    assert all(p.exit is not None for p in people if p.cost_center == closed.code)

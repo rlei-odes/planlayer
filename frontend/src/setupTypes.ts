@@ -11,3 +11,4 @@ export type NewRound = S.RoundIn
 export type Scope = S.ScopeOut
 export type CarryOver = S.CarryOverInInput
 export type Created = S.CreatedOut
+export type WorkforceMode = NonNullable<S.SetupIO['workforce_mode']>

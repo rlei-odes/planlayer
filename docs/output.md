@@ -47,6 +47,21 @@ Planned hours of productive cost centers ([ADR 0016](adr/0016-capacity-in-rounds
 
 Key: `version_code, period, entity_code, cost_center_code, work_center_code, activity_type_code, measure`. The credits that hours × rates give a cost center are in `fact_plan_cost_center`, as amounts on the activity type's account. The file downloads hold the amounts only.
 
+## `fact_plan_workforce`
+
+FTE and headcount at month end ([ADR 0020](adr/0020-workforce-planning.md)) of rounds that plan their workforce: one row per round × cost center × staff type × staff category × month × measure. Positions are not published: they carry names; the aggregate is what BI reports.
+
+| Column | Type | Meaning |
+|---|---|---|
+| `version_code`, `fiscal_year`, `period`, `entity_code`, `cost_center_code` | | as in `fact_plan_cost_center` |
+| `staff_type_code` | text | staff type, e.g. `EMP`, `FRL` |
+| `staff_category_code` | text | staff category, e.g. a job family |
+| `measure` | text | `fte` or `headcount` |
+| `amount` | numeric(18,2) | the level at the month's end |
+| `status`, `origin`, `published_at`, `publish_run_id` | | as in `fact_plan_cost_center`; `actual` rows are a forecast's closed months, HR's month-end figures |
+
+Key: `version_code, period, entity_code, cost_center_code, staff_type_code, staff_category_code, measure`. Values are levels, not flows: a year is its last month, never the sum of its months. A month without a row is blank, not zero; a line whose people have left shows 0.
+
 ## `dim_version`
 
 | Column | Meaning |
@@ -72,6 +87,14 @@ Members of the main hierarchy as Planlayer holds them at the last publish, inclu
 ## `dim_work_center`, `dim_activity_type`
 
 Work centers with their `cost_center_code`, and activity types with the `account_code` their credits go to, as Planlayer holds them at the last publish.
+
+## `dim_staff_type`, `dim_staff_category`
+
+Staff types with `external` (external staff, e.g. freelancers), and staff categories, as Planlayer holds them at the last publish.
+
+## `v_plan_workforce`
+
+`fact_plan_workforce` joined with the names of round, cost center, staff type (and `external`) and staff category.
 
 ## `v_plan_capacity`
 

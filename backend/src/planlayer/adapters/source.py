@@ -59,6 +59,15 @@ class SourceAdapter(Protocol):
         ...
 
 
+def _cast(values: pa.Array, to: pa.DataType) -> pa.Array:
+    """A column cast to its contract type, refusing values that don't fit. Integers headed for
+    a decimal go through a decimal wide enough for any 64-bit integer first, e.g. a headcount
+    column of type integer into decimal(18, 2)."""
+    if pa.types.is_decimal(to) and pa.types.is_integer(values.type):
+        values = values.cast(pa.decimal128(38, 0))
+    return values.cast(to, safe=True)
+
+
 class PostgresSource:
     """Reads through SQLAlchemy Core with a server-side cursor, in batches."""
 
@@ -105,7 +114,7 @@ class PostgresSource:
             for chunk in result.partitions():
                 by_column = list(zip(*chunk, strict=True))
                 arrays = [
-                    pa.array(values, from_pandas=False).cast(field.type, safe=True)
+                    _cast(pa.array(values, from_pandas=False), field.type)
                     if values
                     else pa.array([], field.type)
                     for values, field in zip(by_column, contract, strict=True)

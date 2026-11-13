@@ -38,11 +38,14 @@ from planlayer.store.output import (
     dim_account,
     dim_activity_type,
     dim_cost_center,
+    dim_staff_category,
+    dim_staff_type,
     dim_version,
     dim_work_center,
     ensure,
     fact_plan_capacity,
     fact_plan_cost_center,
+    fact_plan_workforce,
 )
 from planlayer.store.schema import (
     ACCOUNT,
@@ -50,18 +53,25 @@ from planlayer.store.schema import (
     AMOUNT,
     BASE_LAYER,
     COST_CENTER,
+    FTE,
     H_ACCOUNT,
     H_COST_CENTER,
+    HEADCOUNT,
     HOURS,
     MODULE_CAPACITY,
     MODULE_COST_CENTER,
+    MODULE_WORKFORCE,
+    STAFF_CATEGORY,
+    STAFF_TYPE,
     WORK_CENTER,
     fact_capacity,
     fact_cost_center,
+    fact_workforce,
     hier_edge,
     member,
     publish_run,
     round_member,
+    round_module,
     version,
     workflow_status,
 )
@@ -246,6 +256,7 @@ class Preview:
     changes: list[Change] = field(default_factory=list)  # the first ones, for display
     fingerprint: str = ""
     hours_rows: int = 0  # planned hours in fact_plan_capacity (ADR 0016)
+    workforce_rows: int = 0  # FTE and headcount in fact_plan_workforce (ADR 0020)
 
 
 def preview(
@@ -254,7 +265,9 @@ def preview(
     r, rows = plan_rows(engine, user, code, scope)
     current = _published(output, schema, r.code)
     hours = hour_rows(engine, user, r, scope)
-    return _with_hours(_compare(r, scope, rows, current), hours, _published_hours(output, r.code))
+    done = _with_hours(_compare(r, scope, rows, current), hours, _published_hours(output, r.code))
+    staff = workforce_rows(engine, user, r, scope)
+    return _with_workforce(done, staff, _published_workforce(output, r.code))
 
 
 # --- Planned hours (ADR 0016) ---------------------------------------------------------------------
@@ -355,6 +368,118 @@ def _with_hours(done: Preview, rows: list[HourRow], current: PublishedHours) -> 
     return done
 
 
+# --- FTE and headcount (ADR 0020) -----------------------------------------------------------------
+
+# period, entity, cost center, staff type, staff category, measure
+StaffKey = tuple[date, str, str, str, str, str]
+STAFF_MEASURES = {FTE: "fte", HEADCOUNT: "headcount"}
+
+
+@dataclass(frozen=True)
+class StaffRow:
+    key: StaffKey
+    value: Decimal
+    status: str
+    origin: Origin = "plan"
+
+
+def workforce_rows(engine: Engine, user: User, r: RoundRef, scope: Scope) -> list[StaffRow]:
+    """The round's FTE and headcount in the scope, if it plans its workforce; a forecast's
+    closed months as actuals of the cost centers planned in the round."""
+    f = fact_workforce
+    e, cc, st, sc = (member.alias(n) for n in ("e", "cc", "st", "sc"))
+    status = func.coalesce(workflow_status.c.status, "not_started")
+    with unit_of_work(engine, user) as conn:
+        planned_here = conn.execute(
+            select(round_module.c.mode).where(
+                round_module.c.version_id == r.version_id,
+                round_module.c.module == MODULE_WORKFORCE,
+            )
+        ).scalar()
+        if planned_here is None:
+            return []
+        closed = closed_periods(conn, r)
+        base = (
+            select(f.c.period, e.c.code, cc.c.code, st.c.code, sc.c.code, f.c.measure_id,
+                   f.c.amount, status)
+            .join(e, e.c.member_id == f.c.dim_entity)
+            .join(cc, cc.c.member_id == f.c.dim_cost_center)
+            .join(st, st.c.member_id == f.c.dim_staff_type)
+            .join(sc, sc.c.member_id == f.c.dim_staff_category)
+            .outerjoin(
+                workflow_status,
+                (workflow_status.c.version_id == r.version_id)
+                & (workflow_status.c.cost_center_id == f.c.dim_cost_center),
+            )
+            .where(f.c.layer_id == BASE_LAYER, f.c.measure_id.in_(STAFF_MEASURES))
+        )  # fmt: skip
+        if scope == "approved":
+            base = base.where(workflow_status.c.status == "approved")
+        planned = base.where(f.c.version_id == r.version_id)
+        if closed:
+            planned = planned.where(f.c.period > closed[-1])
+        rows = [
+            StaffRow((p, en, c, t, k, STAFF_MEASURES[m]), v, s)
+            for p, en, c, t, k, m, v, s in conn.execute(planned)
+        ]
+        if closed:
+            actual = (
+                base.join(version, version.c.version_id == f.c.version_id)
+                .join(
+                    round_member,
+                    (round_member.c.version_id == r.version_id)
+                    & (round_member.c.module == MODULE_COST_CENTER)
+                    & (round_member.c.member_id == f.c.dim_cost_center)
+                    & round_member.c.enabled.is_(True),
+                )
+                .where(version.c.kind == "actuals", f.c.period.in_(closed))
+            )
+            rows += [
+                StaffRow((p, en, c, t, k, STAFF_MEASURES[m]), v, s, "actual")
+                for p, en, c, t, k, m, v, s in conn.execute(actual)
+            ]
+    rows.sort(key=lambda row: row.key)
+    return rows
+
+
+PublishedStaff = dict[StaffKey, tuple[Decimal, str, str]]
+
+
+def _published_workforce(output: Engine, version_code: str) -> PublishedStaff:
+    t = fact_plan_workforce
+    with output.connect() as conn:
+        if not output.dialect.has_table(conn, t.name, schema=conn.schema_for_object(t)):
+            return {}
+        return {
+            (p, en, c, st, sc, m): (v, s, o)
+            for p, en, c, st, sc, m, v, s, o in conn.execute(
+                select(
+                    t.c.period,
+                    t.c.entity_code,
+                    t.c.cost_center_code,
+                    t.c.staff_type_code,
+                    t.c.staff_category_code,
+                    t.c.measure,
+                    t.c.amount,
+                    t.c.status,
+                    t.c.origin,
+                ).where(t.c.version_code == version_code)
+            )
+        }
+
+
+def _with_workforce(done: Preview, rows: list[StaffRow], current: PublishedStaff) -> Preview:
+    """The preview with the workforce rows counted and in its fingerprint."""
+    h = hashlib.sha256(done.fingerprint.encode())
+    for row in rows:
+        h.update(f"+{row.key}|{row.value}|{row.status}|{row.origin}\n".encode())
+    for key in sorted(current):
+        h.update(f"={key}|{current[key]}\n".encode())
+    done.workforce_rows = len(rows)
+    done.fingerprint = h.hexdigest()
+    return done
+
+
 def _compare(r: RoundRef, scope: Scope, rows: list[OutRow], current: Published) -> Preview:
     counts: dict[str, CostCenterCounts] = {}
     total: Counter[str] = Counter()
@@ -408,6 +533,8 @@ def run(
     current = _published(output, schema, r.code)
     hours = hour_rows(engine, user, r, scope)
     done = _with_hours(_compare(r, scope, rows, current), hours, _published_hours(output, r.code))
+    staff = workforce_rows(engine, user, r, scope)
+    done = _with_workforce(done, staff, _published_workforce(output, r.code))
     if fingerprint is not None and fingerprint != done.fingerprint:
         raise PublishError("the plan values or the output changed since the preview; preview again")
 
@@ -439,6 +566,22 @@ def run(
             for c, n, a in conn.execute(
                 select(member.c.code, member.c.name, member.c.account_code).where(
                     member.c.dim_id == ACTIVITY_TYPE, member.c.is_group.is_(False)
+                )
+            )
+        ]
+        staff_types = [
+            {"code": c, "name": n, "external": bool(x)}
+            for c, n, x in conn.execute(
+                select(member.c.code, member.c.name, member.c.external).where(
+                    member.c.dim_id == STAFF_TYPE, member.c.is_group.is_(False)
+                )
+            )
+        ]
+        staff_categories = [
+            {"code": c, "name": n}
+            for c, n in conn.execute(
+                select(member.c.code, member.c.name).where(
+                    member.c.dim_id == STAFF_CATEGORY, member.c.is_group.is_(False)
                 )
             )
         ]
@@ -493,11 +636,37 @@ def run(
                     for row in hours
                 ],
             )
+        w = fact_plan_workforce
+        conn.execute(delete(w).where(w.c.version_code == r.code))
+        if staff:
+            conn.execute(
+                insert(w),
+                [
+                    {
+                        "version_code": r.code,
+                        "fiscal_year": r.fiscal_year,
+                        "period": row.key[0],
+                        "entity_code": row.key[1],
+                        "cost_center_code": row.key[2],
+                        "staff_type_code": row.key[3],
+                        "staff_category_code": row.key[4],
+                        "measure": row.key[5],
+                        "amount": row.value,
+                        "status": row.status,
+                        "origin": row.origin,
+                        "published_at": now,
+                        "publish_run_id": run_id,
+                    }
+                    for row in staff
+                ],
+            )
         for table, members in (
             (dim_cost_center, cost_centers),
             (dim_account, accounts),
             (dim_work_center, work_centers),
             (dim_activity_type, activity_types),
+            (dim_staff_type, staff_types),
+            (dim_staff_category, staff_categories),
         ):
             conn.execute(delete(table))
             if members:

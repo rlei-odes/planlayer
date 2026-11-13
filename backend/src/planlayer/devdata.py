@@ -9,6 +9,7 @@ second, disjoint department.
 
 import random
 from dataclasses import replace
+from datetime import timedelta
 from decimal import Decimal
 
 from sqlalchemy import Engine, func, select
@@ -321,3 +322,147 @@ def _plan_sources(
                 planning.apply_edits(engine, controller, round_code, code, [edit])
             except planning.EditError:
                 continue  # not planned for this cost center in the round
+
+
+# Workforce planning (ADR 0020, TD-25): new positions some owners plan.
+NEW_POSITIONS: tuple[tuple[str, str, str, int, int], ...] = (
+    ("DE1010", "Machine operator", "TECH", 3, 100),
+    ("DE1010", "Production engineer", "ENG", 9, 100),
+    ("DE1030", "Machine operator", "TECH", 4, 80),
+    ("DE1110", "Design engineer", "ENG", 2, 100),
+    ("DE1160", "Field service technician", "TECH", 5, 100),
+    ("DE1240", "Clerk", "OFFICE", 7, 60),
+)  # (cost center, title, category, month of the fiscal year 1-12, contract %)
+
+
+def seed_workforce(engine: Engine, round_code: str) -> tuple[int, int, int]:
+    """A positions round of the test company: the round's workforce mode set to positions if it
+    has none, HR's staff taken as positions for every planned cost center, and, entered by the
+    owners, a replacement for every leaver announced after HR's latest month-end figures (HR
+    already lists the successors of those who left before) plus a few new positions. A cost
+    center that already has plan positions is left alone. Returns (people taken from HR,
+    replacements, new positions)."""
+    # Imported here: workforce builds on planning, which this module imports.
+    from planlayer import workforce
+    from planlayer.domain.workforce import month_end
+    from planlayer.store.schema import fact_workforce, workforce_position
+
+    with engine.connect() as conn:
+        found = conn.execute(
+            select(app_user.c.login).where(app_user.c.login == "controller@nordwerk.example")
+        ).scalar()
+        controller = access.user_by_login(conn, found) if found else access.system_user(engine)
+    with unit_of_work(engine, controller) as conn:
+        r = get_round(conn, round_code, lock="update")
+        mode = workforce.mode_of(conn, r.version_id)
+        if mode is None:
+            workforce.set_mode(conn, r, "positions")
+        elif mode != "positions":
+            raise ValueError(f"{round_code} plans {mode}, not positions")
+    taken = workforce.take_all_from_hr(engine, controller, round_code)
+
+    system = access.system_user(engine)
+    with unit_of_work(engine, system) as conn:
+        r = get_round(conn, round_code)
+        periods = fiscal_periods(conn, r.fiscal_year)
+        latest = conn.execute(
+            select(func.max(fact_workforce.c.period))
+            .join(version, version.c.version_id == fact_workforce.c.version_id)
+            .where(version.c.kind == "actuals")
+        ).scalar()
+        announced_after = month_end(latest) if latest is not None else periods[0]
+        p = workforce_position
+        planned = set(
+            conn.execute(
+                select(p.c.cost_center_id).where(p.c.version_id == r.version_id, p.c.is_plan)
+            ).scalars()
+        )
+        leavers = conn.execute(
+            select(p, member.c.code.label("cc_code"))
+            .join(member, member.c.member_id == p.c.cost_center_id)
+            .where(
+                p.c.version_id == r.version_id,
+                p.c.is_plan.is_(False),
+                p.c.leave_date >= max(periods[0], announced_after),
+                p.c.leave_date <= month_end(periods[-2]),
+                p.c.cost_center_id.not_in(planned),
+            )
+            .order_by(member.c.code, p.c.leave_date)
+        ).all()
+        codes = dict(
+            conn.execute(
+                select(member.c.member_id, member.c.code).where(
+                    member.c.member_id.in_(
+                        {row.staff_type_id for row in leavers}
+                        | {row.staff_category_id for row in leavers}
+                    )
+                )
+            ).all()
+        )
+        owners = {
+            cc: login
+            for cc, login in conn.execute(
+                select(member.c.code, app_user.c.login)
+                .join(cost_center_owner, cost_center_owner.c.cost_center_id == member.c.member_id)
+                .join(app_user, app_user.c.user_id == cost_center_owner.c.user_id)
+            )
+        }
+        done = set(
+            conn.execute(select(member.c.code).where(member.c.member_id.in_(planned))).scalars()
+        )
+        enabled = {m for m, on in enabled_members(conn, r.version_id).items() if on}
+        in_round = set(
+            conn.execute(select(member.c.code).where(member.c.member_id.in_(enabled))).scalars()
+        )
+
+    def planner(cc: str) -> access.User:
+        """The owner, while the round is open; in setup only controllers write (ADR 0014)."""
+        if r.status != "open" or cc not in owners:
+            return controller
+        with engine.connect() as conn:
+            return access.user_by_login(conn, owners[cc])
+
+    replaced = 0
+    for row in leavers:
+        # The replacement starts on the first of the month after the leaver's last day.
+        entry = month_end(row.leave_date) + timedelta(days=1)
+        if entry > periods[-1]:
+            continue
+        workforce.save_position(
+            engine,
+            planner(row.cc_code),
+            round_code,
+            row.cc_code,
+            workforce.PositionIn(
+                title=row.title,
+                staff_type_code=codes[row.staff_type_id],
+                staff_category_code=codes[row.staff_category_id],
+                entry_date=entry,
+                contract_percent=row.contract_percent,
+                is_plan=True,
+                is_replacement=True,
+                description=f"Replaces {row.person_name or row.code}",
+            ),
+        )
+        replaced += 1
+    new = 0
+    for cc, title, category, month, percent in NEW_POSITIONS:
+        if cc in done or cc not in in_round:
+            continue
+        workforce.save_position(
+            engine,
+            planner(cc),
+            round_code,
+            cc,
+            workforce.PositionIn(
+                title=title,
+                staff_type_code="EMP",
+                staff_category_code=category,
+                entry_date=periods[month - 1],
+                contract_percent=Decimal(percent),
+                is_plan=True,
+                description="New position",
+            ),
+        )
+        new += 1
+    return taken, replaced, new

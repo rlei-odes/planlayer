@@ -23,6 +23,7 @@ from planlayer.api.planning import router as planning_router
 from planlayer.api.publish import router as publish_router
 from planlayer.api.settings import router as settings_router
 from planlayer.api.setup import router as setup_router
+from planlayer.api.workforce import router as workforce_router
 from planlayer.config import Settings
 from planlayer.store.db import create_app_engine
 from planlayer.store.migrate import current_revision
@@ -59,6 +60,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(masterdata_router)
     app.include_router(planning_router)
     app.include_router(capacity_router)
+    app.include_router(workforce_router)
     app.include_router(forwarding_router)
     app.include_router(settings_router)
     app.include_router(setup_router)

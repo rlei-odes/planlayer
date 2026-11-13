@@ -18,6 +18,7 @@ import {
   SettingsIcon,
   StatusIcon,
   UsersIcon,
+  WorkforceIcon,
 } from './icons'
 import ItemListsPage from './ItemListsPage'
 import LoginPage from './LoginPage'
@@ -32,6 +33,7 @@ import SetupPage from './SetupPage'
 import StatusPage from './StatusPage'
 import SettingsPage from './SettingsPage'
 import UsersPage from './UsersPage'
+import WorkforcePage from './WorkforcePage'
 
 // The app shell (E-13): a sidebar grouped by role, a top bar with the current round and the user.
 // One current round applies to every page that works on a round.
@@ -39,6 +41,7 @@ import UsersPage from './UsersPage'
 type Health = { status: 'ok' | 'unavailable'; version: string; schema_revision: string | null }
 type Page =
   | 'capacity'
+  | 'workforce'
   | 'planning'
   | 'status'
   | 'notes'
@@ -53,6 +56,7 @@ type Page =
 
 const NAV: Record<Page, { label: string; icon: () => ReactNode }> = {
   capacity: { label: 'Capacity', icon: CapacityIcon },
+  workforce: { label: 'Workforce', icon: WorkforceIcon },
   planning: { label: 'Planning', icon: PlanningIcon },
   status: { label: 'Status', icon: StatusIcon },
   notes: { label: 'My notes', icon: NotesIcon },
@@ -65,7 +69,7 @@ const NAV: Record<Page, { label: string; icon: () => ReactNode }> = {
   users: { label: 'Users', icon: UsersIcon },
   settings: { label: 'Settings', icon: SettingsIcon },
 }
-const ROUND_PAGES: Page[] = ['capacity', 'planning', 'status', 'setup', 'forwarding', 'publish']
+const ROUND_PAGES: Page[] = ['capacity', 'workforce', 'planning', 'status', 'setup', 'forwarding', 'publish']
 
 function groupsFor(me: Me): { label: string; pages: Page[] }[] {
   const round: Page[] = me.is_controller ? ['setup', 'forwarding', 'publish', 'responsibilities'] : []
@@ -74,9 +78,9 @@ function groupsFor(me: Me): { label: string; pages: Page[] }[] {
   if (me.is_admin) admin.push('users', 'settings')
   // Planning and status need cost centers to read: a role, ownership, a deputy grant, a capacity
   // planner grant or an approver assignment. The admin role alone gives none (ADR 0009). Capacity
-  // comes first, the usual order of work (ADR 0013).
+  // and workforce come first, the usual order of work (ADR 0013, ADR 0020).
   const plan: Page[] =
-    me.is_controller || me.is_viewer || me.reads_cost_centers ? ['capacity', 'planning', 'status', 'notes', 'lists'] : []
+    me.is_controller || me.is_viewer || me.reads_cost_centers ? ['capacity', 'workforce', 'planning', 'status', 'notes', 'lists'] : []
   const groups: { label: string; pages: Page[] }[] = [
     { label: 'Plan', pages: plan },
     { label: 'Round', pages: round },
@@ -357,6 +361,15 @@ export default function App() {
               onWidth={setSheetWidth}
               focus={focus?.key ? { key: focus.key, thread: focus.thread } : null}
               onFocused={() => setFocus(null)}
+            />
+          )}
+          {version && current === 'workforce' && (
+            <WorkforcePage
+              key={`${me.login}/${version}`}
+              version={version}
+              unit={costCenter}
+              onUnit={setCostCenter}
+              onWidth={setSheetWidth}
             />
           )}
           {version && current === 'planning' && (

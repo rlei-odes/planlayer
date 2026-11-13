@@ -167,6 +167,8 @@ Mid-size manufacturer of industrial pumps and valves, ~400 employees.
 - [x] **TD-23 Forwardings in a round** (`planlayer seed-dev-forwarding --round CODE`, development only): the same forwardings as the controller would enter them, plus a fixed plant management fee, on accounts `ALOC-<code>` and `ALOC-<code>-CR` in that group; 8800–8820 marked not planned; sources without a plan of their own get last year's actuals as year totals first. Forwardings the round has are left alone.
 - [x] **TD-21 Credit postings in the actuals:** the ledger books the activity credits, actual hours × rate on 8900–8930 per work center, credit-side (`kontoart` `L`, flipped to positive by `v_gl_actuals_natural`), so a forecast's closed months show credits (ADR 0016: they come from the ledger only).
 - [x] **TD-19 Plan values in progress** (`planlayer seed-dev-plans`, development only): ten cost centers of a round planned by their owners as year totals near last year's actuals, five in progress, three submitted, two approved by their approver. Cost centers that already have plan values or a status are left alone.
+- [x] **TD-24 HR data** (ADR 0020): five job families, a personnel list (~460 people at the anchor) with staff types, contract percentages, entry and exit dates (turnover over the years, exits announced up to four months ahead), and month-end FTE and headcount per cost center, staff type and family; gold views `v_job_families`, `v_staff`, `v_workforce_actuals`.
+- [x] **TD-25 Positions in a round** (`planlayer seed-dev-workforce --round CODE`, development only): the round's workforce mode set to positions, HR's people taken as positions for every planned cost center, and, entered by the owners, a replacement for every leaver announced after HR's latest month plus six new positions. Cost centers that have plan positions are left alone.
 - [ ] **TD-17 Seasonality profiles:** a set covering the edge cases: even; retail (Q4 peak); manufacturing with an August shutdown (a zero month); one entered as percentages summing to exactly 100; one entered as raw unit counts; one derived from prior-year actuals; and invalid ones (percentages summing to 99.9 or 100.1, a negative value, all zeros, 11 values instead of 12).
 - [x] **TD-20 Next-year scenario** ([docs/scenarios/next-round-2027.md](docs/scenarios/next-round-2027.md)): a cost center created ahead of the next fiscal year (DE1290), one closed at the end of the current year (DE1100), an account without bookings (6950), and the walkthrough for preparing Budget 2027 from Budget 2026.
 - [ ] **TD-16 Documented demo defects.** The `standard` dataset contains a deliberate, listed set of process problems for the demo and smoke tests to find: a cost center with no submitted plan, a plan above the prior year by >50%, unexplained variances, a forecast not rolled after a close, and a version past its start date that isn't approved. The list lives in the generator's README, and the smoke test asserts exactly these are flagged.
@@ -297,7 +299,7 @@ German terms in parentheses, as controllers know them.
   - [ ] Reaching a line's spread menu from the keyboard (as on the cost sheet, E-05).
 - [ ] **K-3 Cost forwarding (Leistungsverrechnung).** Service cost centers collect costs and pass them on to consuming cost centers, by percentage shares or by factors (e.g. buildings by the square metres each consumer occupies). Built after K-2 on the same approach (source data, its own page, effect on the sheet). Two methods: pass on all costs by the factors; or set a plan rate per unit (e.g. per m²) and pass on only rate × quantity, leaving a difference between costs and costs passed on. There can be multiple units for one cost center with different plan rates.
   - [x] Forwardings per round: all costs (what is left on the source) by percentages or portions, a fixed amount, or rate × quantity; own charge and credit accounts in a group the controller picks; the *Forwarding* page; charges and credits read only on both sides' sheets, credits shown negative; recomputed on save and, for full forwarding, on every change of the source; carried with a new round ([ADR 0018](docs/adr/0018-cost-forwarding.md)).
-  - [ ] Factor quantities from a source dataset (e.g. m² per cost center from facility management), and from headcount/FTE planning once that module exists.
+  - [ ] Factor quantities from a source dataset (e.g. m² per cost center from facility management), and from the workforce plan (W-6).
   - [ ] Quantities that vary by month (today a year quantity, a twelfth a month).
   - [ ] A change log and undo for forwarding definitions (today `changed_by` / `changed_at` only; the values they write are audited and in the change log).
   - [ ] Publishing: warn when a full forwarding's source is still being planned, so the published charges may move.
@@ -306,6 +308,25 @@ German terms in parentheses, as controllers know them.
   - [ ] Planners see a forwarding's other side in more detail (e.g. the receivers' list from the source's credit line).
 - [ ] **K-4 Usage factors (Auslastungsfaktoren)** (much later). When demand drops in a later round (e.g. machining_2 at 70% capacity), the activity output scales down, and each cost type gets a variability percentage: electricity scales 1:1 with machine hours, salaries and depreciation don't.
 - [ ] **K-5 Capex planning** as a module (T-24): planners add planned investments; later their depreciation feeds the cost center plans.
+
+### Workforce planning
+
+FTE and headcount per cost center, staff type and category, as month-end levels, typed or rolled up from positions ([ADR 0020](docs/adr/0020-workforce-planning.md)).
+
+- [x] **W-1 Module and modes:** `workforce` in the round with one mode (FTE, headcount, both, positions), chosen in setup; a mode change clears the round's workforce in setup and is refused in an open round with values; carried with a new round (positions still there in the new year, lines; typed values with *Plan values*).
+- [x] **W-2 Sheet:** the *Workforce* page (Plan, after Capacity): lines per staff type × category, year and quarters as their last month, a typed year or quarter filling its months, comparison columns, a forecast's closed months as HR's actuals, undo; same status, rights, locks and audit as the cost center's other sheets.
+- [x] **W-3 Positions:** title, name, number, type, category, entry and leave date, contract % (optional for external types), plan position and replacement flags, description; month-end snapshot roll-up stored in `fact_workforce`; the build-up (entering, new, replacements, leaving per month); *Add staff from HR* per cost center and for the round in setup; a log of every change.
+- [x] **W-4 Data:** staff types (seeded, editable, *external* flag) and categories as master data; datasets `staff_types`, `staff_categories`, `staff`, `workforce_actuals`.
+- [x] **W-5 Publishing:** `fact_plan_workforce`, `dim_staff_type`, `dim_staff_category`, `v_plan_workforce`, no names.
+- [ ] **W-6 Factors from the workforce:** a category carries per-head factors (e.g. one IT workplace per office worker, a CAD licence per engineer) that feed cost forwarding's quantities (K-3) by month.
+- [ ] **W-7 Personnel costs from positions:** salary bands or rates per category, pro-rata FTE by days, raises from a month, employer costs; written to the personnel accounts like credits from capacity.
+- [ ] **W-8 Modes per cost center:** a round default with exceptions on the *Cost centers* tab (e.g. positions for the larger departments only).
+- [ ] **W-9 A replacement names the leaver** it replaces (today a free description), so the build-up can show open gaps: leavers without a replacement.
+- [ ] **W-10 Contract changes during the year** (e.g. 100 % to 80 % from September) and long absences (counted in headcount, not in FTE).
+- [ ] **W-11 Undo on the positions list** (today undo covers typed values; positions are logged in `workforce_position_log` with the change batch).
+- [ ] **W-12 Positions in the file downloads** of the Publish page are left out on purpose; decide whether a controller may download them with names.
+- [ ] **W-13 Status page:** FTE and headcount per node next to the plan status, and a comparison with last year.
+- [ ] **W-14 Paste of a position list** from Excel into the positions table.
 
 ### MCP access (after v1)
 
@@ -395,7 +416,7 @@ What the user docs (controllers, planners, admins) must say. Collected here as i
 
 ### Various
 
-**Later (not v1):** layers beyond `base`, rolling forecast, price × volume drivers, headcount planning as a module (T-24), simple formulas, non-Postgres adapters, balance sheet, an "attention" list (everything that needs a person: missing submissions, unexplained variances, unrolled forecast, unapproved version), variance commentary thresholds, and a default spread profile per account group.
+**Later (not v1):** layers beyond `base`, rolling forecast, price × volume drivers, simple formulas, non-Postgres adapters, balance sheet, an "attention" list (everything that needs a person: missing submissions, unexplained variances, unrolled forecast, unapproved version), variance commentary thresholds, and a default spread profile per account group.
 
 ---
 
@@ -416,3 +437,4 @@ What the user docs (controllers, planners, admins) must say. Collected here as i
 13. E-13 UI/UX design phase over the main flows, backend mostly frozen.
 14. Remaining ADRs (D-13, D-24, D-25, D-27, D-28, D-29, D-30) and F-items, then epics E-01 → E-05 → E-06 → E-09 → E-11 → the rest.
 15. Building out cost center planning: ✓ seasonality profiles (edit, delete, working-day and calendar-day presets), ✓ a line's own spread on the sheet, ✓ first cut of K-1 and K-2 (productive cost centers, capacity planning, [ADR 0013](docs/adr/0013-capacity-planning.md)); open items under K-1 and K-2; ✓ first cut of K-3 (cost forwarding, [ADR 0018](docs/adr/0018-cost-forwarding.md)); open items under K-1, K-2 and K-3.
+16. ✓ First cut of workforce planning ([ADR 0020](docs/adr/0020-workforce-planning.md)): FTE, headcount or positions per round; open items under W-6 to W-14.

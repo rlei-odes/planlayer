@@ -41,8 +41,9 @@ def test_sync_writes_members_hierarchies_and_actuals(
     engine = create_app_engine(migrated)
     with engine.connect() as conn:
         # NW, DEP, CC1, CC2 / PL, A, B, C, 6000, 6010, 7000, 4900 / DE, the built-in entity "-"
-        # / work centers WC1, WC2, WC9 / activity types MH, RW
-        assert conn.execute(select(func.count()).select_from(member)).scalar() == 19
+        # / work centers WC1, WC2, WC9 / activity types MH, RW / the seeded staff types EMP,
+        # APP, TMP, FRL / staff categories TECH, OFF
+        assert conn.execute(select(func.count()).select_from(member)).scalar() == 25
         # Every run records how long it took, in all and per step.
         run = conn.execute(select(sync_run).order_by(sync_run.c.id.desc())).first()
         assert run is not None and run.finished_at > run.started_at
@@ -69,7 +70,8 @@ def test_sync_refuses_unknown_codes_and_writes_nothing(
     }
     engine = create_app_engine(migrated)
     with engine.connect() as conn:
-        assert conn.execute(select(func.count()).select_from(member)).scalar() == 1  # "-"
+        # "-" and the four seeded staff types
+        assert conn.execute(select(func.count()).select_from(member)).scalar() == 5
     engine.dispose()
 
 
