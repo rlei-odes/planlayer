@@ -2,7 +2,7 @@
 
 Planlayer writes plan values to its output schema (default `planlayer_out`) only when the controller publishes a planning round ([ADR 0011](adr/0011-publishing.md)). BI tools and dbt read these objects like any other warehouse table; BI users get `SELECT` through the role from `deploy/sql/install.sql`.
 
-Everything is keyed by the source's **codes**, never by Planlayer's internal ids, so plan data joins to warehouse dimensions directly. Amounts are natural-positive (revenue and costs both positive) until export sign rules are configured.
+Everything is keyed by the source's **codes**, never by Planlayer's internal ids, so plan data joins to warehouse dimensions directly. Amounts are natural-positive in `amount` (revenue, costs and credits all positive), and signed by the installation's convention in `amount_signed` ([ADR 0019](adr/0019-published-signs.md)).
 
 ## `fact_plan_cost_center`
 
@@ -17,7 +17,8 @@ One row per round × cost center × account × month × measure.
 | `cost_center_code` | text | cost center |
 | `account_code` | text | account |
 | `measure` | text | `amount` |
-| `amount` | numeric(18,2) | plan value in group currency |
+| `amount` | numeric(18,2) | plan value in group currency, natural-positive |
+| `amount_signed` | numeric(18,2) | the same with the sign convention set on the *Settings* page: `ledger` (costs +, revenue and credits −) or `result` (revenue and credits +, costs −); empty in rows of runs before ADR 0019 |
 | `status` | text | the cost center's workflow status at publish: `not_started`, `in_progress`, `submitted`, `approved` |
 | `published_at` | timestamptz | when the run wrote the row |
 | `publish_run_id` | bigint | the run, as recorded in Planlayer |
@@ -27,7 +28,7 @@ Key: `version_code, period, entity_code, cost_center_code, account_code, measure
 
 A forecast's rows cover the whole year: its closed months as `actual` rows (every account with actuals, for the cost centers in the publish scope), its open months as `plan` rows. The sum over a version is the full-year forecast; filter `origin = 'plan'` for the forecast months only. Budgets have only `plan` rows. Values are stored by month in every round, also in rounds planned by quarter.
 
-Credits are rows like any other, natural-positive: activity credits from capacity planning on the activity types' accounts, and cost forwarding (ADR 0018) on each forwarding's two accounts, the charge on the receivers and the credit on the source. A cost center's net cost subtracts its credit accounts, until the export sign rules (E-12) publish credits with their sign.
+Credits are rows like any other: activity credits from capacity planning on the activity types' accounts, and cost forwarding (ADR 0018) on each forwarding's two accounts, the charge on the receivers and the credit on the source. Their accounts have the role `credit` in `dim_account`, so `sum(amount_signed)` over a cost center is its net cost (ledger) or its result (result).
 
 A run replaces all rows of its round. With the scope "approved cost centers", only approved cost centers are present; with "whole round", every current value is, and `status` tells them apart.
 
@@ -66,6 +67,7 @@ Members of the main hierarchy as Planlayer holds them at the last publish, inclu
 | `level_1_code`, `level_1_name` … `level_6_code`, `level_6_name` | the path from the root down to the member |
 | `entity_code` | cost centers: their entity |
 | `account_type` | accounts: e.g. `revenue`, `cost` |
+| `role` | leaf accounts: `cost`, `revenue` or `credit` (credited by capacity planning or a forwarding), which decides the sign of `amount_signed` |
 
 ## `dim_work_center`, `dim_activity_type`
 
@@ -77,7 +79,7 @@ Work centers with their `cost_center_code`, and activity types with the `account
 
 ## `v_plan_cost_center`
 
-The fact table joined with the names of round, cost center and account, for tools that want one flat view, with `origin` as its last column.
+The fact table joined with the names of round, cost center and account, for tools that want one flat view, ending with `origin`, `amount_signed` and the account's `role`.
 
 ## Rebuilding
 

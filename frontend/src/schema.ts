@@ -792,6 +792,19 @@ export type SetupOut = {
   latest_actuals: string | null
 }
 
+export type SignsIn = {
+  convention: "ledger" | "result"
+}
+
+export type SignsOut = {
+  convention: "ledger" | "result"
+  cost_accounts: number
+  revenue_accounts: number
+  credit_accounts: number
+  untyped: CodeNameOut[]
+  credits: CodeNameOut[]
+}
+
 export type SourceOut = {
   cost_center_code: string
   cost_center_name: string

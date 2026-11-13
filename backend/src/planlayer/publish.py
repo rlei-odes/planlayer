@@ -7,7 +7,8 @@ and a run refuses when the fingerprint no longer matches, so it does exactly wha
 
 The output may live in another database, so a run is two transactions: the output is replaced,
 then the run is recorded in the app store. Repeating a run is harmless. Values are published
-natural-positive until the export sign rules exist (E-12).
+natural-positive in ``amount``, and in ``amount_signed`` with the installation's sign convention
+for each account's role (ADR 0019).
 
 A forecast's closed months go out as its actuals at the moment of the run, marked ``origin``
 ``actual``; its own values are ``plan`` (ADR 0015). The sum over a version is its full year.
@@ -18,7 +19,7 @@ import hashlib
 import io
 from collections import Counter, defaultdict
 from collections.abc import Iterator
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
@@ -29,7 +30,9 @@ from sqlalchemy import Connection, Engine, delete, func, insert, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from planlayer.access import User
+from planlayer.domain.signs import signed
 from planlayer.rounds import RoundRef, closed_periods, get_round
+from planlayer.signs import account_roles, convention
 from planlayer.store.output import (
     LEVELS,
     dim_account,
@@ -78,6 +81,7 @@ COLUMNS = (
     "amount",
     "status",
     "origin",
+    "amount_signed",
 )
 Origin = Literal["plan", "actual"]
 
@@ -92,6 +96,7 @@ class OutRow:
     amount: Decimal
     status: str
     origin: Origin = "plan"
+    signed: Decimal | None = None  # with the sign convention (ADR 0019)
 
 
 def plan_rows(engine: Engine, user: User, code: str, scope: Scope) -> tuple[RoundRef, list[OutRow]]:
@@ -126,7 +131,14 @@ def plan_rows(engine: Engine, user: User, code: str, scope: Scope) -> tuple[Roun
         ]
         if closed:
             rows += _actual_rows(conn, r, closed, scope)
-    rows.sort(key=lambda row: row.key)
+        roles, sign = account_roles(conn), convention(conn)
+    rows = sorted(
+        (
+            replace(row, signed=signed(row.amount, roles.get(row.key[3], "cost"), sign))
+            for row in rows
+        ),
+        key=lambda row: row.key,
+    )
     return r, rows
 
 
@@ -167,7 +179,7 @@ def _actual_rows(conn: Connection, r: RoundRef, closed: list[date], scope: Scope
     ]
 
 
-Published = dict[Key, tuple[Decimal, str, str]]  # amount, status, origin
+Published = dict[Key, tuple[Decimal, str, str, Decimal | None]]  # amount, status, origin, signed
 
 
 def _published(output: Engine, schema: str, version_code: str) -> Published:
@@ -175,8 +187,8 @@ def _published(output: Engine, schema: str, version_code: str) -> Published:
     with output.begin() as conn:
         ensure(conn, schema)
         return {
-            (p, ent, c, a, m): (amount, s, o)
-            for p, ent, c, a, m, amount, s, o in conn.execute(
+            (p, ent, c, a, m): (amount, s, o, sg)
+            for p, ent, c, a, m, amount, s, o, sg in conn.execute(
                 select(
                     t.c.period,
                     t.c.entity_code,
@@ -186,6 +198,7 @@ def _published(output: Engine, schema: str, version_code: str) -> Published:
                     t.c.amount,
                     t.c.status,
                     t.c.origin,
+                    t.c.amount_signed,
                 ).where(t.c.version_code == version_code)
             )
         }
@@ -194,10 +207,10 @@ def _published(output: Engine, schema: str, version_code: str) -> Published:
 def _fingerprint(rows: list[OutRow], current: Published) -> str:
     h = hashlib.sha256()
     for row in rows:
-        h.update(f"+{row.key}|{row.amount}|{row.status}|{row.origin}\n".encode())
+        h.update(f"+{row.key}|{row.amount}|{row.status}|{row.origin}|{row.signed}\n".encode())
     for key in sorted(current):
-        amount, status, origin = current[key]
-        h.update(f"={key}|{amount}|{status}|{origin}\n".encode())
+        amount, status, origin, sign = current[key]
+        h.update(f"={key}|{amount}|{status}|{origin}|{sign}\n".encode())
     return h.hexdigest()
 
 
@@ -360,7 +373,7 @@ def _compare(r: RoundRef, scope: Scope, rows: list[OutRow], current: Published) 
         old = current.get(row.key)
         if old is None:
             note("added", row.key, None, row.amount)
-        elif old != (row.amount, row.status, row.origin):
+        elif old != (row.amount, row.status, row.origin, row.signed):
             note("changed", row.key, old[0], row.amount)
         else:
             note("unchanged", row.key, old[0], row.amount)
@@ -410,6 +423,9 @@ def run(
             _dimension(conn, COST_CENTER, H_COST_CENTER),
             _dimension(conn, ACCOUNT, H_ACCOUNT),
         )
+        roles = account_roles(conn)
+        for account in accounts:
+            account["role"] = roles.get(str(account["code"]))
         work_centers = [
             {"code": c, "name": n, "cost_center_code": cc}
             for c, n, cc in conn.execute(
@@ -444,6 +460,7 @@ def run(
                         "account_code": row.key[3],
                         "measure": row.key[4],
                         "amount": row.amount,
+                        "amount_signed": row.signed,
                         "status": row.status,
                         "origin": row.origin,
                         "published_at": now,
@@ -574,7 +591,10 @@ def _records(r: RoundRef, rows: list[OutRow]) -> Iterator[tuple[object, ...]]:
     for row in rows:
         p, ent, c, a, m = row.key
         amount = f"{row.amount:.2f}"
-        yield (r.code, r.fiscal_year, p.isoformat(), ent, c, a, m, amount, row.status, row.origin)
+        sign = "" if row.signed is None else f"{row.signed:.2f}"
+        yield (
+            r.code, r.fiscal_year, p.isoformat(), ent, c, a, m, amount, row.status, row.origin, sign
+        )  # fmt: skip
 
 
 def csv_bytes(engine: Engine, user: User, code: str, scope: Scope) -> bytes:
@@ -593,7 +613,19 @@ def parquet_bytes(engine: Engine, user: User, code: str, scope: Scope) -> bytes:
         p, ent, c, a, m = row.key
         for name, value in zip(
             COLUMNS,
-            (r.code, r.fiscal_year, p, ent, c, a, m, row.amount, row.status, row.origin),
+            (
+                r.code,
+                r.fiscal_year,
+                p,
+                ent,
+                c,
+                a,
+                m,
+                row.amount,
+                row.status,
+                row.origin,
+                row.signed,
+            ),
             strict=True,
         ):
             columns[name].append(value)
@@ -609,6 +641,7 @@ def parquet_bytes(engine: Engine, user: User, code: str, scope: Scope) -> bytes:
             ("amount", pa.decimal128(18, 2)),
             ("status", pa.string()),
             ("origin", pa.string()),
+            ("amount_signed", pa.decimal128(18, 2)),
         ]
     )
     table = pa.table({n: columns.get(n, []) for n in COLUMNS}, schema=schema)

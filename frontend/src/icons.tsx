@@ -53,6 +53,14 @@ export const ForwardingIcon = () => (
   </Icon>
 )
 
+// A gear: installation settings.
+export const SettingsIcon = () => (
+  <Icon>
+    <circle cx="10" cy="10" r="2.6" />
+    <path d="M10 2.8v2.1M10 15.1v2.1M2.8 10h2.1M15.1 10h2.1M4.9 4.9l1.5 1.5M13.6 13.6l1.5 1.5M4.9 15.1l1.5-1.5M13.6 6.4l1.5-1.5" />
+  </Icon>
+)
+
 export const StatusIcon = () => (
   <Icon>
     <circle cx="10" cy="10" r="7" />

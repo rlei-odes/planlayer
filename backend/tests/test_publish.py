@@ -7,6 +7,7 @@ B2026 is open and the controller is logged in.
 import csv
 import io
 from collections.abc import Iterator
+from dataclasses import replace
 from decimal import Decimal
 
 import pyarrow.parquet as pq
@@ -16,9 +17,15 @@ from sqlalchemy import Engine, select
 
 from planlayer import access, publish
 from planlayer.config import Settings
-from planlayer.store.output import create_output_engine, dim_cost_center, fact_plan_cost_center
+from planlayer.store.db import create_app_engine as create_engine_for
+from planlayer.store.output import (
+    create_output_engine,
+    dim_account,
+    dim_cost_center,
+    fact_plan_cost_center,
+)
 
-from .conftest import BLANK, OWNER, URL, login, versions_of
+from .conftest import BLANK, CONTROLLER, OWNER, URL, login, versions_of
 
 P = "/api/rounds/B2026"
 
@@ -129,3 +136,42 @@ def test_only_controllers(client: TestClient) -> None:
     login(client, OWNER)
     assert client.get(f"{P}/publish/preview").status_code == 403
     assert client.get(f"{P}/export.csv").status_code == 403
+
+
+def test_published_signs_follow_the_convention(
+    client: TestClient, migrated: Settings, output: Engine
+) -> None:
+    """ADR 0019: amount stays natural-positive; amount_signed follows the convention by role."""
+    plan_cc1(client)
+    p = preview(client, "all")
+    assert run(client, p, "all").status_code == 200  # type: ignore[attr-defined]
+    with output.connect() as conn:
+        t = fact_plan_cost_center
+        amount, sign = conn.execute(
+            select(t.c.amount, t.c.amount_signed).where(t.c.account_code == "6000")
+        ).first()  # type: ignore[misc]
+        roles = dict(conn.execute(select(dim_account.c.code, dim_account.c.role)).all())
+    assert (amount, sign) == (Decimal("100.00"), Decimal("100.00"))  # ledger: costs debit +
+    assert (roles["6000"], roles["4900"], roles["A"]) == ("cost", "credit", None)
+
+    # Only an admin sets the convention; it applies from the next run, which the preview shows.
+    assert client.put("/api/settings/signs", json={"convention": "result"}).status_code == 403
+    engine = create_engine_for(migrated)
+    system = access.system_user(engine)
+    access.create_user(
+        engine, replace(system, is_admin=True), "adm@x.example", "Adm", is_admin=True
+    )
+    engine.dispose()
+    login(client, "adm@x.example")
+    settings = client.get("/api/settings/signs").json()
+    assert (settings["convention"], settings["credit_accounts"]) == ("ledger", 1)
+    assert [c["code"] for c in settings["credits"]] == ["4900"]
+    response = client.put("/api/settings/signs", json={"convention": "result"})
+    assert response.status_code == 200 and response.json()["convention"] == "result"
+    login(client, CONTROLLER)
+    p = preview(client, "all")
+    assert (p["changed"], p["unchanged"]) == (12, 0)
+    assert run(client, p, "all").status_code == 200  # type: ignore[attr-defined]
+    with output.connect() as conn:
+        sign = conn.execute(select(t.c.amount_signed).where(t.c.account_code == "6000")).scalar()
+    assert sign == Decimal("-100.00")  # result: costs reduce the result

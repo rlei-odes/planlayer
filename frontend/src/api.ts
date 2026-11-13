@@ -41,6 +41,8 @@ export type CapacityUnit = S.CapacityUnitOut
 export type CapacitySheet = S.CapacitySheetOut
 export type CapacityRow = S.CapacityRowOut
 export type HoursEdit = S.HoursEditIn
+// Published signs (ADR 0019).
+export type Signs = S.SignsOut
 // Cost forwarding (ADR 0018).
 export type ForwardingPage = S.ForwardingPageOut
 export type Forwarding = S.ForwardingOut
@@ -145,6 +147,9 @@ export const api = {
     post('/api/sync/run', { entity, confirm, years }).then((res) =>
       json<S.SyncRunOut>(res),
     ),
+  signs: () => fetch('/api/settings/signs').then((res) => json<Signs>(res)),
+  setSigns: (convention: Signs['convention']) =>
+    send('PUT', '/api/settings/signs', { convention }).then((res) => json<Signs>(res)),
   forwarding: (version: string) => fetch(fw(version)).then((res) => json<ForwardingPage>(res)),
   createForwarding: (version: string, f: ForwardingIn) => post(fw(version), f).then((res) => json<ForwardingPage>(res)),
   changeForwarding: (version: string, code: string, f: ForwardingIn) =>

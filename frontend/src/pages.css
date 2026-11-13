@@ -2150,3 +2150,22 @@ revo-grid.pl-revo .rgCell.pl-credit {
   background: var(--ok-tint);
   color: var(--ok);
 }
+
+/* Settings (E-12). */
+.st-settings .su-card {
+  max-width: 760px;
+}
+.set-roles {
+  box-shadow: none;
+  max-width: 520px;
+}
+.set-roles .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.set-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0 0;
+}

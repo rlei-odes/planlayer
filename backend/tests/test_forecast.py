@@ -253,4 +253,6 @@ def test_publish_a_forecast_with_its_actuals(forecast: TestClient, migrated: Set
     assert counts == {"plan": 6, "actual": 10}
     assert total == Decimal("1800.00")  # the full year: 600 actual + 1,200 forecast
     csv = forecast.get(f"/api/rounds/{F}/export.csv", params={"scope": "all"})
-    assert csv.status_code == 200 and csv.text.splitlines()[0].endswith(",status,origin")
+    assert csv.status_code == 200 and csv.text.splitlines()[0].endswith(
+        ",status,origin,amount_signed"
+    )

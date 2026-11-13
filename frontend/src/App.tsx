@@ -15,6 +15,7 @@ import {
   PublishIcon,
   ResponsibilitiesIcon,
   SetupIcon,
+  SettingsIcon,
   StatusIcon,
   UsersIcon,
 } from './icons'
@@ -29,6 +30,7 @@ import PublishPage from './PublishPage'
 import ResponsibilitiesPage from './ResponsibilitiesPage'
 import SetupPage from './SetupPage'
 import StatusPage from './StatusPage'
+import SettingsPage from './SettingsPage'
 import UsersPage from './UsersPage'
 
 // The app shell (E-13): a sidebar grouped by role, a top bar with the current round and the user.
@@ -47,6 +49,7 @@ type Page =
   | 'masterdata'
   | 'responsibilities'
   | 'users'
+  | 'settings'
 
 const NAV: Record<Page, { label: string; icon: () => ReactNode }> = {
   capacity: { label: 'Capacity', icon: CapacityIcon },
@@ -60,6 +63,7 @@ const NAV: Record<Page, { label: string; icon: () => ReactNode }> = {
   masterdata: { label: 'Master data', icon: MasterDataIcon },
   responsibilities: { label: 'Responsibilities', icon: ResponsibilitiesIcon },
   users: { label: 'Users', icon: UsersIcon },
+  settings: { label: 'Settings', icon: SettingsIcon },
 }
 const ROUND_PAGES: Page[] = ['capacity', 'planning', 'status', 'setup', 'forwarding', 'publish']
 
@@ -67,7 +71,7 @@ function groupsFor(me: Me): { label: string; pages: Page[] }[] {
   const round: Page[] = me.is_controller ? ['setup', 'forwarding', 'publish', 'responsibilities'] : []
   const admin: Page[] = []
   if (me.is_controller || me.is_admin) admin.push('masterdata')
-  if (me.is_admin) admin.push('users')
+  if (me.is_admin) admin.push('users', 'settings')
   // Planning and status need cost centers to read: a role, ownership, a deputy grant, a capacity
   // planner grant or an approver assignment. The admin role alone gives none (ADR 0009). Capacity
   // comes first, the usual order of work (ADR 0013).
@@ -377,6 +381,7 @@ export default function App() {
           {current === 'masterdata' && <MasterDataPage me={me} />}
           {current === 'responsibilities' && <ResponsibilitiesPage />}
           {current === 'users' && <UsersPage />}
+          {current === 'settings' && <SettingsPage />}
         </main>
       </div>
     </div>

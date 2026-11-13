@@ -200,6 +200,8 @@ Mid-size manufacturer of industrial pumps and valves, ~400 employees.
     - [ ] The Members page shows *no longer delivered* (`missing_since`) next to each member.
 - [ ] **E-12** Setup pages (admin): one place for the settings a new installation needs before planning starts. It covers:
   - **Sign rules (T-7):** how the source delivers signs (natural or ledger) and how the export target expects them. The flip is defined per account type or account group, with per-account overrides. A preview shows sample accounts with their raw source value, the stored value and the exported value.
+    - [x] Export side: the *Settings* page (admin) chooses the convention of `amount_signed`, by account role ([ADR 0019](docs/adr/0019-published-signs.md)).
+    - [ ] Source side: actuals delivered in ledger signs, converted at sync (today the source view delivers natural signs).
   - **Fiscal calendar:** the fiscal year's start month (T-18).
   - **Source mapping** (T-16), linked from E-01.
   - **Seasonality profiles** (D-28).
@@ -247,7 +249,8 @@ Mid-size manufacturer of industrial pumps and valves, ~400 employees.
     - [ ] Mark cells with comments by a corner triangle, as spreadsheets do (a CSS class per cell through `cellProperties`); the same mark can flag cells someone else changed since the sheet was loaded.
 - [ ] **E-09** OIDC and LDAPS login (T-22), mapping an identity to a user by login or e-mail, and roles from directory groups. Users, roles, scopes, responsibilities and the development login are built (ADR 0009).
 - [ ] **E-10** Publishing ([ADR 0011](docs/adr/0011-publishing.md)). Built: downloads, preview, run, run history, republish, [docs/output.md](docs/output.md). Still open:
-    - [ ] Export sign rules (E-12): until then values are published natural-positive.
+    - [x] Published signs: `amount_signed` by account role with an installation-wide convention (ledger or result), and `dim_account.role` ([ADR 0019](docs/adr/0019-published-signs.md)).
+    - [ ] Sign overrides per account group or account, if a customer needs them.
     - [ ] Sales planning's output table, with its module.
     - [x] Setup and publishing per round: both follow the app's current round (E-13), one click apart in the sidebar.
 - [ ] **E-13** UI/UX design phase: with the main flows on screen (setup, plan, approve, publish), iterate on the frontend while the backend stays mostly as it is. Covers: navigation, visual language, the planning grid's look and keyboard flow, empty and error states, the status and setup pages. Done with real users' walkthroughs where possible (R-4). The look is the setup page's, carried app-wide, light only (tokens in `frontend/src/theme.css`, so a dark palette stays a change in one place).

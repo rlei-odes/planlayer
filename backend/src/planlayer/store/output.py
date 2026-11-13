@@ -49,6 +49,9 @@ fact_plan_cost_center = Table(
     Column("account_code", Text, nullable=False),
     Column("measure", Text, nullable=False),
     Column("amount", Numeric(18, 2), nullable=False),
+    # The amount with the installation's sign convention (ADR 0019); null before the first run
+    # that wrote it.
+    Column("amount_signed", Numeric(18, 2)),
     Column("status", Text, nullable=False),  # the cost center's workflow status at publish
     Column("published_at", DateTime(timezone=True), nullable=False),
     Column("publish_run_id", BigInteger, nullable=False),
@@ -134,6 +137,7 @@ dim_account = Table(
     Column("parent_code", Text),
     Column("depth", SmallInteger),
     Column("account_type", Text),
+    Column("role", Text),  # leaf accounts: cost, revenue or credit (ADR 0019)
     *_levels(),
 )
 
@@ -156,12 +160,19 @@ def ensure(conn: Connection, schema: str) -> None:
     conn.exec_driver_sql(
         f"ALTER TABLE {s}.dim_version ADD COLUMN IF NOT EXISTS actuals_through date"
     )
+    # ADR 0019.
+    conn.exec_driver_sql(
+        f"ALTER TABLE {s}.fact_plan_cost_center"
+        " ADD COLUMN IF NOT EXISTS amount_signed numeric(18,2)"
+    )
+    conn.exec_driver_sql(f"ALTER TABLE {s}.dim_account ADD COLUMN IF NOT EXISTS role text")
     conn.exec_driver_sql(f"""
         CREATE OR REPLACE VIEW {s}.v_plan_cost_center AS
         SELECT f.version_code, v.name AS version_name, f.fiscal_year, f.period,
                f.entity_code, f.cost_center_code, cc.name AS cost_center_name,
                f.account_code, a.name AS account_name, a.account_type,
-               f.measure, f.amount, f.status, f.published_at, f.origin
+               f.measure, f.amount, f.status, f.published_at, f.origin,
+               f.amount_signed, a.role
         FROM {s}.fact_plan_cost_center f
         LEFT JOIN {s}.dim_version v ON v.code = f.version_code
         LEFT JOIN {s}.dim_cost_center cc ON cc.code = f.cost_center_code

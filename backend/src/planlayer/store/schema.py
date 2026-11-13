@@ -58,6 +58,8 @@ installation = Table(
     Column("id", SmallInteger, primary_key=True, server_default="1"),
     # First month of the fiscal year (T-18).
     Column("fiscal_year_start_month", SmallInteger, nullable=False, server_default="1"),
+    # The sign convention of published amounts (ADR 0019): ledger or result.
+    Column("published_signs", Text, nullable=False, server_default="ledger"),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     CheckConstraint("id = 1", name="single_row"),
     CheckConstraint("fiscal_year_start_month BETWEEN 1 AND 12", name="fiscal_month"),
