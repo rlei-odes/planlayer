@@ -2574,6 +2574,7 @@ revo-grid.pl-revo .rgCell.wf-total {
 }
 
 .tr-incoming {
+  margin-top: 16px;
   border-left: 3px solid var(--accent);
 }
 

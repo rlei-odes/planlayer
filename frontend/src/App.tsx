@@ -91,6 +91,11 @@ function groupsFor(me: Me): { label: string; pages: Page[] }[] {
   return groups.filter((g) => g.pages.length > 0)
 }
 
+function pageOfHash(): Page {
+  const hash = window.location.hash.slice(1)
+  return hash && hash !== 'notes' ? (hash as Page) : 'home' // #notes: the page Home replaced
+}
+
 // Per-browser conveniences; storage may be unavailable (private mode), which only loses the memory.
 function remembered(key: string): string | null {
   try {
@@ -112,10 +117,13 @@ export default function App() {
   const [me, setMe] = useState<Me | null | undefined>(undefined) // undefined: not known yet
   const [versions, setVersions] = useState<Version[]>([])
   const [version, setVersion] = useState('')
-  const [page, setPage] = useState<Page>(() => {
-    const hash = window.location.hash.slice(1)
-    return hash && hash !== 'notes' ? (hash as Page) : 'home' // #notes: the page Home replaced
-  })
+  const [page, setPage] = useState<Page>(pageOfHash)
+  // The browser's back and forward buttons move between pages through the hash.
+  useEffect(() => {
+    const follow = () => setPage(pageOfHash())
+    window.addEventListener('hashchange', follow)
+    return () => window.removeEventListener('hashchange', follow)
+  }, [])
   // A planning sheet wider than the usual content width (more comparison columns) widens the
   // content area, top bar included, so the grid never needs a horizontal scrollbar to fit.
   const [sheetWidth, setSheetWidth] = useState<number | null>(null)
