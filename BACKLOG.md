@@ -328,6 +328,11 @@ FTE and headcount per cost center, staff type and category, as month-end levels,
 - [ ] **W-13 Status page:** FTE and headcount per node next to the plan status, and a comparison with last year.
 - [ ] **W-14 Paste of a position list** from Excel into the positions table.
 - [ ] **W-15 HR changes after taking:** a round holds HR's list as it was taken. Show where a position differs from HR's latest sync (a new leave date, another cost center, someone new) and offer to apply it.
+- [ ] **W-17 Moving a person to another cost center** from a date, as one step on a position. Today it takes two unlinked edits (a leave date on one side, a typed position on the other); the build-up then shows a leaver and a new or already-hired entry, and if HR moved the person after the round took its list, the new cost center can't take them from HR until a controller removes the old copy.
+  - The original position ends at the date with "moves to …"; the target gets a linked position (same person and number, origin *move*). Changing the date on either side moves both; removing the move restores the original.
+  - The build-up gets *moving in* and *moving out*, which cancel out over a department or the company; moves aren't leavers, new positions or replacements.
+  - W-15 offers "apply as a move from <date>" when HR's sync shows a position under another cost center; personnel costs (W-7) split at the date.
+  - To decide who may move someone: controllers only; the sending planner while the target is editable (recommended, the receiver sees it read only); or the sending planner proposes and the receiving one accepts, as a task (ADR 0017).
 - [ ] **W-16 Number prefix:** Planlayer's position numbers start with `N`; if a customer's HR numbers do too, make the prefix a setting.
 
 ### MCP access (after v1)
