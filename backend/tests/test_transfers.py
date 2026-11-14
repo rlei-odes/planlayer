@@ -119,6 +119,7 @@ def test_transfer_during_the_year(staffed: TestClient) -> None:
     cc2 = staffed.get(CC2).json()
     arrived = next(p for p in cc2["positions"] if p["code"] == "P001")
     assert arrived["entry_date"] == "2026-09-01" and arrived["transferred_from"] == "CC1"
+    assert arrived["elsewhere"] == [True] * 8 + [False] * 4
     assert lines(cc2, "headcount")["EMP/TECH"] == ["1.00"] * 8 + ["2.00"] * 4
     b = cc2["build_up"]
     assert b["moving_in"][8] == 1 and b["entering"][8] == 1 and b["new"][8] == 0
@@ -127,6 +128,8 @@ def test_transfer_during_the_year(staffed: TestClient) -> None:
     cc1 = staffed.get(CC1).json()
     ended = next(p for p in cc1["positions"] if p["code"] == "P001")
     assert ended["leave_date"] == "2026-08-31" and ended["transferred_to"] == "CC2"
+    assert ended["elsewhere"] == [False] * 8 + [True] * 4
+    assert ended["counted"] == [True] * 8 + [False] * 4
     assert not ended["removable"] and not ended["transferable"]
     assert lines(cc1, "headcount")["EMP/TECH"] == ["2.00"] * 8 + ["1.00"] * 4
     assert cc1["build_up"]["moving_out"][8] == 1

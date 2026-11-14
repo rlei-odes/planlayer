@@ -107,6 +107,8 @@ class PositionOut(BaseModel):
     is_replacement: bool
     description: str | None
     counted: list[bool]  # per month: active on its last day
+    # Per month: counted on the other cost center of a transfer during the year instead.
+    elsewhere: list[bool]
     changed_by: str | None
     # hr: taken from HR's staff list; its number, name, entry date and flags stay as HR has them.
     origin: Literal["hr", "manual"]
@@ -229,6 +231,7 @@ def _sheet_out(s: workforce.WorkforceSheet, batch_id: str | None = None) -> Work
                 is_replacement=p.is_replacement,
                 description=p.description,
                 counted=p.counted,
+                elsewhere=p.elsewhere,
                 changed_by=p.changed_by,
                 origin=p.origin,  # type: ignore[arg-type]
                 removable=p.removable,

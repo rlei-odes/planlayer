@@ -140,6 +140,9 @@ class PositionRow:
     transferred_to: str | None = None  # ended here in a transfer during the year, to this one
     transfer: "Transfer | None" = None  # a proposed transfer, waiting for the receiving side
     transferable: bool = False  # whether the reader may propose a transfer now
+    # Per month: counted on the other side of a transfer during the year (after the move on the
+    # sending cost center, before it on the receiving one), not here.
+    elsewhere: list[bool] = field(default_factory=list)
 
 
 @dataclass
@@ -640,6 +643,7 @@ def read_sheet(engine: Engine, user: User, version_code: str, cc_code: str) -> W
                 ctx.lock_reason is None
                 and p.transferred_to_id is None
                 and p.position_id not in outgoing,
+                _elsewhere(p, p.position_id in moved_in, ctx.periods),
             )
             for p in positions
         ]
@@ -647,6 +651,16 @@ def read_sheet(engine: Engine, user: User, version_code: str, cc_code: str) -> W
             [_domain(p, p.position_id in moved_in) for p in positions], ctx.periods
         )
     return sheet
+
+
+def _elsewhere(p: Row[Any], moved_in: bool, periods: list[date]) -> list[bool]:
+    """The months a position transferred during the year counts on the other cost center: after
+    its leave date where it ended in the transfer, before its entry where it arrived by one."""
+    if p.transferred_to_id is not None and p.leave_date is not None:
+        return [month_end(m) > p.leave_date for m in periods]
+    if moved_in and p.entry_date is not None:
+        return [month_end(m) < p.entry_date for m in periods]
+    return [False] * len(periods)
 
 
 def _add(a: Decimal | None, b: Decimal | None) -> Decimal | None:

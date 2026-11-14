@@ -1036,14 +1036,19 @@ function Positions({
                       <span
                         className="wf-dots"
                         aria-label={p.counted.every(Boolean) ? 'All year' : `${p.counted.filter(Boolean).length} months`}
-                        title={
+                        title={[
                           p.counted.some(Boolean)
-                            ? `Counted ${p.counted.every(Boolean) ? 'all year' : runOf(p.counted, sheet.periods)}`
-                            : 'Not counted in this year'
-                        }
+                            ? `Counted ${p.counted.every(Boolean) ? 'all year' : `here ${runOf(p.counted, sheet.periods)}`}`
+                            : 'Not counted in this year',
+                          p.elsewhere.some(Boolean)
+                            ? `at ${p.transferred_to ?? p.transferred_from} ${runOf(p.elsewhere, sheet.periods)} (hatched)`
+                            : '',
+                        ]
+                          .filter(Boolean)
+                          .join(', ')}
                       >
                         {p.counted.map((c, i) => (
-                          <i key={i} className={c ? 'on' : undefined} />
+                          <i key={i} className={c ? 'on' : p.elsewhere[i] ? 'moved' : undefined} />
                         ))}
                       </span>
                     </td>

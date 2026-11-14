@@ -2322,6 +2322,15 @@ revo-grid.pl-revo .rgCell.wf-total {
 .wf-dots i.on {
   background: var(--accent-2);
 }
+/* Counted on the other cost center of a transfer during the year (ADR 0021): not a leaving. */
+.wf-dots i.moved {
+  background: repeating-linear-gradient(
+    135deg,
+    var(--accent-2) 0 1.5px,
+    var(--accent-tint) 1.5px 3.5px
+  );
+  box-shadow: inset 0 0 0 1px var(--accent-2);
+}
 .pl.wf-scroll {
   height: auto;
 }

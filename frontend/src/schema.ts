@@ -651,6 +651,7 @@ export type PositionOut = {
   is_replacement: boolean
   description: string | null
   counted: boolean[]
+  elsewhere: boolean[]
   changed_by: string | null
   origin: "hr" | "manual"
   removable: boolean
