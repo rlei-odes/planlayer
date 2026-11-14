@@ -29,6 +29,8 @@ export type AddAccountIn = {
 }
 
 export type BuildUpOut = {
+  start: number
+  end: number
   entering: number[]
   new: number[]
   replacements: number[]
@@ -629,6 +631,8 @@ export type PositionOut = {
   description: string | null
   counted: boolean[]
   changed_by: string | null
+  origin: "hr" | "manual"
+  removable: boolean
 }
 
 export type ProfileIOInput = {
@@ -1002,7 +1006,6 @@ export type WorkforcePositionIn = {
   title: string
   staff_type_code: string
   staff_category_code: string
-  code?: string | null
   person_name?: string | null
   entry_date?: string | null
   leave_date?: string | null

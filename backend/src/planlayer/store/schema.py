@@ -876,7 +876,10 @@ workforce_position = Table(
     Column("version_id", SmallInteger, nullable=False),
     Column("module", Text, nullable=False, server_default=MODULE_WORKFORCE),
     Column("cost_center_id", Integer, ForeignKey("member.member_id"), nullable=False),
-    Column("code", Text),  # HR's position or personnel number; unique in the round
+    # HR's personnel number, or Planlayer's (N00001, ...) for a position added here.
+    Column("code", Text, nullable=False),
+    # hr: taken from HR's staff list, keeping its number, name, entry date and flags; manual.
+    Column("origin", Text, nullable=False, server_default="manual"),
     Column("title", Text, nullable=False),
     Column("person_name", Text),
     Column("staff_type_id", Integer, ForeignKey("member.member_id"), nullable=False),

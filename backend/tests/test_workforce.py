@@ -12,7 +12,7 @@ from decimal import Decimal
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine, func, insert, inspect, select
+from sqlalchemy import Engine, func, insert, inspect, select, update
 from sqlalchemy.exc import DBAPIError
 
 from planlayer import access
@@ -24,11 +24,12 @@ from planlayer.store.schema import (
     member,
     version,
     workforce_change_log,
+    workforce_position,
     workforce_position_log,
 )
 from planlayer.store.uow import unit_of_work
 
-from .conftest import BLANK, OWNER, VIEWER, login
+from .conftest import BLANK, CONTROLLER, OWNER, VIEWER, login
 
 R = "B2026"
 SHEET = f"/api/versions/{R}/workforce/CC1"
@@ -272,8 +273,52 @@ def test_position_rules(client: TestClient) -> None:
     assert client.post(f"{SHEET}/positions", json=position(is_replacement=True)).status_code == 422
     dates = position(entry_date="2026-05-01", leave_date="2026-04-01")
     assert client.post(f"{SHEET}/positions", json=dates).status_code == 422
-    assert client.post(f"{SHEET}/positions", json=position(code="X1")).status_code == 200
-    assert client.post(f"{SHEET}/positions", json=position(code="X1")).status_code == 422
+
+
+def test_positions_added_here_are_numbered(client: TestClient) -> None:
+    mode(client, "positions")
+    client.post(f"{SHEET}/positions", json=position())
+    sheet = client.post(f"{SHEET}/positions", json=position(title="Planner")).json()
+    assert sorted(p["code"] for p in sheet["positions"]) == ["N00001", "N00002"]
+    # A number given by the client is ignored: Planlayer numbers positions added here.
+    sheet = client.post(f"{SHEET}/positions", json={**position(), "code": "X1"}).json()
+    assert "X1" not in {p["code"] for p in sheet["positions"]}
+    assert all(p["origin"] == "manual" for p in sheet["positions"])
+
+
+def test_positions_from_hr_keep_hrs_facts(engine: Engine, client: TestClient) -> None:
+    mode(client, "positions")
+    client.post(f"{SHEET}/hr")
+    login(client, OWNER)
+    sheet = client.get(SHEET).json()
+    max_ = next(p for p in sheet["positions"] if p["code"] == "P001")
+    assert max_["origin"] == "hr" and not max_["removable"]
+    body = {
+        **position(),
+        "person_name": max_["person_name"],
+        "entry_date": max_["entry_date"],
+    }
+    url = f"{SHEET}/positions/{max_['position_id']}"
+    # Title, category, type, contract % and leave date are the planner's to change.
+    changed = client.put(url, json={**body, "title": "Lead machinist", "contract_percent": "80",
+                                    "leave_date": "2026-09-30"})  # fmt: skip
+    assert changed.status_code == 200, changed.text
+    assert lines(changed.json(), "fte")["EMP/TECH"][11] == "0.50"  # only Eva's 50 % is left
+    # Name, entry date and the plan flags stay as HR has them.
+    for wrong in ({"person_name": "Someone else"}, {"entry_date": "2016-01-01"},
+                  {"is_plan": True}):  # fmt: skip
+        assert client.put(url, json={**body, **wrong}).status_code == 422
+    assert client.delete(url).status_code == 403
+    login(client, CONTROLLER)
+    assert client.delete(url).status_code == 200
+    # The store refuses it too, whoever writes.
+    refused = pytest.raises(DBAPIError, match="keeps its number, name and entry date")
+    with unit_of_work(engine, access.system_user(engine)) as conn, refused:
+        conn.execute(
+            update(workforce_position)
+            .where(workforce_position.c.code == "P002")
+            .values(person_name="Renamed")
+        )
 
 
 def test_mode_changes(client: TestClient) -> None:

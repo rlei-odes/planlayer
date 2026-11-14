@@ -58,7 +58,7 @@ Workforce planning is a third module on the cost center, after cost center plann
 
   | Field | Notes |
   |---|---|
-  | Position number | optional; HR's number, unique in the round where given |
+  | Number | HR's personnel number for a position taken from HR; Planlayer's (`N00001`, `N00002`, …, per round) for one added here. Nobody types it |
   | Title | required, e.g. *Service technician field* |
   | Name | optional: the person in it, blank for a vacancy |
   | Staff type, category | required |
@@ -71,8 +71,9 @@ Workforce planning is a third module on the cost center, after cost center plann
 - **Month-end snapshot:** a position counts in a month if it is active on the month's last day. Entry on 15 March counts from March; leaving on 31 March still counts in March; leaving on 15 March does not.
 - **Roll-up:** per line and open month, headcount is the number of positions counted, and FTE the sum of their contract percentages / 100. A line with positions gets a value in every open month, 0 once everyone has left. FTE stays blank in a month where none of the line's counted positions has a contract %, e.g. freelancers without one.
 - The rolled-up values are **stored** in `fact_workforce`, recomputed in the same transaction as every position change, so they share its change batch. This is the same pattern as the credits of capacity planning. The sheet, comparisons, the status of the cost center, publishing and BI read one table.
-- **Build-up:** the positions page shows, per month and for the year, the headcount, the FTE, new positions (plan positions that are not replacements) entering, replacements entering, and people leaving. These figures are computed on read, from the positions.
+- **Build-up:** the positions page shows the heads at the start of the year (the end of the month before it), those entering and leaving, and the heads at the end of the year, so that start + entering − leaving = end. Per month it lists positions entering (counted where they weren't the month before), of them new plan positions and replacements, and positions leaving (no longer counted). These figures are computed on read, from the positions.
 - **Starting from HR:** *Add staff from HR* takes the cost center's people in `hr_staff` who are active in the fiscal year and not yet in the round (by position number) as positions, with no plan flag. Controllers can do this for every planned cost center at once in setup.
+- **Positions taken from HR** keep what HR knows: number, name, entry date, and no plan flags (someone employed is not a plan position). Planners change their title, staff type, category, contract % (e.g. a planned reduction), leave date (a planned exit or retirement) and description. Only controllers remove one, e.g. a person HR has moved to another cost center; planners plan a leaving with the leave date. The store refuses other changes and removals as it refuses writes to locked values.
 - Positions are audited: a trigger writes every change, as old and new row, into `workforce_position_log` with the request's actor and change batch.
 
 ### Carrying over
@@ -90,6 +91,8 @@ A publish writes `fact_plan_workforce`: one row per round × cost center × staf
 - **Year-end values, filled rather than spread:** headcount is a level. The year's figure is where it ends, and a value typed for the year holds for every month. Spreading a level by a seasonality profile would invent hiring and leaving.
 - **Month-end snapshot:** it agrees with the year-end value (December is the year), gives whole heads, and matches how HR reports headcount. Pro-rata FTE by days is what costs need, and belongs to a personnel cost module.
 - **Stored roll-up:** as with credits (ADR 0013), the sheet, publishing and BI read one fact table, and the lock trigger moves the cost center's status on every write.
+- **HR's facts stay HR's:** a planner plans what happens to a person (a new title, fewer hours, leaving), not who they are or when they joined. The round holds a copy of HR's list taken at one point; controllers may remove a position when HR's data has moved on.
+- **Numbers given by Planlayer:** positions added in the round need a stable key for the log, carry-over and talk between planner and controller, and a typed number would clash with HR's. The `N` prefix sets them apart from HR's numbers.
 - **No names in the output:** positions carry personal data. Inside Planlayer they are visible only to those who read the cost center; the warehouse gets the aggregates.
 - **Types as an editable list:** companies distinguish more than employees and freelancers (apprentices, agency staff, interns). A flag *external* is what the rules need, so any list works.
 

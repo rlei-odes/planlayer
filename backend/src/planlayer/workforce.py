@@ -17,6 +17,7 @@ from typing import Any, Literal, cast
 from sqlalchemy import (
     Connection,
     Engine,
+    Integer,
     Row,
     delete,
     func,
@@ -27,9 +28,9 @@ from sqlalchemy import (
     update,
 )
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.exc import DBAPIError, IntegrityError
+from sqlalchemy.exc import DBAPIError
 
-from planlayer.access import User, cost_center_rights
+from planlayer.access import AccessError, User, cost_center_rights
 from planlayer.domain.periods import QUARTERS, closed_months, quarter_months
 from planlayer.domain.workflow import EDITABLE, RoundStatus, Status
 from planlayer.domain.workforce import (
@@ -88,6 +89,7 @@ from planlayer.sync import ACTUALS_CODE
 from planlayer.workflow import enabled_members, status_of
 
 CENT = Decimal("0.01")
+NUMBERING_LOCK = 2020  # advisory lock class of the position numbers (ADR 0020)
 MEASURE_ID: dict[Measure, int] = {"fte": FTE, "headcount": HEADCOUNT}
 MEASURE_OF = {v: k for k, v in MEASURE_ID.items()}
 Line = tuple[int, int]  # staff type, staff category
@@ -128,6 +130,8 @@ class PositionRow:
     description: str | None
     counted: list[bool]  # per month: active on its last day
     changed_by: str | None
+    origin: str = "manual"  # hr: taken from HR's staff list; its number, name, entry date stay
+    removable: bool = True  # whether the reader may delete it
 
 
 @dataclass
@@ -581,6 +585,8 @@ def read_sheet(engine: Engine, user: User, version_code: str, cc_code: str) -> W
                 p.description,
                 [_domain(p).counts(period) for period in ctx.periods],
                 p.changed_by,
+                p.origin,
+                p.origin != "hr" or user.is_controller,
             )
             for p in positions
         ]
@@ -873,7 +879,6 @@ class PositionIn:
     title: str
     staff_type_code: str
     staff_category_code: str
-    code: str | None = None
     person_name: str | None = None
     entry_date: date | None = None
     leave_date: date | None = None
@@ -917,7 +922,6 @@ def _position_values(conn: Connection, p: PositionIn) -> dict[str, object]:
     except PositionError as e:
         raise EditError(str(e)) from None
     return {
-        "code": _blank(p.code),
         "title": title,
         "person_name": _blank(p.person_name),
         "staff_type_id": t.member_id,
@@ -929,6 +933,32 @@ def _position_values(conn: Connection, p: PositionIn) -> dict[str, object]:
         "is_replacement": p.is_replacement,
         "description": _blank(p.description),
     }
+
+
+# A position taken from HR keeps these as HR has them (ADR 0020); the store refuses changes too.
+HR_FIELDS = ("person_name", "entry_date", "is_plan", "is_replacement")
+
+
+def _check_hr_fields(old: Row[Any], values: dict[str, object]) -> None:
+    changed = [f for f in HR_FIELDS if values[f] != getattr(old, f)]
+    if changed:
+        raise EditError(
+            f"{old.code} is taken from HR: its number, name, entry date and plan flags stay as "
+            "HR has them"
+        )
+
+
+def _next_number(conn: Connection, version_id: int) -> str:
+    """The next of Planlayer's position numbers in the round: N00001, N00002, ... One
+    transaction at a time takes a number (an advisory lock on the round)."""
+    conn.execute(select(func.pg_advisory_xact_lock(NUMBERING_LOCK, version_id)))
+    p = workforce_position
+    last = conn.execute(
+        select(func.max(func.substring(p.c.code, 2).cast(Integer))).where(
+            p.c.version_id == version_id, p.c.origin == "manual"
+        )
+    ).scalar()
+    return f"N{(last or 0) + 1:05d}"
 
 
 def _positions_context(conn: Connection, actor: User, version_code: str, cc_code: str) -> _Context:
@@ -953,41 +983,35 @@ def save_position(
     def work(conn: Connection) -> None:
         ctx = _positions_context(conn, actor, version_code, cc_code)
         values = _position_values(conn, position) | {"changed_by": actor.login}
-        try:
-            with conn.begin_nested():
-                if position_id is None:
-                    saved.append(
-                        conn.execute(
-                            insert(workforce_position)
-                            .values(
-                                version_id=ctx.version_id,
-                                module=MODULE_WORKFORCE,
-                                cost_center_id=ctx.cost_center_id,
-                                **values,
-                            )
-                            .returning(workforce_position.c.position_id)
-                        ).scalar_one()
+        p = workforce_position
+        if position_id is None:
+            saved.append(
+                conn.execute(
+                    insert(p)
+                    .values(
+                        version_id=ctx.version_id,
+                        module=MODULE_WORKFORCE,
+                        cost_center_id=ctx.cost_center_id,
+                        code=_next_number(conn, ctx.version_id),
+                        origin="manual",
+                        **values,
                     )
-                else:
-                    found = conn.execute(
-                        update(workforce_position)
-                        .where(
-                            workforce_position.c.position_id == position_id,
-                            workforce_position.c.version_id == ctx.version_id,
-                            workforce_position.c.cost_center_id == ctx.cost_center_id,
-                        )
-                        .values(**values, changed_at=func.now())
-                        .returning(workforce_position.c.position_id)
-                    ).scalar()
-                    if found is None:
-                        raise NotFoundError(f"position {position_id} not found on {cc_code}")
-                    saved.append(int(found))
-        except IntegrityError as e:
-            if "uq_workforce_position_version_id" in str(e.orig):
-                raise EditError(
-                    f"position number {values['code']} is used in this round already"
-                ) from None
-            raise
+                    .returning(p.c.position_id)
+                ).scalar_one()
+            )
+        else:
+            where = (
+                p.c.position_id == position_id,
+                p.c.version_id == ctx.version_id,
+                p.c.cost_center_id == ctx.cost_center_id,
+            )
+            old = conn.execute(select(p).where(*where).with_for_update()).first()
+            if old is None:
+                raise NotFoundError(f"position {position_id} not found on {cc_code}")
+            if old.origin == "hr":
+                _check_hr_fields(old, values)
+            conn.execute(update(p).where(*where).values(**values, changed_at=func.now()))
+            saved.append(position_id)
         write_rollup(conn, ctx)
 
     return _run(engine, actor, work), saved[0]
@@ -996,8 +1020,22 @@ def save_position(
 def delete_position(
     engine: Engine, actor: User, version_code: str, cc_code: str, position_id: int
 ) -> str:
+    """Remove a position. One taken from HR only a controller removes, e.g. a person HR has
+    moved to another cost center; planners set its leave date instead."""
+
     def work(conn: Connection) -> None:
         ctx = _positions_context(conn, actor, version_code, cc_code)
+        origin = conn.execute(
+            select(workforce_position.c.origin).where(
+                workforce_position.c.position_id == position_id,
+                workforce_position.c.version_id == ctx.version_id,
+                workforce_position.c.cost_center_id == ctx.cost_center_id,
+            )
+        ).scalar()
+        if origin == "hr" and not actor.is_controller:
+            raise AccessError(
+                "only controllers remove a position taken from HR; set its leave date instead"
+            )
         found = conn.execute(
             delete(workforce_position)
             .where(
@@ -1030,6 +1068,7 @@ def _take_hr(conn: Connection, ctx: _Context, actor: User) -> int:
             "entry_date": h.entry_date,
             "leave_date": h.leave_date,
             "contract_percent": h.contract_percent,
+            "origin": "hr",
             "changed_by": actor.login,
         }
         for h in _hr_candidates(conn, ctx)

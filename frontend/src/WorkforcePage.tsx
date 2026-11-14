@@ -30,6 +30,7 @@ const comparisonProp = (i: number) => `c${i}`
 const SCROLLBAR = 18
 const MEASURE_LABEL = { fte: 'FTE', headcount: 'Headcount' } as const
 const MONTH = new Intl.DateTimeFormat('en', { month: 'short', timeZone: 'UTC' })
+const MONTH_YEAR = new Intl.DateTimeFormat('en', { month: 'short', year: 'numeric', timeZone: 'UTC' })
 const DAY = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })
 
 type GridRow = Record<string, string>
@@ -582,7 +583,6 @@ function AddLine({
 // --- Positions ----------------------------------------------------------------------------------
 
 type Draft = {
-  code: string
   title: string
   person_name: string
   staff_type_code: string
@@ -597,7 +597,6 @@ type Draft = {
 
 function draftOf(p: Position | null, sheet: WorkforceSheet): Draft {
   return {
-    code: p?.code ?? '',
     title: p?.title ?? '',
     person_name: p?.person_name ?? '',
     staff_type_code: p?.staff_type_code ?? sheet.staff_types[0]?.code ?? '',
@@ -614,7 +613,6 @@ function draftOf(p: Position | null, sheet: WorkforceSheet): Draft {
 function positionIn(d: Draft): PositionIn {
   const blank = (s: string) => (s.trim() ? s.trim() : null)
   return {
-    code: blank(d.code),
     title: d.title.trim(),
     person_name: blank(d.person_name),
     staff_type_code: d.staff_type_code,
@@ -657,17 +655,34 @@ function Positions({
   const percent = draft.contract_percent.trim()
   const valid = draft.title.trim() && draft.staff_type_code && draft.staff_category_code && (external || percent)
 
+  const current = typeof editing === 'number' ? sheet.positions.find((p) => p.position_id === editing) : undefined
+  const fromHr = current?.origin === 'hr'
+
   function edit(p: Position | null) {
     setDraft(draftOf(p, sheet))
     setEditing(p ? p.position_id : 'new')
   }
 
   const plan = sheet.positions.filter((p) => p.is_plan)
-  const tiles: { label: string; value: number; hint: string }[] = [
-    { label: 'Positions', value: sheet.positions.length, hint: 'listed for the year' },
-    { label: 'New', value: b ? b.new.reduce((a, n) => a + n, 0) : 0, hint: 'plan positions built up' },
-    { label: 'Replacements', value: b ? b.replacements.reduce((a, n) => a + n, 0) : 0, hint: 'plan positions replacing a leaver' },
-    { label: 'Leaving', value: b ? b.leaving.reduce((a, n) => a + n, 0) : 0, hint: 'no longer counted by year end' },
+  const total = (xs: number[] | undefined) => (xs ?? []).reduce((a, n) => a + n, 0)
+  const end = sheet.periods.length ? MONTH_YEAR.format(new Date(sheet.periods[11])) : ''
+  const entering = total(b?.entering)
+  const newCount = total(b?.new)
+  const replacements = total(b?.replacements)
+  const others = entering - newCount - replacements
+  // Heads, not positions listed: start + entering − leaving = end.
+  const tiles: { label: string; value: string; hint: string; tone?: string }[] = [
+    { label: 'Start of the year', value: String(b?.start ?? 0), hint: 'heads at the end of the year before' },
+    {
+      label: 'Entering',
+      value: `+${entering}`,
+      hint: [`${newCount} new`, `${replacements} replacement${replacements === 1 ? '' : 's'}`, others ? `${others} hired already` : '']
+        .filter(Boolean)
+        .join(' · '),
+      tone: 'up',
+    },
+    { label: 'Leaving', value: `−${total(b?.leaving)}`, hint: 'no longer counted', tone: 'down' },
+    { label: 'End of the year', value: String(b?.end ?? 0), hint: `heads at the end of ${end}` },
   ]
 
   return (
@@ -681,7 +696,7 @@ function Positions({
         </div>
         <div className="wf-tiles">
           {tiles.map((t) => (
-            <div key={t.label} className="wf-tile">
+            <div key={t.label} className={`wf-tile${t.tone ? ` ${t.tone}` : ''}`}>
               <strong>{t.value}</strong>
               <span>{t.label}</span>
               <small>{t.hint}</small>
@@ -778,12 +793,13 @@ function Positions({
                   className="su-input"
                   value={draft.person_name}
                   placeholder={draft.is_plan ? 'vacant' : ''}
+                  disabled={fromHr}
                   onChange={(e) => setDraft({ ...draft, person_name: e.target.value })}
                 />
               </label>
               <label className="su-field wf-code">
                 Number
-                <input className="su-input" value={draft.code} placeholder="optional" onChange={(e) => setDraft({ ...draft, code: e.target.value })} />
+                <input className="su-input" value={current?.code ?? 'given on saving'} disabled />
               </label>
               <div className="su-field">
                 Staff type
@@ -816,17 +832,24 @@ function Positions({
               </label>
               <label className="su-field">
                 Entry date
-                <input className="su-input" type="date" value={draft.entry_date} onChange={(e) => setDraft({ ...draft, entry_date: e.target.value })} />
+                <input
+                  className="su-input"
+                  type="date"
+                  value={draft.entry_date}
+                  disabled={fromHr}
+                  onChange={(e) => setDraft({ ...draft, entry_date: e.target.value })}
+                />
               </label>
               <label className="su-field">
                 Leave date
                 <input className="su-input" type="date" value={draft.leave_date} onChange={(e) => setDraft({ ...draft, leave_date: e.target.value })} />
               </label>
               <div className="su-field wf-flags">
-                <label className="md-check">
+                <label className={`md-check${fromHr ? ' wf-off' : ''}`}>
                   <input
                     type="checkbox"
                     checked={draft.is_plan}
+                    disabled={fromHr}
                     onChange={(e) => setDraft({ ...draft, is_plan: e.target.checked, is_replacement: e.target.checked && draft.is_replacement })}
                   />
                   Plan position (still to fill)
@@ -853,7 +876,9 @@ function Positions({
             </div>
             <div className="su-row wf-editor-foot">
               <span className="su-hint">
-                Blank dates mean “before the year” and “stays”. A position counts in a month when active on its last day.
+                {fromHr
+                  ? 'Taken from HR: number, name and entry date are HR’s. Plan its leaving with the leave date.'
+                  : 'Blank dates mean “before the year” and “stays”. A position counts in a month when active on its last day.'}
               </span>
               <span className="cp-grow" />
               <button type="button" className="su-btn ghost" onClick={() => setEditing(null)}>
@@ -891,7 +916,7 @@ function Positions({
                   <tr key={p.position_id} className={editing === p.position_id ? 'fw-current' : undefined}>
                     <td>
                       <span className="wf-pos">
-                        {p.code && <span className="code">{p.code}</span>}
+                        <span className="code">{p.code}</span>
                         <strong>{p.title}</strong>
                         {p.is_plan && (
                           <span className={`su-pill ${p.is_replacement ? 'submitted' : 'in_progress'}`}>
@@ -930,7 +955,11 @@ function Positions({
                           <button type="button" className="su-btn ghost sm" onClick={() => edit(p)}>
                             Edit
                           </button>
-                          {confirm === p.position_id ? (
+                          {!p.removable ? (
+                            <span className="wf-hr" title="Taken from HR: only a controller removes it. Plan its leaving with the leave date.">
+                              HR
+                            </span>
+                          ) : confirm === p.position_id ? (
                             <button
                               type="button"
                               className="su-btn sm danger"

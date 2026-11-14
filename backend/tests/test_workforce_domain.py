@@ -95,12 +95,18 @@ def test_build_up_ties_month_to_month_headcount() -> None:
         pos(date(2026, 10, 1)),  # entered before the year
     ]
     b = build_up(positions, YEAR)
+    assert (b.start, b.end) == (3, 5)  # the year's start: the leaver, one without dates, Oct 2026
+    assert b.start + sum(b.entering) - sum(b.leaving) == b.end
     assert b.leaving[2] == 1  # gone from March's month-end headcount
     assert b.new[4] == 1 and b.replacements[3] == 1
     assert b.entering == [0, 0, 0, 1, 1, 0, 1, 0, 0, 0, 0, 0]
     heads = rollup(positions, YEAR)[(EMP, TECH)]["headcount"]
     for m in range(1, 12):
         assert heads[m] - heads[m - 1] == b.entering[m] - b.leaving[m]
+    assert heads[0] == b.start + b.entering[0] - b.leaving[0]
+    # Someone who leaves in January before its end counts at the start and leaves in January.
+    early = build_up([pos(leave=date(2027, 1, 15))], YEAR)
+    assert (early.start, early.leaving[0], early.end) == (1, 1, 0)
 
 
 def test_check_rules() -> None:

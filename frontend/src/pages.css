@@ -2332,3 +2332,26 @@ revo-grid.pl-revo .rgCell.wf-total {
   margin: 0;
   padding: 0;
 }
+.wf-tile.up strong {
+  color: var(--ok);
+}
+.wf-tile.down strong {
+  color: var(--danger);
+}
+.wf-hr {
+  display: inline-block;
+  align-self: center;
+  line-height: 28px;
+  min-width: 58px;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+}
+.wf-editor .su-input:disabled {
+  background: var(--line-2);
+  color: var(--ink-2);
+  border-color: var(--line);
+  cursor: not-allowed;
+}

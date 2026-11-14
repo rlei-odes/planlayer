@@ -315,7 +315,7 @@ FTE and headcount per cost center, staff type and category, as month-end levels,
 
 - [x] **W-1 Module and modes:** `workforce` in the round with one mode (FTE, headcount, both, positions), chosen in setup; a mode change clears the round's workforce in setup and is refused in an open round with values; carried with a new round (positions still there in the new year, lines; typed values with *Plan values*).
 - [x] **W-2 Sheet:** the *Workforce* page (Plan, after Capacity): lines per staff type × category, year and quarters as their last month, a typed year or quarter filling its months, comparison columns, a forecast's closed months as HR's actuals, undo; same status, rights, locks and audit as the cost center's other sheets.
-- [x] **W-3 Positions:** title, name, number, type, category, entry and leave date, contract % (optional for external types), plan position and replacement flags, description; month-end snapshot roll-up stored in `fact_workforce`; the build-up (entering, new, replacements, leaving per month); *Add staff from HR* per cost center and for the round in setup; a log of every change.
+- [x] **W-3 Positions:** title, name, a number (HR's, or Planlayer's `N00001` …), type, category, entry and leave date, contract % (optional for external types), plan position and replacement flags, description; month-end snapshot roll-up stored in `fact_workforce`; HR's number, name, entry date and flags kept, removing them for controllers only; the build-up (heads at the year's start and end, entering, new, replacements, leaving per month); *Add staff from HR* per cost center and for the round in setup; a log of every change.
 - [x] **W-4 Data:** staff types (seeded, editable, *external* flag) and categories as master data; datasets `staff_types`, `staff_categories`, `staff`, `workforce_actuals`.
 - [x] **W-5 Publishing:** `fact_plan_workforce`, `dim_staff_type`, `dim_staff_category`, `v_plan_workforce`, no names.
 - [ ] **W-6 Factors from the workforce:** a category carries per-head factors (e.g. one IT workplace per office worker, a CAD licence per engineer) that feed cost forwarding's quantities (K-3) by month.
@@ -327,6 +327,8 @@ FTE and headcount per cost center, staff type and category, as month-end levels,
 - [ ] **W-12 Positions in the file downloads** of the Publish page are left out on purpose; decide whether a controller may download them with names.
 - [ ] **W-13 Status page:** FTE and headcount per node next to the plan status, and a comparison with last year.
 - [ ] **W-14 Paste of a position list** from Excel into the positions table.
+- [ ] **W-15 HR changes after taking:** a round holds HR's list as it was taken. Show where a position differs from HR's latest sync (a new leave date, another cost center, someone new) and offer to apply it.
+- [ ] **W-16 Number prefix:** Planlayer's position numbers start with `N`; if a customer's HR numbers do too, make the prefix a setting.
 
 ### MCP access (after v1)
 

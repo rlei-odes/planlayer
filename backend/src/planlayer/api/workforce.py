@@ -47,12 +47,18 @@ class PositionOut(BaseModel):
     description: str | None
     counted: list[bool]  # per month: active on its last day
     changed_by: str | None
+    # hr: taken from HR's staff list; its number, name, entry date and flags stay as HR has them.
+    origin: Literal["hr", "manual"]
+    removable: bool  # whether this user may delete it (one from HR: controllers only)
 
 
 class BuildUpOut(BaseModel):
-    """Per month: positions counted for the first time, of them new and replacement plan
-    positions, and positions no longer counted."""
+    """Heads at the start of the year (the prior year's end) and at its end; per month the
+    positions counted that weren't a month before, of them new and replacement plan positions,
+    and those no longer counted. start + entering - leaving = end."""
 
+    start: int
+    end: int
     entering: list[int]
     new: list[int]
     replacements: list[int]
@@ -156,13 +162,20 @@ def _sheet_out(s: workforce.WorkforceSheet, batch_id: str | None = None) -> Work
                 description=p.description,
                 counted=p.counted,
                 changed_by=p.changed_by,
+                origin=p.origin,  # type: ignore[arg-type]
+                removable=p.removable,
             )
             for p in s.positions
         ],
         build_up=None
         if b is None
         else BuildUpOut(
-            entering=b.entering, new=b.new, replacements=b.replacements, leaving=b.leaving
+            start=b.start,
+            end=b.end,
+            entering=b.entering,
+            new=b.new,
+            replacements=b.replacements,
+            leaving=b.leaving,
         ),
         hr_available=s.hr_available,
     )
@@ -198,10 +211,11 @@ class WorkforceLineIn(BaseModel):
 
 
 class WorkforcePositionIn(BaseModel):
+    """A position as the planner enters it; its number is Planlayer's (N00001, ...)."""
+
     title: str
     staff_type_code: Annotated[str, Field(min_length=1)]
     staff_category_code: Annotated[str, Field(min_length=1)]
-    code: str | None = None
     person_name: str | None = None
     entry_date: date | None = None
     leave_date: date | None = None
@@ -233,7 +247,6 @@ def _position(body: WorkforcePositionIn) -> workforce.PositionIn:
         title=body.title,
         staff_type_code=body.staff_type_code,
         staff_category_code=body.staff_category_code,
-        code=body.code,
         person_name=body.person_name,
         entry_date=body.entry_date,
         leave_date=body.leave_date,

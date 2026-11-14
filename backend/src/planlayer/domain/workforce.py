@@ -9,7 +9,7 @@ from calendar import monthrange
 from collections import defaultdict
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from typing import Literal
 
@@ -108,32 +108,31 @@ def rollup(
 
 @dataclass
 class BuildUp:
-    """Who comes and who goes in each month, as the month-end headcount shows it: headcount
-    changes from one month to the next by ``entering`` minus ``leaving``."""
+    """Who comes and who goes in each month, as month-end headcounts show it: from the start of
+    the year (the prior year's end) to its end, headcount changes by ``entering`` minus
+    ``leaving``."""
 
-    entering: list[int]  # positions counted for the first time
+    start: int  # counted at the end of the month before the year
+    end: int  # counted at the end of the year's last month
+    entering: list[int]  # positions counted where they weren't a month before
     new: list[int]  # of them: plan positions that aren't replacements
     replacements: list[int]  # of them: plan positions replacing a leaver
-    leaving: list[int]  # positions no longer counted, after the month before
+    leaving: list[int]  # positions no longer counted where they were a month before
 
 
 def build_up(positions: Iterable[Position], periods: Sequence[date]) -> BuildUp:
-    """A position entering in the year enters in the first month it counts in; one leaving in
-    the year leaves in the first month it no longer counts in. A position counted from before
-    the year enters in no month, and one counted to the year's end leaves in none."""
     n = len(periods)
-    out = BuildUp([0] * n, [0] * n, [0] * n, [0] * n)
-    before = periods[0].replace(day=1)
+    out = BuildUp(0, 0, [0] * n, [0] * n, [0] * n, [0] * n)
+    before = periods[0] - timedelta(days=1)  # a day of the month before the year
     for p in positions:
-        active = [p.counts(period) for period in periods]
-        if not any(active):
-            continue
-        first = active.index(True)
-        last = n - 1 - active[::-1].index(True)
-        if first > 0 or (p.entry_date is not None and p.entry_date >= before):
-            out.entering[first] += 1
-            if p.is_plan:
-                (out.replacements if p.is_replacement else out.new)[first] += 1
-        if last < n - 1:
-            out.leaving[last + 1] += 1
+        counted = [p.counts(before), *(p.counts(period) for period in periods)]
+        out.start += counted[0]
+        out.end += counted[-1]
+        for m in range(n):
+            if counted[m + 1] and not counted[m]:
+                out.entering[m] += 1
+                if p.is_plan:
+                    (out.replacements if p.is_replacement else out.new)[m] += 1
+            elif counted[m] and not counted[m + 1]:
+                out.leaving[m] += 1
     return out
