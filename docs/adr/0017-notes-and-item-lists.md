@@ -46,7 +46,7 @@ Planners explain why a value is what it is, leave to-dos for each other, and kee
 
 ### Finding one's notes
 
-*My notes* lists the open threads assigned to the user, those that mention them and those they started. Each opens the line's sheet with its threads. The sidebar shows the number of open tasks assigned to the user. There is no e-mail yet.
+*My notes* lists the open threads assigned to the user, those that mention them and those they started. Each opens the line's sheet with its threads. The sidebar shows the number of open tasks assigned to the user. There is no e-mail yet. (Amended by ADR 0021: these lists are now part of the *Home* page, and the badge sits on *Home*.)
 
 ### Audit
 

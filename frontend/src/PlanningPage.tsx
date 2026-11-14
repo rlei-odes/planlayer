@@ -191,7 +191,7 @@ export default function PlanningPage({
   onUnit: (code: string) => void
   /** Reports the sheet's width, so the app widens its content area for wide sheets. */
   onWidth: (px: number | null) => void
-  /** A line whose notes to open once the sheet is loaded (from My notes). */
+  /** A line whose notes to open once the sheet is loaded (from Home). */
   focus?: { account: string; thread: number } | null
   onFocused?: () => void
 }) {
@@ -490,7 +490,7 @@ export default function PlanningPage({
   }
 
   const current = units.find((u) => u.code === unit)
-  // The notes shown beside the sheet: those opened here, or the line My notes opened it for.
+  // The notes shown beside the sheet: those opened here, or the line Home opened it for.
   const notesOpen =
     notesFor ?? (focus && grid?.cost_center_code === unit ? { code: focus.account, thread: focus.thread } : null)
   const onSheet = new Set(grid?.rows.map((r) => r.code))

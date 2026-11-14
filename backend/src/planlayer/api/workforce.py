@@ -1,7 +1,7 @@
 """Workforce planning endpoints (ADR 0020): a cost center's workforce sheet, typed FTE and
 headcount, lines, positions and *Add staff from HR*. Values are decimal strings."""
 
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Annotated, Literal
 
@@ -14,7 +14,7 @@ from planlayer.api.auth import CurrentUser, engine_of
 from planlayer.api.capacity import CodeName, UndoIn
 from planlayer.api.planning import HANDLED, CellOut, ComparisonOut, ConflictOut, _errors, _s
 from planlayer.domain.workflow import RoundStatus, Status
-from planlayer.domain.workforce import Measure, Mode
+from planlayer.domain.workforce import Measure, Mode, TransferKind
 
 router = APIRouter(prefix="/api")
 
@@ -30,6 +30,67 @@ class WorkforceRowOut(BaseModel):
     plan: list[CellOut]
     comparisons: list[list[str | None]]  # one list of 12 months per comparison column
     editable: bool
+
+
+class TransferOut(BaseModel):
+    """A position's transfer to another cost center (ADR 0021). ``starts`` is the first day on
+    the receiving cost center; null for a full transfer, which moves the whole year."""
+
+    transfer_id: int
+    version_code: str
+    version_name: str
+    status: Literal["proposed", "accepted", "declined", "cancelled"]
+    kind: TransferKind
+    starts: date | None
+    position_id: int
+    position_code: str
+    title: str
+    person_name: str | None
+    staff_type_name: str
+    staff_category_name: str
+    contract_percent: str | None
+    from_code: str
+    from_name: str
+    to_code: str
+    to_name: str
+    note: str | None
+    proposed_by: str
+    proposed_at: datetime
+    decided_by: str | None
+    decided_at: datetime | None
+    reason: str | None
+    can_decide: bool  # the user writes the receiving cost center: accept or decline
+    can_cancel: bool  # the user writes the sending cost center: withdraw
+
+
+def transfer_out(t: workforce.Transfer) -> TransferOut:
+    return TransferOut(
+        transfer_id=t.transfer_id,
+        version_code=t.version_code,
+        version_name=t.version_name,
+        status=t.status,
+        kind=t.kind,
+        starts=t.starts,
+        position_id=t.position_id,
+        position_code=t.position_code,
+        title=t.title,
+        person_name=t.person_name,
+        staff_type_name=t.staff_type_name,
+        staff_category_name=t.staff_category_name,
+        contract_percent=_s(t.contract_percent),
+        from_code=t.from_code,
+        from_name=t.from_name,
+        to_code=t.to_code,
+        to_name=t.to_name,
+        note=t.note,
+        proposed_by=t.proposed_by,
+        proposed_at=t.proposed_at,
+        decided_by=t.decided_by,
+        decided_at=t.decided_at,
+        reason=t.reason,
+        can_decide=t.can_decide,
+        can_cancel=t.can_cancel,
+    )
 
 
 class PositionOut(BaseModel):
@@ -50,6 +111,10 @@ class PositionOut(BaseModel):
     # hr: taken from HR's staff list; its number, name, entry date and flags stay as HR has them.
     origin: Literal["hr", "manual"]
     removable: bool  # whether this user may delete it (one from HR: controllers only)
+    transferred_from: str | None  # the cost center it came from in a transfer
+    transferred_to: str | None  # ended here in a transfer during the year, to this cost center
+    transfer: TransferOut | None  # a proposed transfer waiting for the receiving side
+    transferable: bool  # whether this user may propose a transfer now
 
 
 class BuildUpOut(BaseModel):
@@ -63,6 +128,8 @@ class BuildUpOut(BaseModel):
     new: list[int]
     replacements: list[int]
     leaving: list[int]
+    moving_in: list[int]  # of entering: from other cost centers during the year
+    moving_out: list[int]  # of leaving: to other cost centers during the year
 
 
 class StaffTypeOut(BaseModel):
@@ -95,6 +162,7 @@ class WorkforceSheetOut(BaseModel):
     positions: list[PositionOut]
     build_up: BuildUpOut | None
     hr_available: int  # people in HR's list not yet among the positions
+    incoming: list[TransferOut]  # transfers proposed to this cost center
     batch_id: str | None = None
 
 
@@ -164,6 +232,10 @@ def _sheet_out(s: workforce.WorkforceSheet, batch_id: str | None = None) -> Work
                 changed_by=p.changed_by,
                 origin=p.origin,  # type: ignore[arg-type]
                 removable=p.removable,
+                transferred_from=p.transferred_from,
+                transferred_to=p.transferred_to,
+                transfer=None if p.transfer is None else transfer_out(p.transfer),
+                transferable=p.transferable,
             )
             for p in s.positions
         ],
@@ -176,8 +248,11 @@ def _sheet_out(s: workforce.WorkforceSheet, batch_id: str | None = None) -> Work
             new=b.new,
             replacements=b.replacements,
             leaving=b.leaving,
+            moving_in=b.moving_in,
+            moving_out=b.moving_out,
         ),
         hr_available=s.hr_available,
+        incoming=[transfer_out(t) for t in s.incoming],
     )
 
 
@@ -393,5 +468,98 @@ def take_from_hr(
     try:
         batch, _ = workforce.take_from_hr(engine, user, version_code, cc_code)
         return _sheet_out(workforce.read_sheet(engine, user, version_code, cc_code), batch)
+    except HANDLED as e:
+        raise _errors(e) from None
+
+
+class TransferTargetOut(BaseModel):
+    code: str
+    name: str
+    status: Status
+    editable: bool  # its status still takes positions; otherwise accepting will be refused
+
+
+@router.get(V + "/{cc_code}/transfer-targets", responses={404: {}})
+def transfer_targets(
+    request: Request, user: CurrentUser, version_code: str, cc_code: str
+) -> list[TransferTargetOut]:
+    """The cost centers planned in the round a position may transfer to."""
+    try:
+        found = workforce.transfer_targets(engine_of(request), user, version_code, cc_code)
+    except HANDLED as e:
+        raise _errors(e) from None
+    return [
+        TransferTargetOut(code=t.code, name=t.name, status=t.status, editable=t.editable)
+        for t in found
+    ]
+
+
+class TransferIn(BaseModel):
+    to_cost_center: Annotated[str, Field(min_length=1)]
+    kind: TransferKind
+    starts: date | None = None  # the first of a month; required for during_year
+    note: Annotated[str, Field(max_length=2000)] | None = None
+
+
+@router.post(
+    V + "/{cc_code}/positions/{position_id}/transfer", responses={404: {}, 422: {}, 423: {}}
+)
+def propose_transfer(
+    request: Request,
+    user: CurrentUser,
+    version_code: str,
+    cc_code: str,
+    position_id: int,
+    body: TransferIn,
+) -> WorkforceSheetOut:
+    """Propose a transfer; the position stays until the receiving cost center accepts."""
+    engine = engine_of(request)
+    try:
+        workforce.propose_transfer(
+            engine,
+            user,
+            version_code,
+            cc_code,
+            position_id,
+            body.to_cost_center,
+            body.kind,
+            body.starts,
+            body.note,
+        )
+        return _sheet_out(workforce.read_sheet(engine, user, version_code, cc_code))
+    except HANDLED as e:
+        raise _errors(e) from None
+
+
+transfers = APIRouter(prefix="/api/transfers")
+
+
+@transfers.get("")
+def my_transfers(request: Request, user: CurrentUser) -> list[TransferOut]:
+    """Transfers for the user to decide, and those they proposed (waiting, or decided lately)."""
+    return [transfer_out(t) for t in workforce.my_transfers(engine_of(request), user)]
+
+
+class DecisionIn(BaseModel):
+    accept: bool
+    reason: Annotated[str, Field(max_length=2000)] | None = None  # when declining
+
+
+@transfers.post("/{transfer_id}/decision", responses={403: {}, 404: {}, 422: {}, 423: {}})
+def decide_transfer(
+    request: Request, user: CurrentUser, transfer_id: int, body: DecisionIn
+) -> None:
+    """Accept (the position moves) or decline, as the receiving cost center."""
+    try:
+        workforce.decide_transfer(engine_of(request), user, transfer_id, body.accept, body.reason)
+    except HANDLED as e:
+        raise _errors(e) from None
+
+
+@transfers.post("/{transfer_id}/cancel", responses={403: {}, 404: {}, 422: {}})
+def cancel_transfer(request: Request, user: CurrentUser, transfer_id: int) -> None:
+    """Withdraw a proposed transfer, as the sending cost center."""
+    try:
+        workforce.cancel_transfer(engine_of(request), user, transfer_id)
     except HANDLED as e:
         raise _errors(e) from None

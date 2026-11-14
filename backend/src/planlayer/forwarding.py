@@ -11,8 +11,7 @@ planner's change batch.
 
 import uuid
 from collections import defaultdict
-from collections.abc import Callable, Iterable, Iterator
-from contextlib import contextmanager
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
@@ -22,7 +21,7 @@ from sqlalchemy import Connection, Engine, and_, delete, func, insert, or_, sele
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import DBAPIError
 
-from planlayer.access import SYSTEM_LOGIN, AccessError, User
+from planlayer.access import AccessError, User
 from planlayer.domain import forwarding as rules
 from planlayer.domain.periods import closed_months
 from planlayer.domain.workflow import RoundStatus, Status
@@ -37,7 +36,6 @@ from planlayer.store.schema import (
     H_ACCOUNT,
     H_COST_CENTER,
     NO_ENTITY,
-    app_user,
     credit_account,
     fact_cost_center,
     forwarding,
@@ -46,7 +44,7 @@ from planlayer.store.schema import (
     hier_edge,
     member,
 )
-from planlayer.store.uow import unit_of_work
+from planlayer.store.uow import system_rights, unit_of_work
 from planlayer.sync import rebuild_closure
 from planlayer.workflow import enabled_members, status_of
 
@@ -402,26 +400,6 @@ def _replace(
         )
 
 
-@contextmanager
-def _as_system(conn: Connection) -> Iterator[None]:
-    """Write as the system user for a while, in the same transaction and change batch: the
-    forwarding a planner's edit sets off writes into cost centers the planner may not write."""
-    before = {
-        name: conn.execute(select(func.current_setting(name, True))).scalar()
-        for name in ("app.user_id", "app.actor")
-    }
-    system_id = conn.execute(
-        select(app_user.c.user_id).where(app_user.c.login == SYSTEM_LOGIN)
-    ).scalar_one()
-    for name, value in (("app.user_id", str(system_id)), ("app.actor", SYSTEM_LOGIN)):
-        conn.execute(select(func.set_config(name, value, True)))
-    try:
-        yield
-    finally:
-        for name, old in before.items():
-            conn.execute(select(func.set_config(name, old or "", True)))
-
-
 def release(conn: Connection, r: RoundRef, cost_centers: set[int]) -> None:
     """Remove the forwarding values of cost centers about to stop being planned in the round,
     while they still are: the lock refuses any write to a cost center not planned."""
@@ -453,7 +431,7 @@ def follow(conn: Connection, r: RoundRef, cost_center_id: int) -> None:
         {f: set(d.receivers) for f, d in defs.items()},
         cost_center_id,
     )
-    with _as_system(conn):
+    with system_rights(conn):
         recompute(conn, r, affected)
 
 

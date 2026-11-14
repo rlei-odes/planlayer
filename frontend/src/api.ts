@@ -47,6 +47,12 @@ export type WorkforceRow = S.WorkforceRowOut
 export type WorkforceEdit = S.WorkforceEditIn
 export type Position = S.PositionOut
 export type PositionIn = S.WorkforcePositionIn
+export type Transfer = S.TransferOut
+export type TransferIn = S.TransferIn
+export type TransferTarget = S.TransferTargetOut
+export type Home = S.HomeOut
+export type RoundWork = S.RoundWorkOut
+export type MyCostCenter = S.MyCostCenterOut
 // Published signs (ADR 0019).
 export type Signs = S.SignsOut
 // Cost forwarding (ADR 0018).
@@ -207,6 +213,14 @@ export const api = {
   },
   addWorkforceLine: (version: string, code: string, line: S.WorkforceLineIn) =>
     post(`${wf(version, code)}/lines`, line).then((r) => json<WorkforceSheet>(r)),
+  transferTargets: (version: string, code: string) =>
+    fetch(`${wf(version, code)}/transfer-targets`).then((r) => json<TransferTarget[]>(r)),
+  proposeTransfer: (version: string, code: string, positionId: number, t: TransferIn) =>
+    post(`${wf(version, code)}/positions/${positionId}/transfer`, t).then((r) => json<WorkforceSheet>(r)),
+  decideTransfer: (id: number, accept: boolean, reason?: string) =>
+    post(`/api/transfers/${id}/decision`, { accept, reason: reason || null }).then((r) => json<null>(r)),
+  cancelTransfer: (id: number) => post(`/api/transfers/${id}/cancel`, {}).then((r) => json<null>(r)),
+  home: () => fetch('/api/home').then((r) => json<Home>(r)),
   addPosition: (version: string, code: string, p: PositionIn) =>
     post(`${wf(version, code)}/positions`, p).then((r) => json<WorkforceSheet>(r)),
   changePosition: (version: string, code: string, id: number, p: PositionIn) =>

@@ -38,9 +38,8 @@ from planlayer.store.schema import (
     planner_grant,
     user_session,
 )
+from planlayer.store.uow import SYSTEM_LOGIN as SYSTEM_LOGIN
 from planlayer.store.uow import Actor, unit_of_work
-
-SYSTEM_LOGIN = "system"
 
 
 class AccessError(PermissionError):

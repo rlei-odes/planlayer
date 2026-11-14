@@ -892,7 +892,44 @@ workforce_position = Table(
     Column("description", Text),
     Column("changed_by", Text),
     Column("changed_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
-    UniqueConstraint("version_id", "code"),
+    # Transfers (ADR 0021): the cost center a position came from, and for one that ended on this
+    # cost center during the year, the cost center it went to. A number is unique per round among
+    # the positions that haven't ended in a transfer.
+    Column("transferred_from_id", Integer, ForeignKey("member.member_id")),
+    Column("transferred_to_id", Integer, ForeignKey("member.member_id")),
+    _module_fk(),
+)
+
+# A position's transfer to another cost center (ADR 0021): proposed by the sending side, decided
+# by the receiving side. ``starts`` is the first day on the receiving cost center (during_year).
+workforce_transfer = Table(
+    "workforce_transfer",
+    metadata,
+    Column("transfer_id", Integer, Identity(), primary_key=True),
+    Column("version_id", SmallInteger, nullable=False),
+    Column("module", Text, nullable=False, server_default=MODULE_WORKFORCE),
+    Column(
+        "position_id",
+        Integer,
+        ForeignKey("workforce_position.position_id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("from_cost_center_id", Integer, ForeignKey("member.member_id"), nullable=False),
+    Column("to_cost_center_id", Integer, ForeignKey("member.member_id"), nullable=False),
+    Column("kind", Text, nullable=False),  # full / during_year
+    Column("starts", Date),
+    Column("status", Text, nullable=False, server_default="proposed"),
+    Column("note", Text),
+    Column("proposed_by", Integer, ForeignKey("app_user.user_id"), nullable=False),
+    Column("proposed_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("decided_by", Integer, ForeignKey("app_user.user_id")),
+    Column("decided_at", DateTime(timezone=True)),
+    Column("reason", Text),
+    Column(
+        "new_position_id",
+        Integer,
+        ForeignKey("workforce_position.position_id", ondelete="SET NULL"),
+    ),
     _module_fk(),
 )
 

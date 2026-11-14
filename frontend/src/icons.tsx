@@ -161,3 +161,11 @@ export const ItemListIcon = () => (
     <path d="M10.5 16.5h6" />
   </Icon>
 )
+
+// A house: the start page.
+export const HomeIcon = () => (
+  <Icon>
+    <path d="M3.5 9 10 3.5 16.5 9" />
+    <path d="M5 8v8.5h3.5V12h3v4.5H15V8" />
+  </Icon>
+)

@@ -13,6 +13,10 @@ from dataclasses import dataclass
 
 from sqlalchemy import Connection, Engine, func, select
 
+from planlayer.store.schema import app_user
+
+SYSTEM_LOGIN = "system"
+
 
 @dataclass(frozen=True)
 class Actor:
@@ -32,3 +36,24 @@ def unit_of_work(engine: Engine, actor: Actor, batch_id: str | None = None) -> I
         ):
             conn.execute(select(func.set_config(name, value, True)))
         yield conn
+
+
+@contextmanager
+def system_rights(conn: Connection, *, actor: str | None = None) -> Iterator[None]:
+    """Row-level security of the system user for a while, in the same transaction and change
+    batch: for writes a request sets off in cost centers its user may not write (a forwarding's
+    receivers, a transfer's sending side). With ``actor``, the audit keeps naming that actor."""
+    before = {
+        name: conn.execute(select(func.current_setting(name, True))).scalar()
+        for name in ("app.user_id", "app.actor")
+    }
+    system_id = conn.execute(
+        select(app_user.c.user_id).where(app_user.c.login == SYSTEM_LOGIN)
+    ).scalar_one()
+    for name, value in (("app.user_id", str(system_id)), ("app.actor", actor or SYSTEM_LOGIN)):
+        conn.execute(select(func.set_config(name, value, True)))
+    try:
+        yield
+    finally:
+        for name, old in before.items():
+            conn.execute(select(func.set_config(name, old or "", True)))

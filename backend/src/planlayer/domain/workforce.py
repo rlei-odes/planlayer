@@ -8,7 +8,7 @@ type x category into headcount and FTE.
 from calendar import monthrange
 from collections import defaultdict
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, timedelta
 from decimal import Decimal
 from typing import Literal
@@ -48,6 +48,8 @@ class Position:
     contract_percent: Decimal | None
     is_plan: bool = False
     is_replacement: bool = False
+    moved_in: bool = False  # entered from another cost center during the year (ADR 0021)
+    moved_out: bool = False  # left for another cost center during the year
 
     @property
     def line(self) -> tuple[int, int]:
@@ -118,11 +120,15 @@ class BuildUp:
     new: list[int]  # of them: plan positions that aren't replacements
     replacements: list[int]  # of them: plan positions replacing a leaver
     leaving: list[int]  # positions no longer counted where they were a month before
+    moving_in: list[int] = field(default_factory=list)  # of entering: from other cost centers
+    moving_out: list[int] = field(default_factory=list)  # of leaving: to other cost centers
 
 
 def build_up(positions: Iterable[Position], periods: Sequence[date]) -> BuildUp:
+    """Moves between cost centers count as entering and leaving, and are named apart: they
+    cancel out over the company, so they are neither new positions nor leavers to replace."""
     n = len(periods)
-    out = BuildUp(0, 0, [0] * n, [0] * n, [0] * n, [0] * n)
+    out = BuildUp(0, 0, [0] * n, [0] * n, [0] * n, [0] * n, [0] * n, [0] * n)
     before = periods[0] - timedelta(days=1)  # a day of the month before the year
     for p in positions:
         counted = [p.counts(before), *(p.counts(period) for period in periods)]
@@ -131,8 +137,45 @@ def build_up(positions: Iterable[Position], periods: Sequence[date]) -> BuildUp:
         for m in range(n):
             if counted[m + 1] and not counted[m]:
                 out.entering[m] += 1
-                if p.is_plan:
+                if p.moved_in:
+                    out.moving_in[m] += 1
+                elif p.is_plan:
                     (out.replacements if p.is_replacement else out.new)[m] += 1
             elif counted[m] and not counted[m + 1]:
                 out.leaving[m] += 1
+                if p.moved_out:
+                    out.moving_out[m] += 1
     return out
+
+
+TransferKind = Literal["full", "during_year"]
+TRANSFER_KINDS: tuple[TransferKind, ...] = ("full", "during_year")
+
+
+def check_transfer(
+    entry_date: date | None,
+    leave_date: date | None,
+    kind: TransferKind,
+    starts: date | None,
+    periods: Sequence[date],
+    closed: int = 0,
+) -> None:
+    """A transfer as ADR 0021 allows it. A full transfer moves the position with its whole year;
+    one during the year starts on the first of a month after the year's first and not in a
+    forecast's closed months, and needs the person on the sending cost center the day before."""
+    if kind == "full":
+        if starts is not None:
+            raise PositionError("a full transfer has no start month")
+        return
+    if starts is None:
+        raise PositionError("a transfer during the year needs its start month")
+    if starts.day != 1 or starts not in periods:
+        raise PositionError("a transfer starts on the first of a month of the fiscal year")
+    if starts == periods[0]:
+        raise PositionError("a transfer from the year's first month is a full transfer")
+    if periods.index(starts) < closed:
+        raise PositionError(f"{starts:%B %Y} is closed in this forecast")
+    if entry_date is not None and entry_date >= starts:
+        raise PositionError("the person enters after the transfer would start")
+    if leave_date is not None and leave_date < starts:
+        raise PositionError("the person leaves before the transfer would start")

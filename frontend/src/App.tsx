@@ -1,16 +1,17 @@
 import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import { api, type Me, type MyThread, type Version } from './api'
+import HomePage, { type HomeTarget, type Sheet } from './HomePage'
 import CapacityPage from './CapacityPage'
 import ForwardingPage from './ForwardingPage'
 import {
   CapacityIcon,
   ForwardingIcon,
+  HomeIcon,
   CollapseIcon,
   ItemListIcon,
   LogoMark,
   LogoutIcon,
   MasterDataIcon,
-  NotesIcon,
   PlanningIcon,
   PublishIcon,
   ResponsibilitiesIcon,
@@ -25,7 +26,6 @@ import LoginPage from './LoginPage'
 import { initials } from './names'
 import Select from './Select'
 import MasterDataPage from './MasterDataPage'
-import MyNotesPage from './MyNotesPage'
 import PlanningPage from './PlanningPage'
 import PublishPage from './PublishPage'
 import ResponsibilitiesPage from './ResponsibilitiesPage'
@@ -40,11 +40,11 @@ import WorkforcePage from './WorkforcePage'
 
 type Health = { status: 'ok' | 'unavailable'; version: string; schema_revision: string | null }
 type Page =
+  | 'home'
   | 'capacity'
   | 'workforce'
   | 'planning'
   | 'status'
-  | 'notes'
   | 'lists'
   | 'setup'
   | 'forwarding'
@@ -55,11 +55,11 @@ type Page =
   | 'settings'
 
 const NAV: Record<Page, { label: string; icon: () => ReactNode }> = {
+  home: { label: 'Home', icon: HomeIcon },
   capacity: { label: 'Capacity', icon: CapacityIcon },
   workforce: { label: 'Workforce', icon: WorkforceIcon },
   planning: { label: 'Planning', icon: PlanningIcon },
   status: { label: 'Status', icon: StatusIcon },
-  notes: { label: 'My notes', icon: NotesIcon },
   lists: { label: 'My item lists', icon: ItemListIcon },
   setup: { label: 'Setup', icon: SetupIcon },
   forwarding: { label: 'Forwarding', icon: ForwardingIcon },
@@ -80,8 +80,10 @@ function groupsFor(me: Me): { label: string; pages: Page[] }[] {
   // planner grant or an approver assignment. The admin role alone gives none (ADR 0009). Capacity
   // and workforce come first, the usual order of work (ADR 0013, ADR 0020).
   const plan: Page[] =
-    me.is_controller || me.is_viewer || me.reads_cost_centers ? ['capacity', 'workforce', 'planning', 'status', 'notes', 'lists'] : []
+    me.is_controller || me.is_viewer || me.reads_cost_centers ? ['capacity', 'workforce', 'planning', 'status', 'lists'] : []
+  // Home comes first for everyone: what waits for the user and what they plan (ADR 0021).
   const groups: { label: string; pages: Page[] }[] = [
+    { label: '', pages: ['home'] },
     { label: 'Plan', pages: plan },
     { label: 'Round', pages: round },
     { label: 'Admin', pages: admin },
@@ -110,7 +112,10 @@ export default function App() {
   const [me, setMe] = useState<Me | null | undefined>(undefined) // undefined: not known yet
   const [versions, setVersions] = useState<Version[]>([])
   const [version, setVersion] = useState('')
-  const [page, setPage] = useState<Page>(() => (window.location.hash.slice(1) as Page) || 'planning')
+  const [page, setPage] = useState<Page>(() => {
+    const hash = window.location.hash.slice(1)
+    return hash && hash !== 'notes' ? (hash as Page) : 'home' // #notes: the page Home replaced
+  })
   // A planning sheet wider than the usual content width (more comparison columns) widens the
   // content area, top bar included, so the grid never needs a horizontal scrollbar to fit.
   const [sheetWidth, setSheetWidth] = useState<number | null>(null)
@@ -122,7 +127,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null)
   // The cost center shown on the capacity and planning pages: switching pages keeps it.
   const [costCenter, setCostCenter] = useState(() => remembered('planlayer.costCenter') ?? '')
-  // A line whose notes a sheet opens once loaded (from My notes), and the open tasks for the badge.
+  // A line whose notes a sheet opens once loaded (from Home), and the open tasks for the badge.
   const [focus, setFocus] = useState<{ account?: string; key?: string; thread: number } | null>(null)
   const [tasks, setTasks] = useState(0)
 
@@ -171,13 +176,25 @@ export default function App() {
     window.location.hash = next
   }
 
-  // The badge counts open tasks for the user; refreshed when they move between pages.
+  // The badge counts open tasks for the user (note tasks, transfers to accept); refreshed when
+  // they move between pages, and by Home itself after a decision.
   useEffect(() => {
-    if (me && (me.is_controller || me.is_viewer || me.reads_cost_centers))
-      api.myNotes().then((m) => setTasks(m.tasks), () => setTasks(0))
+    if (me) api.home().then((h) => setTasks(h.tasks), () => setTasks(0))
   }, [me, page])
 
-  /** Open a thread from My notes: its round, its sheet, its cost center, then its line's notes. */
+  /** From Home: a cost center's sheet in a round. */
+  function openSheet(round: string, cc: string, sheet: Sheet) {
+    setVersion(round)
+    setCostCenter(cc)
+    go(sheet)
+  }
+
+  function openRoundPage(round: string, target: HomeTarget) {
+    setVersion(round)
+    go(target)
+  }
+
+  /** Open a thread from Home: its round, its sheet, its cost center, then its line's notes. */
   function openThread(t: MyThread) {
     setVersion(t.round_code)
     setCostCenter(t.cost_center_code)
@@ -241,7 +258,7 @@ export default function App() {
         <nav>
           {groups.map((g) => (
             <div key={g.label} className="sb-group">
-              <div className="sb-label">{g.label}</div>
+              {g.label && <div className="sb-label">{g.label}</div>}
               {g.pages.map((p) => {
                 const { label, icon: PageIcon } = NAV[p]
                 return (
@@ -255,7 +272,7 @@ export default function App() {
                   >
                     <PageIcon />
                     <span>{label}</span>
-                    {p === 'notes' && tasks > 0 && (
+                    {p === 'home' && tasks > 0 && (
                       <b className="sb-badge" title={`${tasks} open task${tasks === 1 ? '' : 's'} for you`}>
                         {tasks}
                       </b>
@@ -386,7 +403,9 @@ export default function App() {
           {version && current === 'status' && (
             <StatusPage key={`${me.login}/${version}`} version={version} me={me} onRoundChanged={loadVersions} />
           )}
-          {current === 'notes' && <MyNotesPage onOpen={openThread} />}
+          {current === 'home' && (
+            <HomePage me={me} onOpenThread={openThread} onOpenSheet={openSheet} onGo={openRoundPage} onChanged={setTasks} />
+          )}
           {current === 'lists' && <ItemListsPage />}
           {current === 'setup' && <SetupPage rounds={versions} code={version} onRoundsChanged={loadVersions} />}
           {version && current === 'forwarding' && <ForwardingPage key={version} version={version} />}

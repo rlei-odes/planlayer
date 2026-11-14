@@ -328,11 +328,11 @@ FTE and headcount per cost center, staff type and category, as month-end levels,
 - [ ] **W-13 Status page:** FTE and headcount per node next to the plan status, and a comparison with last year.
 - [ ] **W-14 Paste of a position list** from Excel into the positions table.
 - [ ] **W-15 HR changes after taking:** a round holds HR's list as it was taken. Show where a position differs from HR's latest sync (a new leave date, another cost center, someone new) and offer to apply it.
-- [ ] **W-17 Moving a person to another cost center** from a date, as one step on a position. Today it takes two unlinked edits (a leave date on one side, a typed position on the other); the build-up then shows a leaver and a new or already-hired entry, and if HR moved the person after the round took its list, the new cost center can't take them from HR until a controller removes the old copy.
-  - The original position ends at the date with "moves to …"; the target gets a linked position (same person and number, origin *move*). Changing the date on either side moves both; removing the move restores the original.
-  - The build-up gets *moving in* and *moving out*, which cancel out over a department or the company; moves aren't leavers, new positions or replacements.
-  - W-15 offers "apply as a move from <date>" when HR's sync shows a position under another cost center; personnel costs (W-7) split at the date.
-  - To decide who may move someone: controllers only; the sending planner while the target is editable (recommended, the receiver sees it read only); or the sending planner proposes and the receiving one accepts, as a task (ADR 0017).
+- [ ] **W-17 Moving a person to another cost center** from a date, as one step on a position.
+  - [x] Proposed by the sending cost center, accepted or declined by the receiving one (or a controller) as a task on *Home*; nothing moves until accepted. A whole position moves with its year; a transfer during the year ends the original the day before the chosen month (marked *transferred to*) and gives the receiving cost center the person from the first of it, with the same number. The build-up names *moving in* and *moving out* ([ADR 0021](docs/adr/0021-position-transfers-and-home.md)).
+  - [ ] Undo an accepted transfer (restore the original), and change its date on either side.
+  - [ ] W-15 offers "apply as a transfer from <date>" when HR's sync shows a position under another cost center; personnel costs (W-7) split at the date.
+  - [ ] E-mail the receiving side when a transfer is proposed, and the sender when it is decided.
 - [ ] **W-16 Number prefix:** Planlayer's position numbers start with `N`; if a customer's HR numbers do too, make the prefix a setting.
 
 ### MCP access (after v1)
@@ -444,4 +444,5 @@ What the user docs (controllers, planners, admins) must say. Collected here as i
 13. E-13 UI/UX design phase over the main flows, backend mostly frozen.
 14. Remaining ADRs (D-13, D-24, D-25, D-27, D-28, D-29, D-30) and F-items, then epics E-01 → E-05 → E-06 → E-09 → E-11 → the rest.
 15. Building out cost center planning: ✓ seasonality profiles (edit, delete, working-day and calendar-day presets), ✓ a line's own spread on the sheet, ✓ first cut of K-1 and K-2 (productive cost centers, capacity planning, [ADR 0013](docs/adr/0013-capacity-planning.md)); open items under K-1 and K-2; ✓ first cut of K-3 (cost forwarding, [ADR 0018](docs/adr/0018-cost-forwarding.md)); open items under K-1, K-2 and K-3.
-16. ✓ First cut of workforce planning ([ADR 0020](docs/adr/0020-workforce-planning.md)): FTE, headcount or positions per round; open items under W-6 to W-14.
+16. ✓ First cut of workforce planning ([ADR 0020](docs/adr/0020-workforce-planning.md)): FTE, headcount or positions per round; open items under W-6 to W-17.
+17. ✓ Transfers of positions between cost centers and the *Home* start page ([ADR 0021](docs/adr/0021-position-transfers-and-home.md)).

@@ -1,0 +1,69 @@
+"""The start page's endpoint (ADR 0021): the user's tasks and the cost centers they plan."""
+
+from datetime import date
+from typing import Literal
+
+from fastapi import APIRouter, Request
+from pydantic import BaseModel
+
+from planlayer import home, notes, workforce
+from planlayer.api.auth import CurrentUser, engine_of
+from planlayer.api.planning import Version, version_out
+from planlayer.api.workforce import TransferOut, transfer_out
+from planlayer.domain.workflow import Status
+
+router = APIRouter(prefix="/api")
+
+
+class MyCostCenterOut(BaseModel):
+    code: str
+    name: str
+    status: Status
+    overdue: bool
+    sheets: list[Literal["capacity", "workforce", "planning"]]
+
+
+class RoundWorkOut(BaseModel):
+    round: Version
+    cost_centers: list[MyCostCenterOut]
+    to_approve: int  # submitted cost centers the user approves
+    counts: dict[Status, int] | None  # controllers and viewers: the round's statuses
+
+
+class HomeOut(BaseModel):
+    # Open note tasks assigned to the user, transfers for them to decide, and rounds with cost
+    # centers waiting for their approval: the start page's task list, one entry each.
+    tasks: int
+    transfers: list[TransferOut]
+    rounds: list[RoundWorkOut]
+
+
+@router.get("/home")
+def start(request: Request, user: CurrentUser) -> HomeOut:
+    engine = engine_of(request)
+    transfers = workforce.my_transfers(engine, user)
+    note_tasks = notes.my_notes(engine, user).tasks
+    decide = sum(1 for t in transfers if t.status == "proposed" and t.can_decide)
+    work = home.my_work(engine, user, date.today())
+    return HomeOut(
+        tasks=note_tasks + decide + sum(1 for w in work if w.to_approve),
+        transfers=[transfer_out(t) for t in transfers],
+        rounds=[
+            RoundWorkOut(
+                round=version_out(w.round),
+                cost_centers=[
+                    MyCostCenterOut(
+                        code=c.code,
+                        name=c.name,
+                        status=c.status,
+                        overdue=c.overdue,
+                        sheets=c.sheets,
+                    )
+                    for c in w.cost_centers
+                ],
+                to_approve=w.to_approve,
+                counts=w.counts,
+            )
+            for w in work
+        ],
+    )

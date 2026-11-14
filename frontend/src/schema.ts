@@ -35,6 +35,8 @@ export type BuildUpOut = {
   new: number[]
   replacements: number[]
   leaving: number[]
+  moving_in: number[]
+  moving_out: number[]
 }
 
 export type CapacityRowOut = {
@@ -181,6 +183,11 @@ export type DatasetOut = {
   window?: WindowOut | null
 }
 
+export type DecisionIn = {
+  accept: boolean
+  reason?: string | null
+}
+
 export type DevLoginIn = {
   login: string
 }
@@ -309,6 +316,12 @@ export type Health = {
   status: "ok" | "unavailable"
   version: string
   schema_revision: string | null
+}
+
+export type HomeOut = {
+  tasks: number
+  transfers: TransferOut[]
+  rounds: RoundWorkOut[]
 }
 
 export type HoursEditIn = {
@@ -494,6 +507,14 @@ export type MemberOut = {
   external?: boolean | null
 }
 
+export type MyCostCenterOut = {
+  code: string
+  name: string
+  status: "not_started" | "in_progress" | "submitted" | "approved"
+  overdue: boolean
+  sheets: ("capacity" | "workforce" | "planning")[]
+}
+
 export type MyNotesOut = {
   tasks: number
   threads: MyThreadOut[]
@@ -633,6 +654,10 @@ export type PositionOut = {
   changed_by: string | null
   origin: "hr" | "manual"
   removable: boolean
+  transferred_from: string | null
+  transferred_to: string | null
+  transfer: TransferOut | null
+  transferable: boolean
 }
 
 export type ProfileIOInput = {
@@ -747,6 +772,13 @@ export type RoundIn = {
 
 export type RoundStatusIn = {
   status: "setup" | "open" | "closed"
+}
+
+export type RoundWorkOut = {
+  round: Version
+  cost_centers: MyCostCenterOut[]
+  to_approve: number
+  counts: Record<string, number> | null
 }
 
 export type RowOut = {
@@ -918,6 +950,48 @@ export type ThreadOut = {
   carried_from: string | null
 }
 
+export type TransferIn = {
+  to_cost_center: string
+  kind: "full" | "during_year"
+  starts?: string | null
+  note?: string | null
+}
+
+export type TransferOut = {
+  transfer_id: number
+  version_code: string
+  version_name: string
+  status: "proposed" | "accepted" | "declined" | "cancelled"
+  kind: "full" | "during_year"
+  starts: string | null
+  position_id: number
+  position_code: string
+  title: string
+  person_name: string | null
+  staff_type_name: string
+  staff_category_name: string
+  contract_percent: string | null
+  from_code: string
+  from_name: string
+  to_code: string
+  to_name: string
+  note: string | null
+  proposed_by: string
+  proposed_at: string
+  decided_by: string | null
+  decided_at: string | null
+  reason: string | null
+  can_decide: boolean
+  can_cancel: boolean
+}
+
+export type TransferTargetOut = {
+  code: string
+  name: string
+  status: "not_started" | "in_progress" | "submitted" | "approved"
+  editable: boolean
+}
+
 export type TreeNodeOut = {
   code: string
   name: string
@@ -1051,6 +1125,7 @@ export type WorkforceSheetOut = {
   positions: PositionOut[]
   build_up: BuildUpOut | null
   hr_available: number
+  incoming: TransferOut[]
   batch_id?: string | null
 }
 

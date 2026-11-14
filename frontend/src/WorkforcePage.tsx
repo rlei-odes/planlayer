@@ -9,6 +9,7 @@ import {
   type PlanningUnit,
   type Position,
   type PositionIn,
+  type Transfer,
   type WorkforceEdit,
   type WorkforceRow,
   type WorkforceSheet,
@@ -17,6 +18,8 @@ import { RedoIcon, UndoIcon } from './icons'
 import type { H } from './lineMarks'
 import { byColumn, isClosed, monthsOf, periodColumns, span, type Layout } from './periods'
 import Select from './Select'
+import TransferDialog from './TransferDialog'
+import TransferLine from './TransferLine'
 import { pickUnit } from './units'
 
 // The workforce sheet of a cost center (ADR 0020): FTE and headcount per staff type × category,
@@ -106,6 +109,8 @@ export default function WorkforcePage({
   const [missing, setMissing] = useState(false)
   const [message, setMessage] = useState<Message | null>(null)
   const [saving, setSaving] = useState(false)
+  // The position whose transfer is being proposed in the popup.
+  const [transferring, setTransferring] = useState<Position | null>(null)
   const [adding, setAdding] = useState(false)
   const [undoStack, setUndoStack] = useState<string[]>([])
   const [redoStack, setRedoStack] = useState<string[]>([])
@@ -316,6 +321,38 @@ export default function WorkforcePage({
     }
   }
 
+  async function decide(t: Transfer, accept: boolean, reason?: string) {
+    setSaving(true)
+    try {
+      await api.decideTransfer(t.transfer_id, accept, reason)
+      setMessage({
+        kind: 'ok',
+        text: accept
+          ? `${t.person_name ?? t.title} joins ${t.to_code}${t.starts ? ` from ${DAY.format(new Date(t.starts))}` : ''}.`
+          : `Transfer of ${t.person_name ?? t.title} declined; ${t.from_code} keeps the position.`,
+      })
+      load()
+      loadUnits()
+    } catch (e) {
+      showError(e)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function withdraw(t: Transfer) {
+    setSaving(true)
+    try {
+      await api.cancelTransfer(t.transfer_id)
+      setMessage({ kind: 'ok', text: `Transfer of ${t.person_name ?? t.title} to ${t.to_code} withdrawn.` })
+      load()
+    } catch (e) {
+      showError(e)
+    } finally {
+      setSaving(false)
+    }
+  }
+
   if (units === null) return message ? <div className="su-note error">{message.text}</div> : null
   if (missing) {
     return (
@@ -504,6 +541,8 @@ export default function WorkforcePage({
         )
       )}
 
+      {sheet && sheet.incoming.length > 0 && <Incoming transfers={sheet.incoming} saving={saving} onDecide={decide} />}
+
       {sheet && positions && (
         <Positions
           sheet={sheet}
@@ -520,6 +559,24 @@ export default function WorkforcePage({
             )
           }
           onDelete={(p) => act(() => api.deletePosition(version, sheet.cost_center_code, p.position_id), `${p.title} deleted.`)}
+          onTransfer={setTransferring}
+          onWithdraw={(t) => void withdraw(t)}
+        />
+      )}
+      {sheet && transferring && (
+        <TransferDialog
+          version={version}
+          sheet={sheet}
+          position={transferring}
+          onClose={() => setTransferring(null)}
+          onProposed={(updated, to) => {
+            applied(updated)
+            setTransferring(null)
+            setMessage({
+              kind: 'ok',
+              text: `Transfer of ${transferring.person_name ?? transferring.title} proposed to ${to}. It stays here until ${to} accepts.`,
+            })
+          }}
         />
       )}
     </div>
@@ -633,6 +690,8 @@ function Positions({
   onTakeHr,
   onSave,
   onDelete,
+  onTransfer,
+  onWithdraw,
 }: {
   sheet: WorkforceSheet
   open: boolean
@@ -640,6 +699,8 @@ function Positions({
   onTakeHr: () => Promise<boolean>
   onSave: (p: PositionIn, id: number | null) => Promise<boolean>
   onDelete: (p: Position) => Promise<boolean>
+  onTransfer: (p: Position) => void
+  onWithdraw: (t: Transfer) => void
 }) {
   // The position being edited: its id, or "new"; null while none is.
   const [editing, setEditing] = useState<number | 'new' | null>(null)
@@ -669,19 +730,31 @@ function Positions({
   const entering = total(b?.entering)
   const newCount = total(b?.new)
   const replacements = total(b?.replacements)
-  const others = entering - newCount - replacements
+  const movingIn = total(b?.moving_in)
+  const movingOut = total(b?.moving_out)
+  const others = entering - newCount - replacements - movingIn
   // Heads, not positions listed: start + entering − leaving = end.
   const tiles: { label: string; value: string; hint: string; tone?: string }[] = [
     { label: 'Start of the year', value: String(b?.start ?? 0), hint: 'heads at the end of the year before' },
     {
       label: 'Entering',
       value: `+${entering}`,
-      hint: [`${newCount} new`, `${replacements} replacement${replacements === 1 ? '' : 's'}`, others ? `${others} hired already` : '']
+      hint: [
+        `${newCount} new`,
+        `${replacements} replacement${replacements === 1 ? '' : 's'}`,
+        movingIn ? `${movingIn} moving in` : '',
+        others ? `${others} hired already` : '',
+      ]
         .filter(Boolean)
         .join(' · '),
       tone: 'up',
     },
-    { label: 'Leaving', value: `−${total(b?.leaving)}`, hint: 'no longer counted', tone: 'down' },
+    {
+      label: 'Leaving',
+      value: `−${total(b?.leaving)}`,
+      hint: movingOut ? `no longer counted · ${movingOut} moving out` : 'no longer counted',
+      tone: 'down',
+    },
     { label: 'End of the year', value: String(b?.end ?? 0), hint: `heads at the end of ${end}` },
   ]
 
@@ -723,7 +796,9 @@ function Positions({
                     ['Entering', b.entering],
                     ['of them new', b.new],
                     ['of them replacements', b.replacements],
+                    ['of them moving in', b.moving_in],
                     ['Leaving', b.leaving],
+                    ['of them moving out', b.moving_out],
                   ] as const
                 ).map(([label, values]) => (
                   <tr key={label} className={label.startsWith('of') ? 'wf-sub' : undefined}>
@@ -923,7 +998,30 @@ function Positions({
                             {p.is_replacement ? 'Replacement' : 'New'}
                           </span>
                         )}
+                        {p.transferred_from && (
+                          <span className="su-pill neutral" title={`Transferred here from ${p.transferred_from}`}>
+                            from {p.transferred_from}
+                          </span>
+                        )}
+                        {p.transferred_to && (
+                          <span className="su-pill approved" title={`Transferred to ${p.transferred_to}; it stays as it was transferred`}>
+                            Transferred to {p.transferred_to}
+                          </span>
+                        )}
                       </span>
+                      {p.transfer && (
+                        <span className="tr-pending">
+                          <span className="su-pill submitted">Transfer pending</span>
+                          to {p.transfer.to_code}
+                          {p.transfer.starts ? ` from ${DAY.format(new Date(p.transfer.starts))}` : ', whole year'} · waits for{' '}
+                          {p.transfer.to_code} to accept
+                          {p.transfer.can_cancel && (
+                            <button type="button" className="tr-link" onClick={() => onWithdraw(p.transfer!)}>
+                              Withdraw
+                            </button>
+                          )}
+                        </span>
+                      )}
                       {p.description && <span className="wf-note">{p.description}</span>}
                     </td>
                     <td className={p.person_name ? undefined : 'muted'}>{p.person_name ?? 'vacant'}</td>
@@ -952,10 +1050,17 @@ function Positions({
                     <td className="right">
                       {open && (
                         <span className="btn-row">
-                          <button type="button" className="su-btn ghost sm" onClick={() => edit(p)}>
-                            Edit
-                          </button>
-                          {!p.removable ? (
+                          {!p.transferred_to && (
+                            <button type="button" className="su-btn ghost sm" onClick={() => edit(p)}>
+                              Edit
+                            </button>
+                          )}
+                          {p.transferable && (
+                            <button type="button" className="su-btn ghost sm" onClick={() => onTransfer(p)}>
+                              Transfer
+                            </button>
+                          )}
+                          {p.transferred_to ? null : !p.removable ? (
                             <span className="wf-hr" title="Taken from HR: only a controller removes it. Plan its leaving with the leave date.">
                               HR
                             </span>
@@ -992,4 +1097,74 @@ function runOf(counted: boolean[], periods: string[]): string {
   const first = counted.indexOf(true)
   const lastMonth = counted.lastIndexOf(true)
   return span(periods, first, lastMonth)
+}
+
+/** Transfers proposed to this cost center (ADR 0021): accept or decline. */
+function Incoming({
+  transfers,
+  saving,
+  onDecide,
+}: {
+  transfers: Transfer[]
+  saving: boolean
+  onDecide: (t: Transfer, accept: boolean, reason?: string) => void
+}) {
+  const [declining, setDeclining] = useState<number | null>(null)
+  const [reason, setReason] = useState('')
+  return (
+    <section className="su-card tr-incoming">
+      <div className="fw-card-head">
+        <h3>
+          Transfers to this cost center <span className="ink-3">{transfers.length}</span>
+        </h3>
+        <span className="su-hint">The positions stay on the sending cost center until accepted.</span>
+      </div>
+      <ul className="tr-list">
+        {transfers.map((t) => (
+          <li key={t.transfer_id}>
+            <TransferLine t={t} />
+            {t.can_decide ? (
+              declining === t.transfer_id ? (
+                <span className="tr-actions">
+                  <input
+                    className="su-input"
+                    placeholder="Reason (optional)"
+                    value={reason}
+                    autoFocus
+                    onChange={(e) => setReason(e.target.value)}
+                  />
+                  <button type="button" className="su-btn ghost sm" onClick={() => setDeclining(null)}>
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="su-btn sm danger"
+                    disabled={saving}
+                    onClick={() => {
+                      onDecide(t, false, reason)
+                      setDeclining(null)
+                      setReason('')
+                    }}
+                  >
+                    Decline
+                  </button>
+                </span>
+              ) : (
+                <span className="tr-actions">
+                  <button type="button" className="su-btn ghost sm" disabled={saving} onClick={() => setDeclining(t.transfer_id)}>
+                    Decline…
+                  </button>
+                  <button type="button" className="su-btn primary sm" disabled={saving} onClick={() => onDecide(t, true)}>
+                    Accept
+                  </button>
+                </span>
+              )
+            ) : (
+              <span className="su-hint">Waits for the cost center’s planners</span>
+            )}
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
 }

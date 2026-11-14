@@ -166,7 +166,7 @@ export default function CapacityPage({
   onUnit: (code: string) => void
   controller: boolean
   onWidth: (px: number | null) => void
-  /** A line whose notes to open (from My notes): "work center|activity type". */
+  /** A line whose notes to open (from Home): "work center|activity type". */
   focus?: { key: string; thread: number } | null
   onFocused?: () => void
 }) {
@@ -470,7 +470,7 @@ export default function CapacityPage({
 
   const current = units.find((u) => u.code === unit)
   const open = sheet !== null && !locked
-  // The notes shown beside the sheet: those opened here, or the line My notes opened it for.
+  // The notes shown beside the sheet: those opened here, or the line Home opened it for.
   const notesOpen =
     notesFor ?? (focus && sheet?.cost_center_code === unit ? { key: focus.key, thread: focus.thread } : null)
   const notesRow = notesOpen ? sheet?.rows.find((r) => r.kind === 'line' && lineKey(r) === notesOpen.key) : undefined
