@@ -1,0 +1,126 @@
+/* Item lists (il-, ADR 0017): the editor in the dialog. */
+
+.il-vis {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.il-vis .su-icon {
+  font-size: 20px;
+  line-height: 1;
+}
+
+.il-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-variant-numeric: tabular-nums;
+}
+
+.il-table col.il-name {
+  width: 24%;
+}
+
+.il-table col.il-supplier {
+  width: 15%;
+}
+
+.il-table col.il-qty {
+  width: 8%;
+}
+
+.il-table col.il-price {
+  width: 11%;
+}
+
+.il-table col.il-amount {
+  width: 12%;
+}
+
+.il-table col.il-x {
+  width: 30px;
+}
+
+.il-table th {
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  padding: 6px 4px;
+  color: var(--ink-3);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+}
+
+.il-table td {
+  padding: 3px 4px;
+  border-bottom: 1px solid var(--line-2);
+}
+
+.il-table .num,
+.il-table input.num {
+  text-align: right;
+}
+
+.il-table input {
+  width: 100%;
+  min-height: 30px;
+  padding: 4px 8px;
+}
+
+.il-table input:disabled {
+  background: transparent;
+  border-color: transparent;
+  color: var(--ink);
+}
+
+.il-amount-cell {
+  padding-right: 10px !important;
+  font-weight: 600;
+}
+
+.il-add {
+  margin-top: 10px;
+}
+
+.il-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 22px;
+  border-top: 1px solid var(--line);
+  background: var(--canvas);
+}
+
+.il-totals {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-variant-numeric: tabular-nums;
+}
+
+.il-totals strong {
+  font-size: 15px;
+  margin-left: 6px;
+}
+
+.il-differs {
+  color: var(--warn);
+  font-size: 12px;
+}
+
+.il-totals .ink-3 {
+  font-size: 12px;
+}
+
+.il-error {
+  margin: 0;
+}
+
+.il-w-vis {
+  width: 260px;
+}

@@ -1,0 +1,33 @@
+/* The responsibilities page (rs-). */
+
+.rs-planner {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.rs-planner .sel {
+  width: 250px;
+}
+
+.rs .tbl td:first-child {
+  white-space: nowrap;
+}
+
+.rs-people {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px 0;
+}
+
+.rs-people .su-chip {
+  font-size: 11.5px;
+  font-weight: 400;
+}
+
+.sel.rs-add {
+  width: auto;
+  color: var(--ink-3);
+}

@@ -1,0 +1,308 @@
+/* The planning sheet (pl-): the grid and its cells, shared by the cost center, capacity and
+   workforce sheets. */
+
+/* --- Planning ------------------------------------------------------------------------------- */
+
+.pl {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - var(--topbar-h) - 48px);
+  min-height: 480px;
+  padding-bottom: 0;
+}
+
+.pl-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.pl-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.pl-sub {
+  color: var(--ink-3);
+  font-size: 12.5px;
+  margin-top: 2px;
+}
+
+.pl-saving {
+  color: var(--accent);
+}
+
+.pl-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.pl-undo {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  background: var(--surface);
+}
+
+.pl-undo .su-icon {
+  width: 30px;
+  height: 26px;
+  color: var(--ink-2);
+}
+
+.pl-note {
+  margin-bottom: 10px;
+}
+
+.pl-sheet {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: var(--shadow-lift);
+  overflow: hidden;
+}
+
+.pl-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: center;
+  padding: 10px 16px;
+  border-top: 1px solid var(--line);
+  color: var(--ink-2);
+  font-size: 11.5px;
+}
+
+.pl-help {
+  margin-left: auto;
+  color: var(--ink-3);
+}
+
+revo-grid.pl-revo {
+  flex: 1;
+  min-height: 0;
+  border: none;
+  --revo-grid-font-family: var(--sans);
+  --revo-grid-font-size: 12.5px;
+  --revo-grid-header-height: 38px;
+  --revo-grid-header-font-size: 11px;
+  --revo-grid-header-font-weight: 600;
+  --revo-grid-header-text-transform: none;
+  --revo-grid-header-text-align: right;
+  --revo-grid-header-padding: 0 10px;
+  --revo-grid-cell-padding: 0 10px;
+  --revo-grid-text: var(--ink);
+  --revo-grid-background: var(--surface);
+  --revo-grid-header-bg: #fbfcfd;
+  --revo-grid-header-color: var(--ink-3);
+  --revo-grid-header-border: var(--line);
+  --revo-grid-cell-border: var(--line-2);
+  --revo-grid-border: var(--line);
+  --revo-grid-primary: var(--accent);
+  --revo-grid-focused-bg: var(--accent-tint);
+  --revo-grid-selection-border: var(--accent-2);
+  --revo-grid-range-handle-bg: var(--accent);
+  --revo-grid-row-hover: transparent;
+  --revo-grid-cell-disabled-bg: transparent;
+
+  font-variant-numeric: tabular-nums;
+}
+
+revo-grid.pl-revo revogr-header .rgHeaderCell {
+  letter-spacing: 0.02em;
+  padding: 0 13px 0 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+revo-grid.pl-revo revogr-header .rgHeaderCell.pl-head-acc {
+  text-align: left;
+  justify-content: flex-start;
+  padding-left: 16px;
+}
+
+revo-grid.pl-revo revogr-header .rgHeaderCell.pl-head-cmp {
+  font-weight: 500;
+}
+
+/* A comparison column with a note or partial actuals: its tooltip says so. */
+revo-grid.pl-revo revogr-header .rgHeaderCell.pl-head-noted .header-content {
+  text-decoration: underline dotted var(--ink-3);
+  text-underline-offset: 3px;
+  cursor: help;
+}
+
+revo-grid.pl-revo revogr-header .rgHeaderCell.pl-head-plan {
+  color: var(--accent-ink);
+}
+
+/* A forecast's closed month or quarter: it shows actuals (ADR 0015). */
+revo-grid.pl-revo revogr-header .rgHeaderCell.pl-head-act {
+  color: var(--actual-ink);
+  font-weight: 500;
+}
+
+revo-grid.pl-revo revogr-data .rgCell.pl-num {
+  text-align: right;
+}
+
+revo-grid.pl-revo revogr-data .rgCell.pl-acc {
+  padding-left: 16px;
+}
+
+revo-grid.pl-revo revogr-viewport-scroll.colPinStart revogr-data .rgCell {
+  box-shadow: 0 -1px 0 0 var(--line-2) inset, -1px 0 0 0 var(--line) inset;
+}
+
+.pl-acc-in {
+  height: 100%;
+  line-height: normal;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* A profile's mini chart and the line's badge, kept together at the right. */
+.pl-acc-tags {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+
+/* A line's badge opens its spread menu where the spread can be chosen. */
+.pv-form.pl-spread {
+  border: 1px solid transparent;
+  font-family: inherit;
+  line-height: inherit;
+  cursor: pointer;
+}
+
+.pv-form.pl-spread:hover,
+.pv-form.pl-spread:focus-visible {
+  border-color: var(--accent-2);
+}
+
+/* Credited by capacity planning (ADR 0013): read only on the cost sheet. */
+.pv-form.capacity {
+  background: var(--ok-tint);
+  color: var(--ok);
+}
+
+/* Not planned in the round, or outside the cost center's account set (ADR 0014): read only,
+   shown for its comparison values. */
+.pv-form.off {
+  background: transparent;
+  color: var(--ink-3);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+/* Chosen for this cost center rather than by the round's setup. */
+.pv-form.chosen {
+  box-shadow: inset 0 0 0 1px var(--accent-2);
+}
+
+.pv-form.chosen::after {
+  content: '';
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin-left: 5px;
+  border-radius: 50%;
+  background: var(--accent-2);
+  vertical-align: middle;
+}
+
+.pl-acc-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+revo-grid.pl-revo .rgCell.pl-group {
+  background: #f7f8fa;
+  font-weight: 650;
+}
+
+revo-grid.pl-revo .rgCell.pl-cmp {
+  color: var(--ink-3);
+  background: #fcfcfd;
+}
+
+revo-grid.pl-revo .rgCell.pl-group.pl-cmp {
+  background: #f7f8fa;
+}
+
+revo-grid.pl-revo .rgCell.pl-cmp-last {
+  box-shadow: 0 -1px 0 0 var(--line-2) inset, -1px 0 0 0 var(--line) inset;
+}
+
+/* Typed-in cells look like inputs (the preview's .pv-edit). */
+revo-grid.pl-revo .rgCell.pl-edit {
+  padding-right: 13px;
+}
+
+revo-grid.pl-revo .rgCell.pl-edit::after {
+  content: '';
+  position: absolute;
+  inset: 4px 4px;
+  border: 1px solid #d7dde7;
+  border-radius: 4px;
+  pointer-events: none;
+}
+
+revo-grid.pl-revo .rgCell.pl-edit:hover::after {
+  border-color: #b9c6e6;
+}
+
+revo-grid.pl-revo .rgCell.pl-total {
+  font-weight: 600;
+  color: var(--accent-ink);
+}
+
+revo-grid.pl-revo .rgCell.pl-edit.pl-total::after {
+  border-color: #b9c6e6;
+  background: rgb(36 70 168 / 3%);
+}
+
+revo-grid.pl-revo .rgCell.pl-calc {
+  background: var(--calc);
+  color: var(--ink-2);
+}
+
+revo-grid.pl-revo .rgCell.pl-plain {
+  color: var(--ink-2);
+}
+
+revo-grid.pl-revo .rgCell.pl-act {
+  background: var(--actual);
+  color: var(--actual-ink);
+}
+
+revo-grid.pl-revo .rgCell.pl-group.pl-act {
+  background: var(--actual);
+}
+
+revo-grid.pl-revo .rgCell.pl-hidden {
+  background: repeating-linear-gradient(-45deg, transparent 0 6px, rgb(24 32 44 / 4.5%) 6px 7px), #fafbfc;
+  background-attachment: fixed;
+}
+
+/* A credit on the cost sheet (capacity, forwarding): green across the line, as on the capacity
+   sheet, in the sheet's regular weight so month figures fit. */
+revo-grid.pl-revo .rgCell.pl-credit {
+  background: var(--ok-tint);
+  color: var(--ok);
+}

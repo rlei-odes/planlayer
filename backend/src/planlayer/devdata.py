@@ -17,6 +17,7 @@ from sqlalchemy import Engine, func, select
 from planlayer import access, planning, workflow
 from planlayer.domain.workflow import Status
 from planlayer.rounds import fiscal_periods, get_round
+from planlayer.sheet import MONTHS, EditError
 from planlayer.store.schema import (
     COST_CENTER,
     app_user,
@@ -169,7 +170,7 @@ def seed_plans(engine: Engine, round_code: str) -> list[tuple[str, str, str]]:
                 account,
                 None,
                 str(_hundreds(amount * Decimal(str(rng.uniform(0.94, 1.09))))),
-                [None] * planning.MONTHS,
+                [None] * MONTHS,
             )
             for account, amount in sorted(totals[cc].items())
         ]
@@ -317,10 +318,10 @@ def _plan_sources(
         if cc in own:
             continue
         for account, amount in totals.get(cc, []):
-            edit = planning.Edit(account, None, str(_hundreds(amount)), [None] * planning.MONTHS)
+            edit = planning.Edit(account, None, str(_hundreds(amount)), [None] * MONTHS)
             try:
                 planning.apply_edits(engine, controller, round_code, code, [edit])
-            except planning.EditError:
+            except EditError:
                 continue  # not planned for this cost center in the round
 
 

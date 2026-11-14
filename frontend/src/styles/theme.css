@@ -1,5 +1,6 @@
 /* App-wide design tokens, base styles and the app shell (E-13). Shared components (buttons,
-   inputs, cards, notes) are in setup.css with the su- prefix; page styles carry their own prefix.
+   inputs, cards, notes) are in components.css; each page's styles are in its own file here, with
+   the page's prefix.
    Colours are tokens only, so a dark palette can later redefine them in one place. */
 
 :root {

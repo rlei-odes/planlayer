@@ -17,6 +17,7 @@ from planlayer import access, notes, planning, rounds, workflow
 from planlayer.api.auth import CurrentUser, engine_of
 from planlayer.domain.entry_forms import Basis, Form
 from planlayer.domain.workflow import Action, RoundStatus, Status, WorkflowError
+from planlayer.sheet import ConflictError, EditError, LockedError
 
 router = APIRouter(prefix="/api")
 _engine = engine_of
@@ -318,9 +319,9 @@ def _errors(e: Exception) -> HTTPException:
             return HTTPException(404, str(e))
         case access.AccessError():
             return HTTPException(403, str(e))
-        case planning.LockedError():
+        case LockedError():
             return HTTPException(423, str(e))
-        case planning.EditError() | WorkflowError() | rounds.RoundError():
+        case EditError() | WorkflowError() | rounds.RoundError():
             return HTTPException(422, str(e))
     raise e
 
@@ -328,8 +329,8 @@ def _errors(e: Exception) -> HTTPException:
 HANDLED = (
     rounds.NotFoundError,
     access.AccessError,
-    planning.LockedError,
-    planning.EditError,
+    LockedError,
+    EditError,
     WorkflowError,
     rounds.RoundError,
 )
@@ -395,7 +396,7 @@ def edit(
     ]
     try:
         batch = planning.apply_edits(engine, user, version_code, cc_code, edits)
-    except planning.ConflictError as e:
+    except ConflictError as e:
         return _conflict(e)  # type: ignore[return-value]
     except HANDLED as e:
         raise _errors(e) from None
@@ -414,14 +415,14 @@ def undo(
     engine = _engine(request)
     try:
         batch = planning.undo_batch(engine, user, version_code, cc_code, body.batch_id)
-    except planning.ConflictError as e:
+    except ConflictError as e:
         return _conflict(e)  # type: ignore[return-value]
     except HANDLED as e:
         raise _errors(e) from None
     return _grid_out(planning.read_grid(engine, user, version_code, cc_code), batch)
 
 
-def _conflict(e: planning.ConflictError) -> JSONResponse:
+def _conflict(e: ConflictError) -> JSONResponse:
     return JSONResponse(
         status_code=409,
         content=[{"account_code": c.account_code, "month": c.month} for c in e.conflicts],

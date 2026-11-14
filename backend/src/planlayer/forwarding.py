@@ -25,8 +25,8 @@ from planlayer.access import AccessError, User
 from planlayer.domain import forwarding as rules
 from planlayer.domain.periods import closed_months
 from planlayer.domain.workflow import RoundStatus, Status
-from planlayer.planning import EditError, LockedError, _locked
 from planlayer.rounds import NotFoundError, RoundRef, fiscal_periods, get_round
+from planlayer.sheet import EditError, LockedError, locked_error
 from planlayer.store.schema import (
     ACCOUNT,
     AMOUNT,
@@ -640,7 +640,7 @@ def _run(engine: Engine, actor: User, work: Callable[[Connection], None]) -> str
         with unit_of_work(engine, actor, batch_id) as conn:
             work(conn)
     except DBAPIError as e:
-        locked = _locked(e)
+        locked = locked_error(e)
         if locked is None:
             raise
         raise locked from None

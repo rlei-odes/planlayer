@@ -1,0 +1,808 @@
+/* Shared components, used across pages: the page frame (su), cards, buttons, inputs, pills,
+   notes, the save bar, empty states, page heads, table cards, segmented tabs, dialogs, the tree
+   picker, and small helpers. Some helpers keep the prefix of the page they first appeared on
+   (pl-code, fw-card-head, md-add-row, pb-tile …). Tokens are in theme.css; each page's own
+   styles are in its file next to this one. */
+
+.su {
+  container-type: inline-size;
+  padding-bottom: 72px;
+}
+
+/* --- Header ------------------------------------------------------------------------------- */
+
+.su-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+
+.su-eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.su-title {
+  font-size: 22px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  margin: 2px 0 0;
+}
+
+.su-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ink-3);
+}
+
+.su-dot.open {
+  background: #2e9b5b;
+}
+
+.su-dot.setup {
+  background: #d79a1e;
+}
+
+.su-dot.closed {
+  background: #b5bcc7;
+}
+
+/* Workflow status of a cost center (ADR 0008). */
+.su-dot.not_started {
+  background: #c3c9d2;
+}
+
+.su-dot.in_progress {
+  background: #d79a1e;
+}
+
+.su-dot.submitted {
+  background: var(--accent-2);
+}
+
+.su-dot.approved {
+  background: #2e9b5b;
+}
+
+.su-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  background: var(--line-2);
+  color: var(--ink-2);
+}
+
+.su-pill.neutral {
+  font-weight: 500;
+}
+
+.su-pill.in_progress,
+.su-pill.overdue-soft {
+  background: var(--warn-tint);
+  color: var(--warn);
+}
+
+.su-pill.submitted {
+  background: var(--accent-tint);
+  color: var(--accent-ink);
+}
+
+.su-pill.approved,
+.su-pill.open {
+  background: var(--ok-tint);
+  color: var(--ok);
+}
+
+.su-pill.overdue {
+  background: var(--danger-tint);
+  color: var(--danger);
+}
+
+.su-col {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.su-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 16px 18px;
+}
+
+.su-card h3 {
+  margin: 0 0 2px;
+  font-size: 14px;
+  font-weight: 650;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.su-step {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--accent-tint);
+  color: var(--accent-ink);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.su-hint {
+  color: var(--ink-3);
+  margin: 0 0 12px 32px;
+  font-size: 12.5px;
+}
+
+.su-body {
+  margin-left: 32px;
+}
+
+.su-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.su-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+.su-input,
+.su-select {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  border-radius: var(--radius-s);
+  padding: 6px 9px;
+  min-height: 32px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.su-input:focus,
+.su-select:focus {
+  outline: none;
+  border-color: var(--accent-2);
+  box-shadow: 0 0 0 3px var(--accent-tint);
+}
+
+.su-btn {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  border-radius: var(--radius-s);
+  padding: 6px 12px;
+  min-height: 32px;
+  font-weight: 550;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.su-btn:hover {
+  background: var(--canvas);
+}
+
+.su-btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.su-btn.primary:hover {
+  background: var(--accent-ink);
+}
+
+.su-btn.ghost {
+  border-color: transparent;
+  background: transparent;
+  color: var(--ink-2);
+}
+
+.su-btn.ghost:hover {
+  background: var(--line-2);
+}
+
+.su-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.su-icon {
+  border: none;
+  background: transparent;
+  color: var(--ink-3);
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-s);
+  display: inline-grid;
+  place-items: center;
+}
+
+.su-icon:hover {
+  background: var(--line-2);
+  color: var(--ink);
+}
+
+.su-icon:disabled {
+  opacity: 0.3;
+  cursor: default;
+  background: none;
+}
+
+/* --- Notices, save bar -------------------------------------------------------------------- */
+
+.su-note {
+  border-radius: var(--radius-s);
+  padding: 8px 12px;
+  font-size: 12.5px;
+  background: var(--accent-tint);
+  color: var(--accent-ink);
+}
+
+.su-note.warn {
+  background: var(--warn-tint);
+  color: var(--warn);
+}
+
+.su-note.error {
+  background: var(--danger-tint);
+  color: var(--danger);
+}
+
+.su-note.ok {
+  background: var(--ok-tint);
+  color: var(--ok);
+}
+
+.su-savebar {
+  position: fixed;
+  left: calc(50% + var(--sb-w, 0px) / 2);
+  bottom: 18px;
+  transform: translateX(-50%) translateY(140%);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 12px 10px 18px;
+  background: var(--ink);
+  color: #fff;
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgb(16 24 40 / 25%);
+  transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+  z-index: 20;
+}
+
+.su-savebar.show {
+  transform: translateX(-50%) translateY(0);
+}
+
+.su-savebar .su-btn.ghost {
+  color: #c9d0db;
+}
+
+.su-savebar .su-btn.ghost:hover {
+  background: rgb(255 255 255 / 8%);
+}
+
+.pb-tiles {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  padding: 16px 18px;
+}
+
+.pb-tile {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  background: var(--surface);
+}
+
+.pb-value {
+  font-size: 24px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+.pb-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.pb-tile.add .pb-value,
+.su .add {
+  color: var(--ok);
+}
+
+.pb-tile.chg .pb-value,
+.su .chg {
+  color: var(--warn);
+}
+
+.pb-tile.rem .pb-value,
+.su .rem {
+  color: var(--danger);
+}
+
+.pb-tile.same .pb-value,
+.pb-muted {
+  color: var(--ink-3);
+}
+
+/* --- Empty states ------------------------------------------------------------------------- */
+
+.empty-state {
+  max-width: 560px;
+}
+
+.empty-state .su-hint {
+  margin-left: 0;
+}
+
+.su-w-select {
+  width: 190px;
+}
+
+.su-rule .sel {
+  min-width: 0;
+}
+
+/* --- Page head, shared by the redesigned pages ---------------------------------------------- */
+
+.pg-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.pg-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.pg-sub {
+  color: var(--ink-3);
+  font-size: 12.5px;
+  margin-top: 2px;
+}
+
+/* A card holding a table that fills it edge to edge. */
+.tbl-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.tbl-scroll {
+  overflow-x: auto;
+}
+
+.tbl {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.tbl th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #fbfcfd;
+  color: var(--ink-3);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-align: left;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+
+.tbl td {
+  padding: 0 12px;
+  height: 40px;
+  border-bottom: 1px solid var(--line-2);
+  vertical-align: middle;
+}
+
+.tbl tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.tbl tbody tr:hover td {
+  background: #fafbfc;
+}
+
+.tbl tr.node td {
+  background: #f7f8fa;
+  font-weight: 650;
+  height: 36px;
+}
+
+.tbl .num {
+  text-align: right;
+}
+
+.tbl .right {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.tbl .muted,
+.ink-3 {
+  color: var(--ink-3);
+}
+
+.code {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--ink-3);
+  margin-right: 8px;
+}
+
+.tree-cell {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.btn-row {
+  display: inline-flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.su-btn.sm {
+  min-height: 28px;
+  padding: 3px 10px;
+  font-size: 12.5px;
+}
+
+.su-btn.danger {
+  color: var(--danger);
+}
+
+.su-btn.danger:hover {
+  background: var(--danger-tint);
+  border-color: #f1c9c9;
+}
+
+/* Segmented tabs (sections of a page), in the look of the setup page's entry forms. */
+.seg {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.seg button {
+  border: none;
+  border-right: 1px solid var(--line);
+  background: transparent;
+  padding: 6px 14px;
+  min-height: 32px;
+  color: var(--ink-2);
+  font-weight: 550;
+}
+
+.seg button:last-child {
+  border-right: none;
+}
+
+.seg button:hover {
+  background: var(--canvas);
+}
+
+.seg button[aria-pressed='true'] {
+  background: var(--accent);
+  color: #fff;
+}
+
+.seg .count {
+  margin-left: 6px;
+  font-size: 11px;
+  opacity: 0.75;
+  font-variant-numeric: tabular-nums;
+}
+
+.pl-plus {
+  font-size: 16px;
+  line-height: 1;
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.pl-code {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-3);
+  margin-right: 6px;
+}
+
+.cp-grow {
+  flex: 1;
+}
+
+.st-empty {
+  text-align: center;
+  color: var(--ink-3);
+  font-style: italic;
+  height: 64px;
+}
+
+.md-checks {
+  list-style: none;
+  padding-left: 0;
+}
+
+.md-checks label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0;
+}
+
+.md-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.md-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  background: var(--surface);
+  color: var(--ink-3);
+  width: 280px;
+}
+
+.md-search:focus-within {
+  border-color: var(--accent-2);
+  box-shadow: 0 0 0 3px var(--accent-tint);
+}
+
+.md-search input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--ink);
+}
+
+.md-counts {
+  margin-left: auto;
+  font-size: 12px;
+}
+
+.md-add h3 {
+  margin: 0 0 10px;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.md-add-row {
+  align-items: flex-end;
+}
+
+.md-add-foot {
+  margin-top: 12px;
+}
+
+.md-grow {
+  flex: 1;
+  min-width: 160px;
+}
+
+.md-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink-2);
+}
+
+.rs-gap {
+  margin-bottom: 12px;
+}
+
+/* --- Dialog: an overlay with a head, a body and a foot (item lists, transfers) ------------ */
+.il-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgb(16 24 40 / 35%);
+}
+
+.il-dialog {
+  width: min(1180px, 100%);
+  max-height: calc(100vh - 48px);
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border-radius: 14px;
+  box-shadow: var(--shadow-lift);
+  overflow: hidden;
+}
+
+.il-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 22px 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.il-head h3 {
+  margin: 2px 0 0;
+  font-size: 16px;
+}
+
+.il-sub {
+  margin-top: 3px;
+  font-size: 12px;
+}
+
+.il-dialog > .su-note {
+  margin: 12px 22px 0;
+}
+
+.il-body {
+  flex: 1;
+  overflow: auto;
+  padding: 10px 22px 14px;
+}
+
+/* --- Helpers ------------------------------------------------------------------------------ */
+
+.fw-gap {
+  margin-top: 14px;
+}
+
+.fw-card-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px 16px 4px;
+}
+
+.fw-card-head h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.fw-buttons {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+  flex-wrap: wrap;
+}
+
+/* Tree picker: many members of a hierarchy at once. */
+.tp {
+  max-width: 560px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  background: var(--surface);
+  margin: 4px 0;
+}
+
+.tp-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px;
+  border-bottom: 1px solid var(--line-2);
+}
+
+.tp-filter {
+  flex: 0 1 260px;
+}
+
+.tp-hint {
+  flex-basis: 100%;
+  font-size: 12px;
+}
+
+.tp-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+  max-height: 340px;
+  overflow-y: auto;
+}
+
+.tp-row label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 10px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.tp-row label:hover {
+  background: var(--canvas);
+}
+
+.tp-row.group label {
+  font-weight: 600;
+}
+
+.tp-row.off label {
+  color: var(--ink-3);
+  cursor: default;
+}
+
+.tp-row .code {
+  margin-right: 0;
+}
+
+.tp-count {
+  font-size: 11.5px;
+  font-weight: 500;
+}
+
+.tp-empty {
+  padding: 8px 12px;
+}
+
+.tp-foot {
+  display: flex;
+  gap: 8px;
+  padding: 8px;
+  border-top: 1px solid var(--line-2);
+}
+
+.fw-add-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}

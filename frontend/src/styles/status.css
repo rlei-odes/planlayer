@@ -1,0 +1,139 @@
+/* The status page (st-, ADR 0008). */
+
+/* --- Status --------------------------------------------------------------------------------- */
+
+.st-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) minmax(0, 1.4fr);
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+@container (max-width: 820px) {
+  .st-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.st-tile {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 12px 14px;
+}
+
+.st-value {
+  font-size: 24px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.st-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.st-progress .st-statusbar {
+  width: 100%;
+  margin-top: 8px;
+  height: 8px;
+}
+
+.st-statusbar {
+  display: inline-flex;
+  width: 120px;
+  height: 6px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--line-2);
+  gap: 1px;
+}
+
+.st-statusbar i {
+  display: block;
+  min-width: 3px;
+}
+
+.st-statusbar .not_started {
+  background: #d3d8df;
+}
+
+.st-statusbar .in_progress {
+  background: #e3ad3c;
+}
+
+.st-statusbar .submitted {
+  background: var(--accent-2);
+}
+
+.st-statusbar .approved {
+  background: #2e9b5b;
+}
+
+.st-node {
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.st-node-text {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.st-cc {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.3;
+  padding: 5px 0;
+}
+
+.st-owner {
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+
+.st-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.st-gap {
+  margin-bottom: 12px;
+}
+
+.st-comment {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  border-color: #b9c6e6;
+  box-shadow: 0 0 0 3px var(--accent-tint);
+}
+
+.st-comment .su-input {
+  flex: 1;
+}
+
+.st-h3 {
+  font-size: 14px;
+  font-weight: 650;
+  margin: 24px 0 2px;
+}
+
+.st-hint {
+  margin: 0 0 10px;
+}

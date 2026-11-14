@@ -24,6 +24,7 @@ from planlayer.api.planning import (
 )
 from planlayer.domain.entry_forms import Basis
 from planlayer.domain.workflow import RoundStatus, Status
+from planlayer.sheet import ConflictError, EditError
 
 router = APIRouter(prefix="/api")
 
@@ -127,9 +128,9 @@ def _rate(value: str) -> Decimal:
     try:
         rate = Decimal(value.strip().replace(",", "."))
     except InvalidOperation:
-        raise planning.EditError(f"not a rate: {value!r}") from None
+        raise EditError(f"not a rate: {value!r}") from None
     if not rate.is_finite():
-        raise planning.EditError(f"not a rate: {value!r}")
+        raise EditError(f"not a rate: {value!r}")
     return rate
 
 
@@ -200,7 +201,7 @@ def _sheet_out(s: capacity.CapacitySheet, batch_id: str | None = None) -> Capaci
     )
 
 
-def _conflict(e: planning.ConflictError) -> JSONResponse:
+def _conflict(e: ConflictError) -> JSONResponse:
     return JSONResponse(
         status_code=409,
         content=[{"account_code": c.account_code, "month": c.month} for c in e.conflicts],
@@ -246,7 +247,7 @@ def edit(
     ]
     try:
         batch = capacity.apply_edits(engine, user, version_code, cc_code, edits)
-    except planning.ConflictError as e:
+    except ConflictError as e:
         return _conflict(e)  # type: ignore[return-value]
     except HANDLED as e:
         raise _errors(e) from None
@@ -320,7 +321,7 @@ def undo(
     engine = engine_of(request)
     try:
         batch = capacity.undo_batch(engine, user, version_code, cc_code, body.batch_id)
-    except planning.ConflictError as e:
+    except ConflictError as e:
         return _conflict(e)  # type: ignore[return-value]
     except HANDLED as e:
         raise _errors(e) from None

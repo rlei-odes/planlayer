@@ -1,0 +1,656 @@
+/* The setup page (E-03, ADR 0014): layout, starting points, entry forms, comparisons,
+   productive cost centers, profiles, tabs and the round's scope. */
+
+/* --- Layout ------------------------------------------------------------------------------- */
+
+.su-layout {
+  display: grid;
+  grid-template-columns: minmax(360px, 380px) minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+
+/* Side by side while the preview keeps ~750 px, enough for all twelve months. */
+@container (max-width: 1150px) {
+  .su-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* --- Starting points ---------------------------------------------------------------------- */
+
+.su-levels {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.su-level {
+  text-align: left;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+}
+
+.su-level:hover:not(:disabled) {
+  border-color: #c6cdd8;
+  transform: translateY(-1px);
+}
+
+.su-level[aria-pressed='true'] {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-tint);
+}
+
+.su-level strong {
+  font-size: 13px;
+}
+
+.su-level span {
+  color: var(--ink-3);
+  font-size: 11.5px;
+  line-height: 1.35;
+}
+
+.su-level svg {
+  color: var(--accent);
+}
+
+.su-level:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* --- Entry forms -------------------------------------------------------------------------- */
+
+.su-forms {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  overflow: hidden;
+}
+
+.su-forms button {
+  border: none;
+  border-right: 1px solid var(--line);
+  background: var(--surface);
+  padding: 8px 4px;
+  font-size: 12px;
+  color: var(--ink-2);
+  line-height: 1.2;
+}
+
+.su-forms button:last-child {
+  border-right: none;
+}
+
+.su-forms button[aria-pressed='true'] {
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.su-explain {
+  margin: 8px 0 14px;
+  color: var(--ink-2);
+  font-size: 12.5px;
+  min-height: 2.5em;
+}
+
+.su-rules {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.su-rule {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 26px;
+  grid-template-areas: 'account account remove' 'form basis basis';
+  gap: 6px;
+  align-items: center;
+  padding: 6px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-s);
+  background: #fbfcfd;
+}
+
+.su-rule .su-select {
+  min-width: 0;
+  width: 100%;
+}
+
+.su-rule > :nth-child(1) {
+  grid-area: account;
+}
+
+.su-rule > :nth-child(2) {
+  grid-area: form;
+}
+
+.su-rule > :nth-child(3) {
+  grid-area: basis;
+}
+
+.su-rule > :nth-child(4) {
+  grid-area: remove;
+}
+
+.su-sub {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin: 4px 0 6px;
+}
+
+/* --- Comparison list, chips ----------------------------------------------------------------- */
+
+.su-list {
+  list-style: none;
+  margin: 0 0 10px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+}
+
+.su-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 6px 6px 10px;
+  border-bottom: 1px solid var(--line-2);
+}
+
+.su-list li:last-child {
+  border-bottom: none;
+}
+
+.su-list .grow {
+  flex: 1;
+}
+
+.su-empty {
+  color: var(--ink-3);
+  font-style: italic;
+  padding: 8px 10px;
+}
+
+.su-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.su-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 4px 3px 10px;
+  border-radius: 999px;
+  background: var(--line-2);
+  font-size: 12px;
+}
+
+.su-chip button {
+  border: none;
+  background: transparent;
+  color: var(--ink-3);
+  border-radius: 50%;
+  width: 18px;
+  height: 18px;
+  line-height: 1;
+}
+
+.su-chip button:hover {
+  background: #dde1e7;
+  color: var(--ink);
+}
+
+/* --- Productive cost centers (ADR 0013) ----------------------------------------------------- */
+
+.pc-list {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.pc-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 8px;
+  border-radius: var(--radius-s);
+}
+
+.pc-list li:hover {
+  background: var(--canvas);
+}
+
+.pc-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.pc-scroll {
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.pc-others {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.su-input.pc-filter {
+  width: 140px;
+  min-height: 28px;
+  padding: 3px 8px;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 400;
+}
+
+/* The page itself doesn't cross-fade; only the moving row (pc-moving) slides. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+}
+
+::view-transition-group(pc-moving) {
+  animation-duration: 0.28s;
+}
+
+.pc-switch {
+  flex: none;
+  width: 32px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 9px;
+  background: var(--line);
+  position: relative;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.pc-switch i {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--surface);
+  box-shadow: 0 1px 2px rgb(16 24 40 / 20%);
+  transition: transform 0.15s;
+}
+
+.pc-switch[aria-checked='true'] {
+  background: var(--accent-2);
+}
+
+.pc-switch[aria-checked='true'] i {
+  transform: translateX(14px);
+}
+
+.pc-switch:focus-visible {
+  outline: 2px solid var(--accent-2);
+  outline-offset: 2px;
+}
+
+/* --- Profiles ----------------------------------------------------------------------------- */
+
+.su-profiles {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+}
+
+.su-profile {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-s);
+}
+
+.su-profile .meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.su-profile .meta span {
+  color: var(--ink-3);
+  font-size: 11.5px;
+}
+
+.su-profile.editing {
+  border-color: var(--accent-2);
+  background: var(--accent-tint);
+}
+
+.su-profile .su-btn {
+  min-height: 28px;
+  padding: 3px 8px;
+}
+
+.su-confirm {
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+
+.su-profile-form {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line-2);
+}
+
+.su-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.su-presets {
+  margin-top: 10px;
+}
+
+.su-presets .su-btn {
+  min-height: 30px;
+  padding: 3px 10px;
+}
+
+.su-presets-hint {
+  color: var(--ink-3);
+  font-size: 11.5px;
+}
+
+.su-input.su-year {
+  width: 64px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.su-months {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 6px;
+  margin: 10px 0;
+}
+
+.su-months label {
+  display: flex;
+  flex-direction: column;
+  font-size: 11px;
+  color: var(--ink-3);
+  gap: 2px;
+}
+
+.su-months input {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  padding: 4px 6px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  width: 100%;
+}
+
+.su-sum {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.su-sum.bad {
+  color: var(--danger);
+}
+
+.su-sum.good {
+  color: var(--ok);
+}
+
+/* --- Setup tabs and the round's scope (ADR 0014) ------------------------------------------- */
+
+.su-tabs {
+  margin-bottom: 14px;
+  align-self: flex-start;
+}
+
+.su-scope {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-bottom: 72px; /* room above the save bar */
+}
+
+.sc-card {
+  padding: 0;
+}
+
+.sc-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px 24px;
+  padding: 16px 18px 12px;
+}
+
+.sc-head h3 {
+  margin: 0 0 4px;
+}
+
+.sc-head .su-hint,
+.sc-foot.su-hint {
+  max-width: 760px;
+  margin-left: 0;
+}
+
+.sc-table th.sc-switch-col,
+.sc-table th.sc-check-col {
+  text-align: center;
+}
+
+.sc-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.sc-filter {
+  width: 180px;
+}
+
+.sc-table td {
+  vertical-align: middle;
+}
+
+.sc-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.sc-group {
+  font-weight: 600;
+}
+
+.sc-node-code {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+.sc-flag.new {
+  cursor: help;
+}
+
+.sc-flag {
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.sc-flag.new {
+  background: var(--accent-tint);
+  color: var(--accent-ink);
+}
+
+.sc-flag.gone {
+  background: var(--warn-tint);
+  color: var(--warn);
+}
+
+.sc-off .sc-name {
+  color: var(--ink-3);
+}
+
+.sc-switch-col {
+  width: 88px;
+  text-align: center;
+}
+
+.sc-set-col {
+  width: 260px;
+}
+
+.sc-check-col {
+  width: 110px;
+  max-width: 140px;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sc-sets {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 0 18px 12px;
+}
+
+.sc-newset {
+  display: flex;
+  gap: 6px;
+}
+
+.sc-newset .su-input {
+  width: 220px;
+}
+
+.sc-foot {
+  padding: 10px 18px 14px;
+  margin-bottom: 0;
+}
+
+/* A forecast's closed months and the refresh of their actuals. */
+.su-forecast {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line-2);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.su-carry {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line-2);
+}
+
+.su-carry ul {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.su-carry label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.su-uplift {
+  margin: 4px 0 4px 26px;
+}
+
+.su-uplift .su-input {
+  width: 80px;
+}
+
+/* Comparison columns with a note to planners. */
+.su-list li.su-cmp {
+  flex-wrap: wrap;
+}
+
+.su-cmp-name {
+  min-width: 150px;
+}
+
+.su-cmp-note {
+  flex: 1;
+  min-width: 160px;
+  height: 28px;
+  font-size: 12px;
+}
+
+/* How a round was created. */
+.su-created {
+  margin-top: 10px;
+}
+
+.su-carried {
+  list-style: none;
+  margin: 6px 0 8px;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+  font-size: 13px;
+}
+
+.su-carried li span[aria-hidden] {
+  display: inline-block;
+  width: 18px;
+  color: var(--ok, #2f7d4f);
+}
+
+.su-carried li.off {
+  color: var(--ink-3);
+}
+
+.su-carried li.off span[aria-hidden] {
+  color: var(--ink-3);
+}
+
+.su-form-change {
+  margin-top: 0;
+}

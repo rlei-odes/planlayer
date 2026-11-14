@@ -21,7 +21,7 @@ from collections import defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import date
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from typing import Literal, cast
 
 from sqlalchemy import Connection, Engine, and_, delete, func, select, tuple_
@@ -39,10 +39,21 @@ from planlayer.notes import markers as note_markers
 from planlayer.rounds import (
     Grain,
     NotFoundError,
-    RoundRef,
     account_scopes,
     fiscal_periods,
     get_round,
+)
+from planlayer.sheet import (
+    MONTHS,
+    Cell,
+    ComparisonColumn,
+    Conflict,
+    ConflictError,
+    EditError,
+    LockedError,
+    SheetContext,
+    locked_error,
+    parse_amount,
 )
 from planlayer.store.schema import (
     ACCOUNT,
@@ -79,46 +90,7 @@ from planlayer.workflow import enabled_members, status_of
 
 __all__ = ["NotFoundError"]
 
-MONTHS = 12
 MONTH_NAME = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
-LOCKED_SQLSTATE = "PL001"  # raised by the lock trigger
-
-
-class EditError(ValueError):
-    """An edit that can't be applied as sent (bad value, unknown account, a form's rule)."""
-
-
-class LockedError(Exception):
-    """The cost center can't be edited in this round now."""
-
-
-@dataclass
-class Conflict:
-    account_code: str
-    month: int
-
-
-class ConflictError(Exception):
-    def __init__(self, conflicts: list[Conflict]) -> None:
-        self.conflicts = conflicts
-        super().__init__(f"{len(conflicts)} cell(s) changed by someone else")
-
-
-@dataclass
-class Cell:
-    value: Decimal | None
-    row_version: int | None
-
-
-@dataclass
-class ComparisonColumn:
-    kind: str
-    label: str
-    note: str | None = None  # the controller's note to planners
-    # Actuals columns: the last month holding actuals, and whether months after it are missing,
-    # as for the current year's actuals in a budget prepared mid-year.
-    actuals_until: date | None = None
-    partial: bool = False
 
 
 @dataclass(frozen=True)
@@ -213,32 +185,6 @@ class Edit:
 
 
 @dataclass
-class _Context:
-    round: RoundRef
-    actuals_id: int
-    cost_center_id: int
-    cost_center_name: str
-    entity_id: int
-    status: Status
-    lock_reason: str | None
-    periods: list[date]
-    prior_periods: list[date]
-
-    @property
-    def version_id(self) -> int:
-        return self.round.version_id
-
-    @property
-    def closed(self) -> int:
-        """How many months, from the year's first, are closed (ADR 0015)."""
-        return closed_months(self.periods, self.round.actuals_through)
-
-    @property
-    def open_months(self) -> range:
-        return range(self.closed, MONTHS)
-
-
-@dataclass
 class _Line:
     account_id: int
     code: str
@@ -254,7 +200,7 @@ class _Line:
     profile_code: str | None  # the profile a profile basis spreads by
 
 
-def _context(conn: Connection, user: User, version_code: str, cc_code: str) -> _Context:
+def _context(conn: Connection, user: User, version_code: str, cc_code: str) -> SheetContext:
     r = get_round(conn, version_code)
     cc = conn.execute(
         select(member).where(
@@ -283,7 +229,7 @@ def _context(conn: Connection, user: User, version_code: str, cc_code: str) -> _
         reason = "you may only read this cost center"
     else:
         reason = None
-    return _Context(
+    return SheetContext(
         round=r,
         actuals_id=actuals_id if actuals_id is not None else -1,
         cost_center_id=cc.member_id,
@@ -296,7 +242,7 @@ def _context(conn: Connection, user: User, version_code: str, cc_code: str) -> _
     )
 
 
-def _values(
+def cost_values(
     conn: Connection, version_id: int, cc_id: int, periods: list[date], *, lock: bool = False
 ) -> dict[int, list[Cell]]:
     """Cells per account over ``periods``; blank cells have no value."""
@@ -321,7 +267,7 @@ def _amounts(cells: dict[int, list[Cell]]) -> dict[int, list[Decimal | None]]:
 
 
 def _version_values(
-    conn: Connection, ctx: _Context, version_id: int
+    conn: Connection, ctx: SheetContext, version_id: int
 ) -> dict[int, list[Decimal | None]]:
     """Another version's values for the cost center over its round's year. A forecast's closed
     months are its actuals, so it reads as its full year: actuals to date plus forecast (ADR
@@ -332,20 +278,20 @@ def _version_values(
         )
     ).first()
     if found is None:
-        return _amounts(_values(conn, version_id, ctx.cost_center_id, ctx.periods))
+        return _amounts(cost_values(conn, version_id, ctx.cost_center_id, ctx.periods))
     periods = fiscal_periods(conn, found.fiscal_year)
-    values = _amounts(_values(conn, version_id, ctx.cost_center_id, periods))
+    values = _amounts(cost_values(conn, version_id, ctx.cost_center_id, periods))
     closed = closed_months(periods, found.actuals_through)
     if closed:
-        actuals = _amounts(_values(conn, ctx.actuals_id, ctx.cost_center_id, periods[:closed]))
+        actuals = _amounts(cost_values(conn, ctx.actuals_id, ctx.cost_center_id, periods[:closed]))
         for account in set(values) | set(actuals):
             months = values.get(account, [None] * MONTHS)
             values[account] = actuals.get(account, [None] * MONTHS)[:closed] + months[closed:]
     return values
 
 
-def _comparisons(
-    conn: Connection, ctx: _Context
+def comparison_columns(
+    conn: Connection, ctx: SheetContext
 ) -> tuple[list[ComparisonColumn], list[dict[int, list[Decimal | None]]]]:
     columns, values = [], []
     for kind, other_id, other_name, note in conn.execute(
@@ -363,7 +309,7 @@ def _comparisons(
             case "actuals" if ctx.closed:
                 # A forecast's actuals of the year stop at its closed months (ADR 0015).
                 periods = ctx.periods[: ctx.closed]
-                amounts = _amounts(_values(conn, ctx.actuals_id, ctx.cost_center_id, periods))
+                amounts = _amounts(cost_values(conn, ctx.actuals_id, ctx.cost_center_id, periods))
                 column = ComparisonColumn(
                     kind,
                     f"YTD {_period_name(ctx)} {ctx.round.fiscal_year}",
@@ -374,7 +320,7 @@ def _comparisons(
             case "prior_year_actuals" | "actuals":
                 year = ctx.round.fiscal_year - (1 if kind == "prior_year_actuals" else 0)
                 periods = ctx.prior_periods if kind == "prior_year_actuals" else ctx.periods
-                amounts = _amounts(_values(conn, ctx.actuals_id, ctx.cost_center_id, periods))
+                amounts = _amounts(cost_values(conn, ctx.actuals_id, ctx.cost_center_id, periods))
                 until = _actuals_until(conn, ctx.actuals_id, periods)
                 column = ComparisonColumn(
                     kind, f"Actual {year}", note, until, until is not None and until < periods[-1]
@@ -387,7 +333,7 @@ def _comparisons(
     return columns, values
 
 
-def _period_name(ctx: _Context) -> str:
+def _period_name(ctx: SheetContext) -> str:
     """The last closed month or quarter, as in "YTD Jun" or "YTD Q2"."""
     if ctx.round.grain == "quarter":
         return f"Q{ctx.closed // 3}"
@@ -451,7 +397,7 @@ class _Scope:
         )
 
 
-def _scope(conn: Connection, ctx: _Context) -> _Scope:
+def _scope(conn: Connection, ctx: SheetContext) -> _Scope:
     return _Scope(
         _not_planned(conn, ctx.version_id),
         account_scopes(conn, ctx.version_id, [ctx.cost_center_id])[ctx.cost_center_id],
@@ -463,7 +409,7 @@ def _scope(conn: Connection, ctx: _Context) -> _Scope:
 _WHY = {"round": "not planned in this round", "set": "not in this cost center's accounts"}
 
 
-def _added(conn: Connection, ctx: _Context) -> set[int]:
+def _added(conn: Connection, ctx: SheetContext) -> set[int]:
     return set(
         conn.execute(
             select(sheet_account.c.account_id).where(
@@ -475,7 +421,7 @@ def _added(conn: Connection, ctx: _Context) -> set[int]:
     )
 
 
-def _lines(conn: Connection, ctx: _Context, account_ids: Iterable[int]) -> list[_Line]:
+def _lines(conn: Connection, ctx: SheetContext, account_ids: Iterable[int]) -> list[_Line]:
     """The accounts in sheet order, with their resolved entry form and spread basis."""
     ids = sorted(set(account_ids))
     acc, grp = member.alias("acc"), member.alias("grp")
@@ -549,7 +495,9 @@ def _lines(conn: Connection, ctx: _Context, account_ids: Iterable[int]) -> list[
             select(seasonality_profile).where(seasonality_profile.c.profile_id.in_(profile_ids))
         )
     }
-    prior_actuals = _amounts(_values(conn, ctx.actuals_id, ctx.cost_center_id, ctx.prior_periods))
+    prior_actuals = _amounts(
+        cost_values(conn, ctx.actuals_id, ctx.cost_center_id, ctx.prior_periods)
+    )
     references: dict[int | None, dict[int, list[Decimal | None]]] = {None: prior_actuals}
     names: dict[int | None, str] = {None: "prior-year actuals"}
     codes: dict[int | None, str | None] = {None: None}
@@ -599,11 +547,11 @@ def _lines(conn: Connection, ctx: _Context, account_ids: Iterable[int]) -> list[
 def read_grid(engine: Engine, user: User, version_code: str, cc_code: str) -> Grid:
     with unit_of_work(engine, user) as conn:
         ctx = _context(conn, user, version_code, cc_code)
-        columns, compared = _comparisons(conn, ctx)
-        plan = _values(conn, ctx.version_id, ctx.cost_center_id, ctx.periods)
+        columns, compared = comparison_columns(conn, ctx)
+        plan = cost_values(conn, ctx.version_id, ctx.cost_center_id, ctx.periods)
         # A forecast's closed months show actuals in the plan cells, read only (ADR 0015).
         closed = ctx.periods[: ctx.closed]
-        actual = _values(conn, ctx.actuals_id, ctx.cost_center_id, closed) if closed else {}
+        actual = cost_values(conn, ctx.actuals_id, ctx.cost_center_id, closed) if closed else {}
         for account, booked in actual.items():
             for m in range(ctx.closed):
                 plan[account][m] = Cell(booked[m].value, None)
@@ -698,7 +646,7 @@ def read_grid(engine: Engine, user: User, version_code: str, cc_code: str) -> Gr
     return grid
 
 
-def _credited(conn: Connection, ctx: _Context) -> set[int]:
+def _credited(conn: Connection, ctx: SheetContext) -> set[int]:
     """Accounts credited by activity types, if the cost center is productive in the round: its
     capacity planning writes them (ADR 0013)."""
     productive = conn.execute(
@@ -750,27 +698,6 @@ def _add(a: Decimal | None, b: Decimal | None) -> Decimal | None:
     return a if b is None else a + b
 
 
-def _parse(value: str | None) -> Decimal | None:
-    if value is None:
-        return None
-    try:
-        amount = Decimal(value)
-    except InvalidOperation:
-        raise EditError(f"not a number: {value!r}") from None
-    if not amount.is_finite():
-        raise EditError(f"not a number: {value!r}")
-    exponent = amount.as_tuple().exponent
-    if isinstance(exponent, int) and exponent < -2:
-        raise EditError(f"{value} has more than 2 decimal places")
-    return amount
-
-
-def _locked(e: DBAPIError) -> LockedError | None:
-    if getattr(e.orig, "sqlstate", None) == LOCKED_SQLSTATE:
-        return LockedError(str(e.orig).splitlines()[0].removeprefix("plan values are locked: "))
-    return None
-
-
 def _leaf_accounts(conn: Connection, codes: set[str]) -> dict[str, int]:
     accounts = dict(
         conn.execute(
@@ -797,7 +724,7 @@ def apply_edits(
         with unit_of_work(engine, actor, batch_id) as conn:
             _apply(conn, actor, version_code, cc_code, edits)
     except DBAPIError as e:
-        locked = _locked(e)
+        locked = locked_error(e)
         if locked is None:
             raise
         raise locked from None
@@ -831,7 +758,7 @@ def undo_batch(engine: Engine, actor: User, version_code: str, cc_code: str, bat
             ).all()
             if not logged:
                 raise NotFoundError(f"no change of yours to undo on {cc_code}")
-            locked = _values(conn, ctx.version_id, ctx.cost_center_id, ctx.periods, lock=True)
+            locked = cost_values(conn, ctx.version_id, ctx.cost_center_id, ctx.periods, lock=True)
             current = {
                 (a, ctx.periods[m]): c.row_version
                 for a, cells in locked.items()
@@ -862,10 +789,10 @@ def undo_batch(engine: Engine, actor: User, version_code: str, cc_code: str, bat
             _write(conn, ctx, before, current)
             _follow(conn, ctx)
     except DBAPIError as e:
-        locked_error = _locked(e)
-        if locked_error is None:
+        refused = locked_error(e)
+        if refused is None:
             raise
-        raise locked_error from None
+        raise refused from None
     return undo_id
 
 
@@ -890,7 +817,7 @@ def _apply(
     lines = {line.account_id: line for line in _lines(conn, ctx, accounts.values())}
 
     # Lock the cells this request may touch, then compare versions (D-19).
-    locked = _values(conn, ctx.version_id, ctx.cost_center_id, ctx.periods, lock=True)
+    locked = cost_values(conn, ctx.version_id, ctx.cost_center_id, ctx.periods, lock=True)
     current = {
         (a, ctx.periods[m]): c.row_version
         for a, cells in locked.items()
@@ -903,7 +830,7 @@ def _apply(
     # months' actuals leave (ADR 0015).
     to_date: dict[int, Decimal] = defaultdict(Decimal)
     if ctx.closed:
-        for account, cells in _values(
+        for account, cells in cost_values(
             conn, ctx.actuals_id, ctx.cost_center_id, ctx.periods[: ctx.closed]
         ).items():
             to_date[account] = sum((c.value for c in cells if c.value is not None), Decimal(0))
@@ -919,7 +846,7 @@ def _apply(
             key = (line.account_id, ctx.periods[m])
             if key not in writes and current.get(key) != e.expected[m]:
                 conflicts.append(Conflict(e.account_code, m))
-        value = _parse(e.value)
+        value = parse_amount(e.value)
         if value is None or e.month is not None:
             for m in months:
                 writes[(line.account_id, ctx.periods[m])] = value
@@ -935,7 +862,7 @@ def _apply(
     _follow(conn, ctx)
 
 
-def _follow(conn: Connection, ctx: _Context) -> None:
+def _follow(conn: Connection, ctx: SheetContext) -> None:
     """Full forwardings fed by the cost center follow its new values (ADR 0018). Imported here:
     forwarding builds on this module."""
     from planlayer.forwarding import follow
@@ -943,7 +870,7 @@ def _follow(conn: Connection, ctx: _Context) -> None:
     follow(conn, ctx.round, ctx.cost_center_id)
 
 
-def _targets(ctx: _Context, line: _Line, e: Edit) -> list[int]:
+def _targets(ctx: SheetContext, line: _Line, e: Edit) -> list[int]:
     """The months an edit writes: one month, a quarter's three, or the year's open months. A
     round planned by quarter takes quarters, not single months (ADR 0015)."""
     grain = ctx.round.grain
@@ -975,7 +902,7 @@ def _targets(ctx: _Context, line: _Line, e: Edit) -> list[int]:
 
 def _write(
     conn: Connection,
-    ctx: _Context,
+    ctx: SheetContext,
     writes: dict[tuple[int, date], Decimal | None],
     current: dict[tuple[int, date], int],
 ) -> None:
@@ -1095,7 +1022,7 @@ def set_line_spread(
                 )
             )
     except DBAPIError as e:
-        locked = _locked(e)
+        locked = locked_error(e)
         if locked is None:
             raise
         raise locked from None

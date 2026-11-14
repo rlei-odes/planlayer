@@ -1,0 +1,304 @@
+/* The start page (hm-, ADR 0021), with its lists of notes (mn-). */
+
+/* My item lists, and notes on Home. */
+.il-intro {
+  margin: -6px 0 14px;
+  max-width: 760px;
+}
+
+.il-row {
+  cursor: pointer;
+}
+
+.mn-section {
+  margin-bottom: 14px;
+}
+
+.mn-section h3 {
+  margin-top: 0;
+}
+
+.mn-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mn-item {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  background: var(--surface);
+  text-align: left;
+  cursor: pointer;
+}
+
+.mn-item:hover {
+  border-color: var(--accent-2);
+  background: var(--accent-tint);
+}
+
+.mn-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  font-weight: 600;
+}
+
+.mn-line .su-pill {
+  margin-left: 6px;
+}
+
+.mn-first {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mn-meta {
+  font-size: 12px;
+}
+
+.su-hint.mn-empty {
+  margin: 0;
+  padding: 0;
+}
+
+/* --- Home ------------------------------------------------------------------------------------- */
+
+.hm {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  max-width: 1100px;
+}
+
+.hm > .su-card,
+.hm-section > .su-card {
+  margin: 0;
+}
+
+.hm-hero {
+  padding: 8px 0 4px;
+}
+
+.hm-greeting {
+  margin: 4px 0 0;
+  font-size: 28px;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+}
+
+.hm-lead {
+  margin: 6px 0 0;
+  font-size: 14px;
+  color: var(--ink-2);
+}
+
+.hm-section h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.hm-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 12px;
+}
+
+.hm-tasks {
+  border-left: 3px solid var(--accent);
+}
+
+.hm-kind {
+  flex: 0 0 auto;
+  width: 132px;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.hm-kind.transfer {
+  color: var(--accent);
+}
+
+.hm-kind.approve {
+  color: var(--ok);
+}
+
+.hm-kind.note {
+  color: var(--warn);
+}
+
+.hm-head h3 {
+  margin: 4px 0 10px;
+  font-size: 15px;
+}
+
+.hm-empty {
+  padding-block: 14px;
+}
+
+.hm-rounds {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(440px, 100%), 1fr));
+  gap: 16px;
+}
+
+.hm-round {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.hm-round-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.hm-round-head h4 {
+  margin: 2px 0 0;
+  font-size: 17px;
+  font-weight: 650;
+}
+
+.hm-progress {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--line-2);
+  overflow: hidden;
+}
+
+.hm-progress i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--ok);
+}
+
+.hm-progress-text {
+  margin-top: -4px;
+  font-size: 12px;
+}
+
+.hm-ccs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.hm-ccs li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 210px;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 9px 0;
+  border-top: 1px solid var(--line-2);
+}
+
+.hm-cc {
+  min-width: 0;
+}
+
+.hm-cc-name {
+  font-weight: 550;
+}
+
+.hm-sheets {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+@media (width < 640px) {
+  .hm-ccs li {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .hm-sheets {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+}
+
+.hm-overview {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line-2);
+}
+
+.hm-stack {
+  display: flex;
+  flex: 1 1 100%;
+  height: 10px;
+  gap: 2px;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.hm-stack i,
+.hm-legend i {
+  display: inline-block;
+}
+
+.hm-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  flex: 1;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+.hm-legend i {
+  width: 9px;
+  height: 9px;
+  margin-right: 4px;
+  border-radius: 3px;
+}
+
+.hm-stack .not_started,
+.hm-legend .not_started {
+  background: var(--line);
+}
+
+.hm-stack .in_progress,
+.hm-legend .in_progress {
+  background: var(--warn-mid);
+}
+
+.hm-stack .submitted,
+.hm-legend .submitted {
+  background: var(--accent-2);
+}
+
+.hm-stack .approved,
+.hm-legend .approved {
+  background: var(--ok);
+}
+
+.tr-line .tr-line {
+  flex: none;
+}

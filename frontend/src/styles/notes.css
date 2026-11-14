@@ -1,0 +1,460 @@
+/* Line notes (ADR 0017): markers on the sheets, the notes panel and the notepad. */
+
+/* --- Line notes and item lists (ADR 0017) ------------------------------------------------------ */
+
+.sb-badge {
+  margin-left: auto;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 18px;
+  text-align: center;
+}
+
+.sh.collapsed .sb-badge {
+  position: absolute;
+  top: 2px;
+  right: 6px;
+  min-width: 16px;
+  height: 16px;
+  line-height: 16px;
+  font-size: 10px;
+}
+
+/* A line's markers beside its badge: notes (with the open count) and item list. Without notes or
+   a list they show only while the row is hovered, to add one. */
+.pl-marks {
+  display: inline-flex;
+  gap: 2px;
+  margin-left: 4px;
+  /* Clear of the grid's fill handle on a selected cell's right edge: pointing at the handle
+     leaves the cell, which hides the markers. */
+  margin-right: 10px;
+}
+
+/* Pointing at a marker keeps both visible. */
+.pl-marks:hover .pl-mark.empty {
+  opacity: 0.7;
+}
+
+.pl-mark {
+  --mark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='black' stroke-width='1.8' stroke-linejoin='round'%3E%3Cpath d='M4 4.5h12a1.5 1.5 0 0 1 1.5 1.5v7a1.5 1.5 0 0 1-1.5 1.5H9l-3.5 3v-3H4A1.5 1.5 0 0 1 2.5 13V6A1.5 1.5 0 0 1 4 4.5z'/%3E%3C/svg%3E");
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 20px;
+  min-width: 20px;
+  padding: 0 4px 0 18px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ink-3);
+  font-size: 10.5px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.pl-mark::before {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 3px;
+  width: 14px;
+  height: 14px;
+  background: currentColor;
+  mask: var(--mark) center / contain no-repeat;
+}
+
+.pl-mark.list {
+  --mark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round'%3E%3Cpath d='M7.5 5h9M7.5 9h9M7.5 13h9M3.5 5h1M3.5 9h1M3.5 13h1M10.5 17h6'/%3E%3C/svg%3E");
+  padding-right: 0;
+}
+
+.pl-mark:hover {
+  background: var(--accent-tint);
+  color: var(--accent);
+}
+
+.pl-mark.empty {
+  opacity: 0;
+}
+
+revo-grid.pl-revo .rgCell:hover .pl-mark.empty,
+.pl-mark.empty:focus-visible {
+  opacity: 0.7;
+}
+
+.pl-mark.on {
+  color: var(--accent);
+}
+
+.pl-mark.task {
+  background: var(--warn-tint);
+  color: var(--warn);
+}
+
+.pl-mark.stale::after {
+  content: '';
+  position: absolute;
+  right: -1px;
+  top: 1px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--warn);
+}
+
+/* The notes panel: beside the sheet, full height below the top bar. */
+.nt-panel {
+  position: fixed;
+  top: var(--topbar-h);
+  right: 0;
+  bottom: 0;
+  z-index: 40;
+  width: min(440px, 100vw);
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border-left: 1px solid var(--line);
+  box-shadow: var(--shadow-lift);
+}
+
+.nt-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.nt-head h3 {
+  margin: 2px 0 0;
+  font-size: 15px;
+}
+
+.nt-head .su-icon {
+  font-size: 20px;
+  line-height: 1;
+}
+
+.nt-panel > .su-note {
+  margin: 10px 18px 0;
+}
+
+.nt-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px 18px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.nt-thread {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.nt-thread.focused {
+  border-color: var(--accent-2);
+  box-shadow: 0 0 0 3px var(--accent-tint);
+}
+
+.nt-thread.resolved {
+  background: var(--canvas);
+  opacity: 0.85;
+}
+
+.nt-thread-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  min-height: 24px;
+}
+
+.nt-resolve {
+  margin-left: auto;
+}
+
+.su-pill.nt-task {
+  background: var(--warn-tint);
+  color: var(--warn);
+}
+
+.nt-note {
+  display: flex;
+  gap: 9px;
+}
+
+.nt-avatar {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--accent-tint);
+  color: var(--accent-ink);
+  font-size: 10.5px;
+  font-weight: 700;
+  display: inline-grid;
+  place-items: center;
+}
+
+.nt-avatar.sm {
+  width: 20px;
+  height: 20px;
+  font-size: 9px;
+}
+
+.nt-note-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.nt-note-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 12.5px;
+}
+
+.nt-note-tools {
+  margin-left: auto;
+  display: inline-flex;
+  gap: 8px;
+}
+
+.nt-body {
+  margin: 3px 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.45;
+}
+
+.nt-mention {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.nt-link {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 550;
+  cursor: pointer;
+}
+
+.nt-link:hover {
+  text-decoration: underline;
+}
+
+.nt-link.danger {
+  color: var(--danger);
+}
+
+.nt-reply {
+  align-self: flex-start;
+  margin-left: 35px;
+}
+
+.nt-hint {
+  margin: -4px 0 0 35px;
+  font-size: 11.5px;
+}
+
+.nt-empty {
+  margin: 0;
+  font-size: 12.5px;
+}
+
+.nt-compose {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.nt-input {
+  position: relative;
+}
+
+.nt-input textarea {
+  width: 100%;
+  resize: vertical;
+  font: inherit;
+  line-height: 1.45;
+}
+
+.nt-suggest {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  z-index: 5;
+  margin: 2px 0 0;
+  padding: 4px;
+  list-style: none;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  box-shadow: var(--shadow-lift);
+}
+
+.nt-suggest button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 8px;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.nt-suggest button.active,
+.nt-suggest button:hover {
+  background: var(--accent-tint);
+}
+
+.nt-compose-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.nt-assign {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.nt-tip {
+  font-size: 11.5px;
+}
+
+.nt-actions {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.nt-resolved {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: stretch;
+}
+
+.nt-resolved > .nt-link {
+  align-self: flex-start;
+}
+
+/* The notepad: a small sheet of text and amounts with their sum. */
+.nt-pad {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--calc);
+  padding: 10px 12px;
+}
+
+.nt-pad-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12.5px;
+  margin-bottom: 6px;
+}
+
+.nt-pad-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.nt-pad-table td {
+  padding: 3px 0;
+  border-bottom: 1px solid var(--line-2);
+}
+
+.nt-pad-table td + td {
+  padding-left: 8px;
+}
+
+.nt-pad-table .num,
+.nt-pad-table input.num {
+  text-align: right;
+  width: 120px;
+}
+
+.nt-pad-table input {
+  width: 100%;
+  min-height: 28px;
+  padding: 3px 7px;
+}
+
+.nt-pad-table tfoot td {
+  border-bottom: none;
+  padding-top: 6px;
+  font-weight: 650;
+}
+
+.nt-pad-x {
+  width: 18px;
+  text-align: center;
+}
+
+.nt-pad-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.nt-pad-add {
+  align-self: flex-start;
+}
+
+.su-input.invalid {
+  border-color: var(--danger);
+}
+
+/* The first column's header: its name, with the line markers as a legend on the right. */
+.pl-head-marks {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding-right: 6px;
+}
+
+.pl-mark.legend {
+  cursor: help;
+  padding-right: 0;
+  min-width: 18px;
+  color: var(--ink-3);
+}
+
+.pl-mark.legend:hover {
+  background: transparent;
+  color: var(--accent);
+}

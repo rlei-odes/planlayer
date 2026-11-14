@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api, STATUS_LABEL, type Home, type Me, type MyNotes, type MyThread, type RoundWork, type Status, type Transfer } from './api'
-import TransferLine from './TransferLine'
+import { TransferDecision, TransferLine } from './Transfers'
 
 // The start page (ADR 0021): a greeting, the user's open tasks (transfers to accept, note tasks),
 // the cost centers they plan in each open round with the sheets to fill in, their own
@@ -54,8 +54,6 @@ export default function HomePage({
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  const [declining, setDeclining] = useState<number | null>(null)
-  const [reason, setReason] = useState('')
   const [now] = useState(() => new Date())
   const readsNotes = me.is_controller || me.is_viewer || me.reads_cost_centers
 
@@ -69,18 +67,16 @@ export default function HomePage({
   }, [readsNotes, onChanged])
   useEffect(load, [load])
 
-  async function decide(t: Transfer, accept: boolean) {
+  async function decide(t: Transfer, accept: boolean, reason?: string) {
     setBusy(true)
     setError(null)
     try {
-      await api.decideTransfer(t.transfer_id, accept, accept ? undefined : reason)
+      await api.decideTransfer(t.transfer_id, accept, reason)
       setMessage(
         accept
           ? `${t.person_name ?? t.title} now plans with ${t.to_code}${t.starts ? ` from ${DAY.format(new Date(t.starts))}` : ''}.`
           : `Transfer of ${t.person_name ?? t.title} declined; it stays with ${t.from_code}.`,
       )
-      setDeclining(null)
-      setReason('')
       load()
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
@@ -140,32 +136,7 @@ export default function HomePage({
               <li key={`t${t.transfer_id}`} className="hm-task">
                 <span className="hm-kind transfer">Transfer to accept</span>
                 <TransferLine t={t} />
-                {declining === t.transfer_id ? (
-                  <span className="tr-actions">
-                    <input
-                      className="su-input"
-                      placeholder="Reason (optional)"
-                      value={reason}
-                      autoFocus
-                      onChange={(e) => setReason(e.target.value)}
-                    />
-                    <button type="button" className="su-btn ghost sm" onClick={() => setDeclining(null)}>
-                      Cancel
-                    </button>
-                    <button type="button" className="su-btn sm danger" disabled={busy} onClick={() => void decide(t, false)}>
-                      Decline
-                    </button>
-                  </span>
-                ) : (
-                  <span className="tr-actions">
-                    <button type="button" className="su-btn ghost sm" disabled={busy} onClick={() => setDeclining(t.transfer_id)}>
-                      Decline…
-                    </button>
-                    <button type="button" className="su-btn primary sm" disabled={busy} onClick={() => void decide(t, true)}>
-                      Accept
-                    </button>
-                  </span>
-                )}
+                <TransferDecision t={t} busy={busy} onDecide={(x, accept, reason) => void decide(x, accept, reason)} />
               </li>
             ))}
             {approvals.map((w) => (

@@ -1,0 +1,284 @@
+/* Transfers of positions (tr-, ADR 0021): the dialog and the lists of transfers. */
+
+/* --- Transfers of positions (ADR 0021) -------------------------------------------------------- */
+
+.tr-dialog {
+  width: min(760px, 100%);
+}
+
+.tr-body {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding-top: 18px;
+  padding-bottom: 18px;
+}
+
+.tr-target {
+  max-width: 420px;
+}
+
+.tr-warn {
+  font-size: 12px;
+  color: var(--warn);
+}
+
+.tr-kinds {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
+}
+
+.tr-kind {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 16px 18px 18px;
+  border: 1.5px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s,
+    background 0.15s;
+}
+
+.tr-kind:hover {
+  border-color: var(--accent-2);
+}
+
+.tr-kind[aria-checked='true'] {
+  border-color: var(--accent);
+  background: var(--accent-tint);
+  box-shadow: 0 0 0 3px rgb(36 70 168 / 12%);
+}
+
+.tr-kind strong {
+  font-size: 14px;
+}
+
+.tr-kind > span:last-child {
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--ink-2);
+}
+
+.tr-check {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 18px;
+  height: 18px;
+  border: 1.5px solid var(--ink-3);
+  border-radius: 50%;
+  background: var(--surface);
+}
+
+.tr-kind[aria-checked='true'] .tr-check {
+  border-color: var(--accent);
+  background: radial-gradient(circle, var(--accent) 0 4.5px, var(--surface) 5px);
+}
+
+/* The schematic: solid where the person counts, dashed where they don't. */
+.tr-schema {
+  width: 100%;
+  max-width: 260px;
+  height: auto;
+  margin: 4px 0 8px;
+}
+
+.tr-schema .tr-solid {
+  fill: var(--accent);
+  transition:
+    width 0.25s ease,
+    x 0.25s ease;
+}
+
+.tr-schema .tr-to .tr-solid {
+  fill: var(--accent-2);
+}
+
+.tr-schema .tr-outline {
+  fill: none;
+  stroke: var(--ink-3);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+}
+
+.tr-schema .tr-arrow line,
+.tr-schema .tr-arrow path {
+  fill: none;
+  stroke: var(--ink-2);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.tr-schema .tr-arrow .tr-tick {
+  stroke: var(--line);
+  stroke-width: 1;
+  stroke-dasharray: 2 3;
+}
+
+.tr-months {
+  gap: 8px;
+}
+
+.tr-month-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.tr-month {
+  height: 34px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.tr-month:hover:not(:disabled) {
+  border-color: var(--accent-2);
+}
+
+.tr-month[aria-checked='true'] {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.tr-month:disabled {
+  color: var(--ink-3);
+  background: var(--line-2);
+  cursor: not-allowed;
+}
+
+@media (width < 640px) {
+  .tr-month-grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+}
+
+.tr-dialog .su-hint {
+  margin: 0;
+}
+
+.tr-foot .su-hint {
+  flex: 1 1 260px;
+}
+
+.tr-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 22px;
+  border-top: 1px solid var(--line);
+  background: var(--canvas);
+}
+
+.tr-pending {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+.tr-pending .su-pill {
+  height: 20px;
+  padding: 0 8px;
+}
+
+.tr-link {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tr-link:hover {
+  text-decoration: underline;
+}
+
+.tr-incoming {
+  margin-top: 16px;
+  border-left: 3px solid var(--accent);
+}
+
+.tr-list,
+.hm-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.tr-list > li,
+.hm-task {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  padding: 12px 0;
+  border-top: 1px solid var(--line-2);
+}
+
+.tr-list > li:first-child,
+.hm-task:first-child {
+  border-top: 0;
+}
+
+.tr-line {
+  flex: 1 1 360px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.tr-who strong {
+  font-weight: 600;
+}
+
+.tr-route {
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+
+.tr-arrow-txt {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.tr-note {
+  font-size: 12.5px;
+  font-style: italic;
+  color: var(--ink-2);
+}
+
+.tr-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.tr-actions .su-input {
+  width: 220px;
+}

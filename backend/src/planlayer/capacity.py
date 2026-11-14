@@ -28,22 +28,20 @@ from planlayer.domain.spreading import Profile, spread
 from planlayer.domain.workflow import EDITABLE, RoundStatus, Status
 from planlayer.notes import Marker
 from planlayer.notes import markers as note_markers
-from planlayer.planning import (
+from planlayer.planning import LineSpread, comparison_columns, cost_values
+from planlayer.rounds import Grain, NotFoundError, RoundRef, fiscal_periods, get_round
+from planlayer.sheet import (
     MONTHS,
     Cell,
     ComparisonColumn,
     Conflict,
     ConflictError,
     EditError,
-    LineSpread,
     LockedError,
-    _comparisons,
-    _locked,
-    _parse,
-    _values,
+    SheetContext,
+    locked_error,
+    parse_amount,
 )
-from planlayer.planning import _Context as _SheetContext
-from planlayer.rounds import Grain, NotFoundError, RoundRef, fiscal_periods, get_round
 from planlayer.store.bulk import insert_all
 from planlayer.store.schema import (
     ACCOUNT,
@@ -353,7 +351,7 @@ def read_sheet(engine: Engine, user: User, version_code: str, cc_code: str) -> C
                 row = list(plan.get(key, [Cell(None, None)] * MONTHS))
                 row[: ctx.closed] = [Cell(c.value, None) for c in cells[: ctx.closed]]
                 plan[key] = row
-        columns, amounts = _comparisons(conn, _sheet_context(ctx))
+        columns, amounts = comparison_columns(conn, _sheet_context(ctx))
         compared = _hour_comparisons(conn, ctx)
         ids = {wc for wc, _ in lines} | {at for _, at in lines}
         meta = {
@@ -385,7 +383,9 @@ def read_sheet(engine: Engine, user: User, version_code: str, cc_code: str) -> C
             ).all()
         )
         if ctx.closed:  # a credit's closed months are the cost center's actuals on its account
-            actual = _values(conn, ctx.actuals_id, ctx.cost_center_id, ctx.periods[: ctx.closed])
+            actual = cost_values(
+                conn, ctx.actuals_id, ctx.cost_center_id, ctx.periods[: ctx.closed]
+            )
             for code, account_id in account_ids.items():
                 months = list(credits.get(code, [None] * MONTHS))
                 booked_credit = actual.get(account_id)
@@ -494,9 +494,9 @@ def read_sheet(engine: Engine, user: User, version_code: str, cc_code: str) -> C
     return sheet
 
 
-def _sheet_context(ctx: _Context) -> _SheetContext:
+def _sheet_context(ctx: _Context) -> SheetContext:
     """The cost center sheet's context for the same cost center, for its comparison columns."""
-    return _SheetContext(
+    return SheetContext(
         ctx.round,
         ctx.actuals_id,
         ctx.cost_center_id,
@@ -682,7 +682,7 @@ def _run(engine: Engine, actor: User, work: Callable[[Connection], None]) -> str
         with unit_of_work(engine, actor, batch_id) as conn:
             work(conn)
     except DBAPIError as e:
-        locked = _locked(e)
+        locked = locked_error(e)
         if locked is None:
             raise
         raise locked from None
@@ -786,7 +786,7 @@ def apply_edits(
                 cell = (key, ctx.periods[m])
                 if cell not in writes and current.get(cell) != e.expected[m]:
                     conflicts.append(Conflict(label, m))
-            value = _parse(e.value)
+            value = parse_amount(e.value)
             if value is not None and value < 0:
                 raise EditError(f"{label}: hours can't be negative")
             _keep(conn, ctx, line, actor)

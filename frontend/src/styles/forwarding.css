@@ -1,0 +1,134 @@
+/* The cost forwarding page (fw-, ADR 0018). */
+
+.fw .ink-2 {
+  color: var(--ink-2);
+}
+
+.fw-empty ul {
+  margin: 6px 0 0;
+  padding-left: 20px;
+  color: var(--ink-2);
+  line-height: 1.7;
+}
+
+.fw-list tbody tr {
+  cursor: pointer;
+}
+
+.fw-list tbody tr.fw-current td {
+  background: var(--accent-tint);
+}
+
+.fw-editor {
+  margin-top: 14px;
+}
+
+.fw-editor h3 {
+  margin-bottom: 12px;
+}
+
+.fw-fields {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.fw-grid {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+
+.fw-code .su-input {
+  width: 110px;
+}
+
+.fw-name {
+  flex: 1 1 220px;
+}
+
+.fw-source {
+  flex: 1 1 280px;
+}
+
+.fw-methods {
+  align-self: flex-start;
+}
+
+.fw-num {
+  width: 120px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.fw-unit {
+  width: 140px;
+}
+
+.fw-accounts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 12px;
+}
+
+.fw-account {
+  display: flex;
+  gap: 6px;
+}
+
+.fw-account .su-input:last-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.fw-acc-code {
+  width: 150px;
+  font-family: var(--mono);
+}
+
+.fw-small {
+  font-size: 12px;
+  margin: 8px 0 0;
+}
+
+.fw-receivers {
+  margin-top: 14px;
+  box-shadow: none;
+}
+
+.fw-receivers td {
+  vertical-align: middle;
+}
+
+.fw-receivers .fw-add td {
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+.fw-receivers tfoot td {
+  font-weight: 600;
+  border-top: 1px solid var(--line);
+  padding: 8px 14px;
+}
+
+.fw-receivers tfoot .num,
+.fw-receivers .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.fw-over {
+  color: var(--danger);
+}
+
+.fw-delete {
+  margin-left: auto;
+}
+
+/* Charged by cost forwarding (ADR 0018): read only, a cost from another cost center. */
+.pv-form.charged {
+  background: var(--accent-tint);
+  color: var(--accent-ink);
+}
