@@ -333,6 +333,14 @@ FTE and headcount per cost center, staff type and category, as month-end levels,
   - [ ] Undo an accepted transfer (restore the original), and change its date on either side.
   - [ ] W-15 offers "apply as a transfer from <date>" when HR's sync shows a position under another cost center; personnel costs (W-7) split at the date.
   - [ ] E-mail the receiving side when a transfer is proposed, and the sender when it is decided.
+- [ ] **W-18 Confidential personnel data, before salaries (W-7).** Decide (ADR) how pay is kept from people who may read a cost center but not its pay:
+  - a separate right to read pay (an HR-confidential flag on accounts or on the salary tables), enforced by row-level security like `cost_center_access`; the Viewer role and approvers don't get it by default;
+  - small cells: a personnel account on a cost center with one or two people reveals a salary to every reader of the sheet, the published rows and the downloads; mask or aggregate below a minimum headcount;
+  - the change logs (`workforce_position_log`, `change_log`) hold full rows and have no row-level security; only the app reads them today, filtered by actor;
+  - `planlayer_out` has no row-level security: whatever is published, BI users with access to the schema read;
+  - reads with the system user's rights (a transfer shows the receiver the person) must never include pay;
+  - free text (notes, descriptions, item lists) can carry pay whatever the rules say;
+  - encryption at rest for pay columns (`pgcrypto`, key outside the database) against DBAs, backups and dumps, at the cost of sorting, summing and indexing in the database.
 - [ ] **W-16 Number prefix:** Planlayer's position numbers start with `N`; if a customer's HR numbers do too, make the prefix a setting.
 
 ### MCP access (after v1)
