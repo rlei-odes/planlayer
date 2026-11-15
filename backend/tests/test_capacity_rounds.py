@@ -68,7 +68,7 @@ def budget(client: TestClient) -> TestClient:
     """Budget 2025 in setup, CC1 productive, the lathe planned at 100 hours a month."""
     body = {"code": B, "name": "Budget 2025", "kind": "budget", "fiscal_year": 2025}
     assert client.post("/api/rounds", json=body).status_code == 200
-    assert save(client, B, productive_cost_centers=["CC1"]).status_code == 200
+    assert save(client, B, capacity_work_centers=["CC1"]).status_code == 200
     return client
 
 

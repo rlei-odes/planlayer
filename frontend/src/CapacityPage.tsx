@@ -16,6 +16,7 @@ import {
 } from './api'
 import { RedoIcon, UndoIcon } from './icons'
 import { headerWithMarks, noteMark, type H } from './lineMarks'
+import CapacityWorkforce from './CapacityWorkforce'
 import NotesPanel from './NotesPanel'
 import Select, { type Option } from './Select'
 import { byColumn, isClosed, monthsOf, periodColumns, quarterly, span, type Layout } from './periods'
@@ -47,13 +48,17 @@ function errorText(e: unknown): string {
 
 const lineKey = (r: CapacityRow) => `${r.work_center_code ?? ''}|${r.activity_type_code}`
 
-function editable(row: CapacityRow | undefined, prop: string, layout: Layout): boolean {
+/** Whether a cell takes typing. Hours come from the positions on a staffed line, and aren't
+ * typed at all where the cost center's hours aren't (``typed`` off, ADR 0027). */
+function editable(row: CapacityRow | undefined, prop: string, layout: Layout, typed: boolean): boolean {
   if (!row || row.kind !== 'line' || !row.editable) return false
-  if (prop === COL_RATE || prop === COL_FY) return true
+  if (prop === COL_RATE) return true
+  if (row.staffed || !typed) return false
+  if (prop === COL_FY) return true
   return monthsOf(prop) !== null && !isClosed(prop, layout)
 }
 
-function cellKind(row: CapacityRow | undefined, prop: string, layout: Layout, nComp: number): string {
+function cellKind(row: CapacityRow | undefined, prop: string, layout: Layout, nComp: number, typed: boolean): string {
   if (!row) return ''
   const comparison = /^c\d+$/.test(prop)
   const last = prop === comparisonProp(nComp - 1) ? ' pl-cmp-last' : ''
@@ -65,7 +70,7 @@ function cellKind(row: CapacityRow | undefined, prop: string, layout: Layout, nC
   if (comparison) return `pl-cmp${last}`
   if (prop === COL_LINE) return ''
   if (isClosed(prop, layout)) return 'pl-act'
-  const kind = editable(row, prop, layout) ? 'pl-edit' : 'pl-plain'
+  const kind = editable(row, prop, layout, typed) ? 'pl-edit' : row.staffed && prop !== COL_RATE ? 'cp-staffed' : 'pl-plain'
   return prop === COL_FY ? `${kind} pl-total` : kind
 }
 
@@ -88,10 +93,12 @@ function spreadText(row: CapacityRow): string {
   }
 }
 
+/** The line's badge: where its hours come from, and how its year spreads. */
 function badgeLabel(row: CapacityRow): string {
-  if (row.spread === 'profile') return 'Hours · season'
-  if (row.spread === 'even' || row.fallback) return 'Hours · even'
-  return 'Hours · last year'
+  const source = row.staffed ? 'Workforce' : 'Hours'
+  if (row.spread === 'profile') return `${source} · season`
+  if (row.spread === 'even' || row.fallback) return `${source} · even`
+  return `${source} · last year`
 }
 
 function spreadOf(key: string): LineSpread | null {
@@ -132,7 +139,9 @@ function lineCell(h: H, row: CapacityRow | undefined, profiles: ProfileRef[], qu
   const label = badgeLabel(row)
   const profile = row.spread === 'profile' ? profiles.find((p) => p.code === row.profile) : undefined
   const classes = `pv-form monthly${row.chosen_spread ? ' chosen' : ''}`
-  const title = `${label}: a year total ${spreadText(row)}.${row.chosen_spread ? ' Chosen for this line.' : ''}`
+  const title = row.staffed
+    ? `Hours from the positions; their year ${spreadText(row)}.${row.chosen_spread ? ' Chosen for this line.' : ''}`
+    : `${label}: a year total ${spreadText(row)}.${row.chosen_spread ? ' Chosen for this line.' : ''}`
   const badge = row.editable
     ? h('button', { type: 'button', class: `${classes} pl-spread`, 'data-line': lineKey(row), 'aria-label': `How ${row.work_center_code} spreads: ${label}` }, label)
     : h('span', { class: classes }, label)
@@ -180,6 +189,8 @@ export default function CapacityPage({
   // The line whose notes are open beside the sheet (ADR 0017), by its line key.
   const [notesFor, setNotesFor] = useState<{ key: string; thread: number | null } | null>(null)
   const [adding, setAdding] = useState(false)
+  // Cost centers with hours from positions have a second tab (ADR 0027).
+  const [tab, setTab] = useState<'sheet' | 'workforce'>('sheet')
   // Undo (ADR 0010): the change batches of this visit to the sheet, newest last. Undoing a batch
   // writes a new one, which goes on the other stack, so redo is undoing the undo.
   const [undoStack, setUndoStack] = useState<string[]>([])
@@ -223,6 +234,7 @@ export default function CapacityPage({
   const closed = sheet?.closed_months ?? 0
   const layout = useMemo<Layout>(() => ({ quarters, closed }), [quarters, closed])
   const forecast = sheet?.version_kind === 'forecast'
+  const typed = sheet?.typed_hours ?? true
 
   const columns = useMemo(() => {
     const periods = sheet?.periods ?? []
@@ -232,9 +244,9 @@ export default function CapacityPage({
       name,
       size,
       columnProperties: () => ({ class: `pl-head ${headerClass}${title ? ' pl-head-noted' : ''}`, title }),
-      readonly: ({ rowIndex }: { rowIndex: number }) => !editable(sheet?.rows[rowIndex], prop, layout),
+      readonly: ({ rowIndex }: { rowIndex: number }) => !editable(sheet?.rows[rowIndex], prop, layout, typed),
       cellProperties: ({ rowIndex }: { rowIndex: number }) => ({
-        class: [prop === COL_LINE ? 'pl-acc' : 'pl-num', cellKind(sheet?.rows[rowIndex], prop, layout, nComp)].join(' '),
+        class: [prop === COL_LINE ? 'pl-acc' : 'pl-num', cellKind(sheet?.rows[rowIndex], prop, layout, nComp, typed)].join(' '),
       }),
     })
     const yearTitle =
@@ -256,10 +268,11 @@ export default function CapacityPage({
         column(c.prop, c.label, layout.quarters ? 112 : 92, c.closed ? 'pl-head-act' : ''),
       ),
     ]
-  }, [sheet, profiles, layout, forecast])
+  }, [sheet, profiles, layout, forecast, typed])
 
   const sheetWidth = columns.reduce((n, c) => n + c.size, 0) + 2 + SCROLLBAR
-  const hasSheet = sheet !== null
+  const staffTab = tab === 'workforce' && units?.find((u) => u.code === unit)?.staff_hours === true
+  const hasSheet = sheet !== null && !staffTab
   useEffect(() => {
     onWidth(hasSheet ? sheetWidth : null)
     return () => onWidth(null)
@@ -292,7 +305,7 @@ export default function CapacityPage({
     const refused: string[] = []
     for (const { rowIndex, prop, raw } of changes) {
       const row = sheet.rows[rowIndex]
-      if (!row || !editable(row, prop, layout)) continue
+      if (!row || !editable(row, prop, layout, typed)) continue
       const value = parse(String(raw ?? ''))
       if (value === undefined || (prop === COL_RATE && value === null)) {
         refused.push(`${row.work_center_code}: “${String(raw)}” is not ${prop === COL_RATE ? 'a rate' : 'a number of hours'}`)
@@ -432,7 +445,7 @@ export default function CapacityPage({
     if (!sheet) return
     const rowIndex = sheet.rows.findIndex((r) => r.kind === 'line' && lineKey(r) === key)
     const row = sheet.rows[rowIndex]
-    if (!row || !editable(row, COL_FY, layout)) throw new Error('this line’s hours can’t be changed here')
+    if (!row || !editable(row, COL_FY, layout, typed)) throw new Error('this line’s hours can’t be changed here')
     await save([{ rowIndex, prop: COL_FY, raw: total }])
   }
 
@@ -487,8 +500,23 @@ export default function CapacityPage({
     ...(controller ? [{ value: INACTIVE, label: 'Set inactive in this round', hint: 'line' }] : []),
   ]
 
+  const tabs = current?.staff_hours ? (
+    <div className="seg" role="tablist" aria-label="Capacity">
+      {(
+        [
+          ['sheet', 'Work centers'],
+          ['workforce', 'Workforce'],
+        ] as const
+      ).map(([value, label]) => (
+        <button key={value} type="button" role="tab" aria-selected={tab === value} aria-pressed={tab === value} onClick={() => setTab(value)}>
+          {label}
+        </button>
+      ))}
+    </div>
+  ) : null
+
   return (
-    <div className="su pl" style={sheet ? { maxWidth: sheetWidth } : undefined}>
+    <div className="su pl" style={hasSheet ? { maxWidth: sheetWidth } : undefined}>
       <div className="pl-head">
         <div className="pl-title">
           <div className="su-eyebrow">Capacity{sheet ? ` · ${sheet.version_name}` : ''}</div>
@@ -512,7 +540,7 @@ export default function CapacityPage({
             }))}
           />
           <div className="pl-sub">
-            Hours its work centers run, and what they credit the cost center
+            {staffTab ? 'Productive hours of its positions' : 'Hours its work centers run, and what they credit the cost center'}
             {sheet && ` · fiscal year ${sheet.fiscal_year}`}
             {sheet && forecast && closed > 0 && ` · forecast ${closed}+${12 - closed}`}
             {sheet && quarters && ' · by quarter'}
@@ -520,9 +548,10 @@ export default function CapacityPage({
           </div>
         </div>
         <div className="pl-actions">
+          {tabs}
           {current && <span className={`su-pill ${current.status}`}>{STATUS_LABEL[current.status]}</span>}
           {sheet?.deadline && <span className="su-pill neutral">Due {sheet.deadline}</span>}
-          {open && (
+          {open && !staffTab && (
             <span className="pl-undo" role="group" aria-label="Undo and redo">
               <button
                 type="button"
@@ -546,7 +575,7 @@ export default function CapacityPage({
               </button>
             </span>
           )}
-          {open && (
+          {open && !staffTab && (
             <button type="button" className="su-btn" aria-expanded={adding} onClick={() => setAdding((a) => !a)}>
               <span className="pl-plus">+</span> Add line
             </button>
@@ -559,13 +588,24 @@ export default function CapacityPage({
         </div>
       </div>
 
-      {sheet?.lock_reason && (
+      {staffTab && (
+        <CapacityWorkforce
+          key={unit}
+          version={version}
+          unit={unit}
+          onChanged={() => {
+            load()
+            loadUnits()
+          }}
+        />
+      )}
+      {!staffTab && sheet?.lock_reason && (
         <div className="su-note pl-note">
           <strong>Read only:</strong> {sheet.lock_reason}.
         </div>
       )}
-      {message && <div className={`su-note ${message.kind} pl-note`}>{message.text}</div>}
-      {adding && sheet && (
+      {!staffTab && message && <div className={`su-note ${message.kind} pl-note`}>{message.text}</div>}
+      {!staffTab && adding && sheet && (
         <AddLine
           sheet={sheet}
           onCancel={() => setAdding(false)}
@@ -581,7 +621,7 @@ export default function CapacityPage({
         />
       )}
 
-      {sheet && sheet.rows.length === 0 ? (
+      {staffTab ? null : sheet && sheet.rows.length === 0 ? (
         <div className="su-card empty-state">
           <h3>No work centers yet</h3>
           <p className="su-hint">
@@ -630,9 +670,16 @@ export default function CapacityPage({
               <span className="pv-key">
                 <i className="k-credit" /> credit to the cost center
               </span>
+              {sheet.rows.some((r) => r.staffed) && (
+                <span className="pv-key">
+                  <i className="k-staffed" /> hours from positions
+                </span>
+              )}
               {open && (
                 <span className="pl-help">
-                  {closed > 0
+                  {!typed
+                    ? 'Hours from the positions.'
+                    : closed > 0
                     ? 'Hours per open month, or a year total in “Forecast”: the full year, of which the open months take what the actual hours leave.'
                     : `Hours per ${quarters ? 'quarter' : 'month'}, or a year total in “Plan” that spreads as the line’s badge says.`}{' '}
                   Rates are per hour. The credits appear on the cost center’s planning sheet. Ctrl+Z undoes.
@@ -643,7 +690,7 @@ export default function CapacityPage({
         )
       )}
 
-      {sheet && sheet.inactive.length > 0 && (
+      {!staffTab && sheet && sheet.inactive.length > 0 && (
         <div className="su-card cp-inactive">
           <h3>Inactive in this round</h3>
           <ul>
@@ -672,7 +719,7 @@ export default function CapacityPage({
             activity_type: notesRow.activity_type_code,
           }}
           title={`${notesRow.work_center_code} ${notesRow.work_center_name ?? ''} · ${notesRow.activity_type_name}`}
-          canInsert={editable(notesRow, COL_FY, layout)}
+          canInsert={editable(notesRow, COL_FY, layout, typed)}
           focusThread={notesOpen.thread}
           onInsertTotal={(total) => insertYear(notesOpen.key, total)}
           onChanged={load}

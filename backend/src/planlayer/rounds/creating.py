@@ -211,6 +211,12 @@ def create_round(
             from planlayer.workforce import carry as carry_workforce
 
             carry_workforce(conn, source, get_round(conn, code), planned, carry.values)
+        if carry.capacity:
+            # After the workforce: hours from positions follow them. Imported here: capacity
+            # builds on this module.
+            from planlayer.capacity import carry_staff
+
+            carry_staff(conn, source, get_round(conn, code), actor.login)
         if carry.setup:
             # The rules come with the setup, the positions' pay with the positions. Imported
             # here: personnel costs build on workforce planning.

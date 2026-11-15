@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import Connection, Engine, select
+from sqlalchemy import Connection, Engine, delete, select, tuple_
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import DBAPIError
 
@@ -35,6 +35,7 @@ from planlayer.store.schema import (
     NO_ENTITY,
     WORK_CENTER,
     capacity_line,
+    capacity_unit,
     fact_capacity,
     member,
     round_member,
@@ -86,12 +87,41 @@ class _Line:
     profile_id: int | None
     stored: bool  # kept with the round in capacity_line
     added: bool = False  # a work center entered by hand: no history, so it spreads evenly
+    staffed: bool = False  # its hours come from the cost center's positions (ADR 0027)
 
     @property
     def default_basis(self) -> Basis:
         """How a year total spreads unless the line chooses: like last year's hours, or evenly
-        for a work center added by hand (e.g. a machine still to be bought)."""
-        return "even" if self.added else "reference"
+        for a work center added by hand (e.g. a machine still to be bought) and for hours from
+        positions."""
+        return "even" if self.added or self.staffed else "reference"
+
+
+@dataclass
+class _Unit:
+    """Where a productive cost center's hours come from (ADR 0027)."""
+
+    typed_hours: bool = True  # typed per line
+    staff_hours: bool = False  # from its positions
+    default_line: tuple[int, int] | None = None
+    default_percent: Decimal | None = None
+
+
+def _unit(conn: Connection, version_id: int, cc_id: int) -> _Unit:
+    found = conn.execute(
+        select(capacity_unit).where(
+            capacity_unit.c.version_id == version_id, capacity_unit.c.cost_center_id == cc_id
+        )
+    ).first()
+    if found is None:
+        return _Unit()
+    wc, at = found.default_work_center_id, found.default_activity_type_id
+    return _Unit(
+        found.typed_hours,
+        found.staff_hours,
+        None if wc is None or at is None else (wc, at),
+        found.default_percent,
+    )
 
 
 def productive(conn: Connection, version_id: int) -> set[int]:
@@ -163,6 +193,7 @@ def _lines(conn: Connection, ctx: _Context) -> dict[tuple[int, int], _Line]:
             r.basis,
             r.profile_id,
             True,
+            staffed=r.staffed,
         )
         for r in conn.execute(
             select(capacity_line).where(
@@ -336,3 +367,48 @@ def _keep(conn: Connection, ctx: _Context, line: _Line, actor: User) -> None:
         .on_conflict_do_nothing()
     )
     line.stored = True
+
+
+def _write_hours(
+    conn: Connection,
+    ctx: _Context,
+    writes: dict[tuple[tuple[int, int], date], Decimal | None],
+    current: dict[tuple[tuple[int, int], date], int],
+) -> None:
+    f = fact_capacity
+    deletes = [
+        (wc, at, p) for ((wc, at), p), v in writes.items() if v is None and ((wc, at), p) in current
+    ]
+    if deletes:
+        conn.execute(
+            delete(f).where(
+                f.c.version_id == ctx.version_id,
+                f.c.layer_id == BASE_LAYER,
+                f.c.measure_id == HOURS,
+                f.c.dim_cost_center == ctx.cost_center_id,
+                tuple_(f.c.dim_work_center, f.c.dim_activity_type, f.c.period).in_(deletes),
+            )
+        )
+    upserts = [
+        {
+            "version_id": ctx.version_id,
+            "layer_id": BASE_LAYER,
+            "measure_id": HOURS,
+            "period": p,
+            "dim_entity": ctx.entity_id,
+            "dim_cost_center": ctx.cost_center_id,
+            "dim_work_center": wc,
+            "dim_activity_type": at,
+            "amount": v,
+        }
+        for ((wc, at), p), v in writes.items()
+        if v is not None
+    ]
+    if upserts:
+        stmt = pg_insert(f).values(upserts)
+        conn.execute(
+            stmt.on_conflict_do_update(
+                index_elements=list(f.primary_key.columns),
+                set_={"amount": stmt.excluded.amount, "row_version": f.c.row_version + 1},
+            )
+        )

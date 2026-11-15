@@ -41,6 +41,10 @@ export type CapacityUnit = S.CapacityUnitOut
 export type CapacitySheet = S.CapacitySheetOut
 export type CapacityRow = S.CapacityRowOut
 export type HoursEdit = S.HoursEditIn
+// Capacity from the workforce (ADR 0027).
+export type Staff = S.StaffOut
+export type StaffPosition = S.StaffPositionOut
+export type LineRef = S.LineRefIO
 // Workforce planning (ADR 0020).
 export type WorkforceSheet = S.WorkforceSheetOut
 export type WorkforceRow = S.WorkforceRowOut
@@ -219,6 +223,11 @@ export const api = {
   },
   addLine: (version: string, code: string, line: S.LineIn) =>
     post(`${cap(version, code)}/lines`, line).then((r) => json<CapacitySheet>(r)),
+  capacityStaff: (version: string, code: string) => fetch(`${cap(version, code)}/workforce`).then((r) => json<Staff>(r)),
+  saveStaffDefaults: (version: string, code: string, body: S.StaffDefaultsIn) =>
+    send('PUT', `${cap(version, code)}/workforce`, body).then((r) => json<Staff>(r)),
+  saveStaffPosition: (version: string, code: string, positionId: number, body: S.StaffPositionIn) =>
+    send('PUT', `${cap(version, code)}/workforce/positions/${positionId}`, body).then((r) => json<Staff>(r)),
   workforceSheet: (version: string, code: string) => fetch(wf(version, code)).then((r) => json<WorkforceSheet>(r)),
   async workforceEdit(version: string, code: string, edits: WorkforceEdit[]): Promise<WorkforceSheet> {
     const response = await post(`${wf(version, code)}/edits`, { edits })

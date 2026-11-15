@@ -10,6 +10,7 @@ from sqlalchemy import (
     Connection,
     Engine,
     Row,
+    delete,
     func,
     insert,
     select,
@@ -17,6 +18,7 @@ from sqlalchemy import (
 )
 
 from planlayer.access import AccessError, User, cost_center_rights
+from planlayer.capacity import follow_positions
 from planlayer.domain.workflow import EDITABLE, Status
 from planlayer.domain.workforce import (
     PositionError,
@@ -34,6 +36,7 @@ from planlayer.store.schema import (
     COST_CENTER,
     MODULE_WORKFORCE,
     app_user,
+    capacity_position,
     member,
     version,
     workforce_position,
@@ -332,6 +335,12 @@ def decide_transfer(
             wp = workforce_position
             new_id: int | None = None
             if t.kind == "full":
+                # Its line and productive share were the sending cost center's (ADR 0027).
+                conn.execute(
+                    delete(capacity_position).where(
+                        capacity_position.c.position_id == p.position_id
+                    )
+                )
                 conn.execute(
                     update(wp)
                     .where(wp.c.position_id == p.position_id)
@@ -377,6 +386,9 @@ def decide_transfer(
             write_rollup(conn, target)
             _close(conn, actor, t, "accepted", new_position_id=new_id)
         recompute(conn, target.round, actor.login, by_hr=actor.is_hr)
+        follow_positions(
+            conn, target.round, actor.login, {source.cost_center_id, target.cost_center_id}
+        )
 
     return _run(engine, actor, work)
 

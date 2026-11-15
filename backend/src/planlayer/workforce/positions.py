@@ -19,6 +19,7 @@ from sqlalchemy import (
 )
 
 from planlayer.access import AccessError, User
+from planlayer.capacity import follow_positions
 from planlayer.domain.workflow import EDITABLE
 from planlayer.domain.workforce import (
     Position,
@@ -256,6 +257,7 @@ def save_position(
             saved.append(position_id)
         write_rollup(conn, ctx)
         recompute(conn, ctx.round, actor.login, by_hr=actor.is_hr, touched={ctx.cost_center_id})
+        follow_positions(conn, ctx.round, actor.login, {ctx.cost_center_id})
 
     return _run(engine, actor, work), saved[0]
 
@@ -294,6 +296,7 @@ def delete_position(
             raise NotFoundError(f"position {position_id} not found on {cc_code}")
         write_rollup(conn, ctx)
         recompute(conn, ctx.round, actor.login, by_hr=actor.is_hr, touched={ctx.cost_center_id})
+        follow_positions(conn, ctx.round, actor.login, {ctx.cost_center_id})
 
     return _run(engine, actor, work)
 
@@ -337,6 +340,7 @@ def take_from_hr(engine: Engine, actor: User, version_code: str, cc_code: str) -
         added.append(_take_hr(conn, ctx, actor))
         if added[0]:
             recompute(conn, ctx.round, actor.login, by_hr=actor.is_hr, touched={ctx.cost_center_id})
+            follow_positions(conn, ctx.round, actor.login, {ctx.cost_center_id})
 
     return _run(engine, actor, work), added[0]
 
@@ -362,6 +366,7 @@ def take_all_from_hr(engine: Engine, actor: User, version_code: str) -> int:
         added.append(total)
         if total:
             recompute(conn, r, actor.login, by_hr=actor.is_hr)
+            follow_positions(conn, r, actor.login)
 
     _run(engine, actor, work)
     return added[0]

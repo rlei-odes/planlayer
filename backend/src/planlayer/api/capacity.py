@@ -34,6 +34,7 @@ class CapacityUnitOut(BaseModel):
     name: str
     status: Status
     can_write: bool
+    staff_hours: bool  # it plans hours from its positions: the workforce tab (ADR 0027)
 
 
 class CapacityRowOut(BaseModel):
@@ -53,6 +54,7 @@ class CapacityRowOut(BaseModel):
     profile: str | None
     fallback: bool
     editable: bool
+    staffed: bool  # lines: hours from the cost center's positions, read only (ADR 0027)
     account_code: str | None  # credit rows: the account credited; None when the type names none
     account_name: str | None
     notes: NotesMarkerOut | None = None  # lines: their notes in this round (ADR 0017)
@@ -92,6 +94,8 @@ class CapacitySheetOut(BaseModel):
     # A forecast's closed months: the first ``closed_months`` cells hold actual hours, read only.
     actuals_through: date | None
     closed_months: int
+    typed_hours: bool  # hours typed per line (ADR 0027)
+    staff_hours: bool  # hours from the cost center's positions
 
 
 class HoursEditIn(BaseModel):
@@ -158,6 +162,8 @@ def _sheet_out(s: capacity.CapacitySheet, batch_id: str | None = None) -> Capaci
         grain=s.grain,
         actuals_through=s.actuals_through,
         closed_months=s.closed_months,
+        typed_hours=s.typed_hours,
+        staff_hours=s.staff_hours,
         comparisons=[
             ComparisonOut(
                 kind=c.kind,
@@ -189,6 +195,7 @@ def _sheet_out(s: capacity.CapacitySheet, batch_id: str | None = None) -> Capaci
                 profile=r.profile,
                 fallback=r.fallback,
                 editable=r.editable,
+                staffed=r.staffed,
                 account_code=r.account_code,
                 account_name=r.account_name,
                 notes=notes_marker(r.notes),
@@ -326,3 +333,153 @@ def undo(
     except HANDLED as e:
         raise _errors(e) from None
     return _sheet_out(capacity.read_sheet(engine, user, version_code, cc_code), batch)
+
+
+# --- Hours from the workforce (ADR 0027) ---------------------------------------------------
+
+
+class StaffLineOut(BaseModel):
+    work_center_code: str
+    work_center_name: str
+    activity_type_code: str
+    activity_type_name: str
+    rate: str
+    hours: str | None  # what the positions give it in the open months
+
+
+class StaffPositionOut(BaseModel):
+    position_id: int
+    code: str
+    title: str
+    person_name: str | None
+    staff_type: str
+    entry_date: date | None
+    leave_date: date | None
+    contract_percent: str | None
+    productive_percent: str | None  # its own; null takes the default
+    work_center_code: str | None  # its own line; null takes the default
+    activity_type_code: str | None
+    hours: str | None  # in the open months
+
+
+class StaffOut(BaseModel):
+    cost_center_code: str
+    cost_center_name: str
+    lock_reason: str | None
+    fte_hours: str | None
+    typed_hours: bool
+    default_work_center_code: str | None
+    default_activity_type_code: str | None
+    default_percent: str | None
+    lines: list[StaffLineOut]
+    positions: list[StaffPositionOut]
+    batch_id: str | None = None
+
+
+class LineRefIO(BaseModel):
+    work_center_code: Annotated[str, Field(min_length=1)]
+    activity_type_code: Annotated[str, Field(min_length=1)]
+
+
+class StaffDefaultsIn(BaseModel):
+    line: LineRefIO | None
+    percent: str | None
+
+
+class StaffPositionIn(BaseModel):
+    """Null takes the cost center's default."""
+
+    line: LineRefIO | None
+    percent: str | None
+
+
+def _staff_out(v: capacity.StaffView, batch_id: str | None = None) -> StaffOut:
+    return StaffOut(
+        batch_id=batch_id,
+        cost_center_code=v.cost_center_code,
+        cost_center_name=v.cost_center_name,
+        lock_reason=v.lock_reason,
+        fte_hours=_s(v.fte_hours),
+        typed_hours=v.typed_hours,
+        default_work_center_code=v.default_work_center_code,
+        default_activity_type_code=v.default_activity_type_code,
+        default_percent=_s(v.default_percent),
+        lines=[
+            StaffLineOut(
+                work_center_code=x.work_center_code,
+                work_center_name=x.work_center_name,
+                activity_type_code=x.activity_type_code,
+                activity_type_name=x.activity_type_name,
+                rate=_rate_text(x.rate),
+                hours=_s(x.hours),
+            )
+            for x in v.lines
+        ],
+        positions=[
+            StaffPositionOut(
+                position_id=x.position_id,
+                code=x.code,
+                title=x.title,
+                person_name=x.person_name,
+                staff_type=x.staff_type,
+                entry_date=x.entry_date,
+                leave_date=x.leave_date,
+                contract_percent=_s(x.contract_percent),
+                productive_percent=_s(x.productive_percent),
+                work_center_code=x.work_center_code,
+                activity_type_code=x.activity_type_code,
+                hours=_s(x.hours),
+            )
+            for x in v.positions
+        ],
+    )
+
+
+def _codes(line: LineRefIO | None) -> tuple[str, str] | None:
+    return None if line is None else (line.work_center_code, line.activity_type_code)
+
+
+@router.get(V + "/{cc_code}/workforce", responses={404: {}})
+def staff(request: Request, user: CurrentUser, version_code: str, cc_code: str) -> StaffOut:
+    """The cost center's positions with their productive share, line and hours."""
+    try:
+        return _staff_out(capacity.read_staff(engine_of(request), user, version_code, cc_code))
+    except HANDLED as e:
+        raise _errors(e) from None
+
+
+@router.put(V + "/{cc_code}/workforce", responses={404: {}, 422: {}, 423: {}})
+def staff_defaults(
+    request: Request, user: CurrentUser, version_code: str, cc_code: str, body: StaffDefaultsIn
+) -> StaffOut:
+    """The default line and productive share of the cost center's positions; hours follow."""
+    engine = engine_of(request)
+    try:
+        batch = capacity.save_defaults(
+            engine, user, version_code, cc_code, _codes(body.line), body.percent
+        )
+        return _staff_out(capacity.read_staff(engine, user, version_code, cc_code), batch)
+    except HANDLED as e:
+        raise _errors(e) from None
+
+
+@router.put(
+    V + "/{cc_code}/workforce/positions/{position_id}", responses={404: {}, 422: {}, 423: {}}
+)
+def staff_position(
+    request: Request,
+    user: CurrentUser,
+    version_code: str,
+    cc_code: str,
+    position_id: int,
+    body: StaffPositionIn,
+) -> StaffOut:
+    """A position's own line and productive share; hours follow."""
+    engine = engine_of(request)
+    try:
+        batch = capacity.save_position(
+            engine, user, version_code, cc_code, position_id, _codes(body.line), body.percent
+        )
+        return _staff_out(capacity.read_staff(engine, user, version_code, cc_code), batch)
+    except HANDLED as e:
+        raise _errors(e) from None

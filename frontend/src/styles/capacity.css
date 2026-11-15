@@ -80,3 +80,45 @@ revo-grid.pl-revo .rgCell.cp-credit {
   gap: 8px;
   color: var(--ink-2);
 }
+
+/* --- Hours from the workforce (cw-, ADR 0027) ----------------------------------------------- */
+
+/* A line's hours from the positions: read only, like a total. */
+revo-grid.pl-revo .rgCell.cp-staffed {
+  background: var(--accent-tint);
+  color: var(--ink-2);
+}
+
+.pv-key .k-staffed {
+  background: var(--accent-tint);
+  border: 1px solid var(--line);
+}
+
+.cw-card {
+  margin-bottom: 14px;
+}
+
+.cw-w-line {
+  width: 320px;
+  max-width: 100%;
+}
+
+.cw-pct {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.cw-pct .su-input {
+  width: 72px;
+  text-align: right;
+}
+
+.cw-line {
+  min-width: 240px;
+}
+
+.cw-table tfoot td {
+  font-weight: 600;
+  border-top: 1px solid var(--line);
+}

@@ -311,6 +311,11 @@
   transform: translateX(14px);
 }
 
+.pc-switch:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 .pc-switch:focus-visible {
   outline: 2px solid var(--accent-2);
   outline-offset: 2px;

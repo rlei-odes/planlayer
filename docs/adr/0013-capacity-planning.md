@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Closes:** the design of K-1 and K-2
 - **Date:** 2026-11-10
-- **Amended by:** [0016](0016-capacity-in-rounds-and-forecasts.md): controllers prepare capacity in setup; hours carry with plan values; forecasts, quarters and comparison columns on the capacity sheet; planned hours are published
+- **Amended by:** [0016](0016-capacity-in-rounds-and-forecasts.md): controllers prepare capacity in setup; hours carry with plan values; forecasts, quarters and comparison columns on the capacity sheet; planned hours are published; [0027](0027-capacity-from-the-workforce.md): hours from the cost center's positions
 
 ## Context
 

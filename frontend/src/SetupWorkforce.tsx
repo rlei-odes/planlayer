@@ -75,8 +75,10 @@ export function Workforce({
                 setDraft({
                   ...draft,
                   workforce_mode: m.value === '' ? null : m.value,
-                  // Personnel costs come from positions: another mode turns them off.
+                  // Personnel costs and hours from the workforce come from positions: another mode
+                  // turns them off.
                   personnel_costs: m.value === 'positions' && !!draft.personnel_costs,
+                  capacity_workforce: m.value === 'positions' ? draft.capacity_workforce : [],
                 })
               }
             />
@@ -114,6 +116,17 @@ export function Workforce({
                   : ' An open round with personnel cost values keeps them; the save is refused.')}
             </span>
           </span>
+        </label>
+        <label className="su-field wf-fte-hours">
+          Hours per FTE a year
+          <input
+            className="su-input"
+            inputMode="decimal"
+            value={draft.fte_hours ?? ''}
+            placeholder="e.g. 1800"
+            onChange={(e) => setDraft({ ...draft, fte_hours: e.target.value.trim() === '' ? null : e.target.value })}
+          />
+          <span className="su-hint">Worked by a full-time position; the base of capacity from the workforce.</span>
         </label>
         </div>
       )}

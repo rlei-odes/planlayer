@@ -184,6 +184,8 @@ round_module = Table(
     Column("default_form", Text, nullable=False, server_default="monthly"),
     # Workforce planning's mode (ADR 0020): fte / headcount / both / positions.
     Column("mode", Text),
+    # Capacity planning (ADR 0027): the hours a full-time position works in the year.
+    Column("fte_hours", Numeric(7, 2)),
     PrimaryKeyConstraint("version_id", "module"),
 )
 
@@ -573,10 +575,85 @@ capacity_line = Table(
     Column("active", Boolean, nullable=False, server_default="true"),
     Column("basis", Text),  # NULL: like prior-year actual hours
     Column("profile_id", SmallInteger, ForeignKey("seasonality_profile.profile_id")),
+    # Its hours come from the cost center's positions (ADR 0027); kept by every recompute.
+    Column("staffed", Boolean, nullable=False, server_default="false"),
     Column("changed_by", Text),
     Column("changed_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     PrimaryKeyConstraint("version_id", "work_center_id", "activity_type_id"),
     _module_fk(),
+)
+
+
+def _line_fk(prefix: str) -> ForeignKeyConstraint:
+    """A capacity line of the round; removing the line clears the reference."""
+    return ForeignKeyConstraint(
+        ["version_id", f"{prefix}work_center_id", f"{prefix}activity_type_id"],
+        [
+            "capacity_line.version_id",
+            "capacity_line.work_center_id",
+            "capacity_line.activity_type_id",
+        ],
+        ondelete=f"SET NULL ({prefix}work_center_id, {prefix}activity_type_id)",
+    )
+
+
+# Where a productive cost center's hours come from in a round (ADR 0027): typed per line (work
+# centers), from its positions (workforce), or both. No row: typed only. With positions, the
+# line their hours go to and their productive share unless a position has its own.
+capacity_unit = Table(
+    "capacity_unit",
+    metadata,
+    Column("version_id", SmallInteger, nullable=False),
+    Column("module", Text, nullable=False, server_default=MODULE_CAPACITY),
+    Column("cost_center_id", Integer, ForeignKey("member.member_id"), nullable=False),
+    Column("typed_hours", Boolean, nullable=False, server_default="true"),
+    Column("staff_hours", Boolean, nullable=False, server_default="false"),
+    Column("default_work_center_id", Integer),
+    Column("default_activity_type_id", Integer),
+    Column("default_percent", Numeric(5, 2)),
+    Column("changed_by", Text),
+    Column("changed_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    PrimaryKeyConstraint("version_id", "cost_center_id"),
+    _module_fk(),
+    _line_fk("default_"),
+)
+
+# A position's productive share and its own line, where they differ from the cost center's.
+capacity_position = Table(
+    "capacity_position",
+    metadata,
+    Column(
+        "position_id",
+        Integer,
+        ForeignKey("workforce_position.position_id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column("version_id", SmallInteger, nullable=False),
+    Column("module", Text, nullable=False, server_default=MODULE_CAPACITY),
+    Column("cost_center_id", Integer, ForeignKey("member.member_id"), nullable=False),
+    Column("productive_percent", Numeric(5, 2)),
+    Column("work_center_id", Integer),
+    Column("activity_type_id", Integer),
+    Column("changed_by", Text),
+    Column("changed_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    _module_fk(),
+    _line_fk(""),
+)
+
+# Changes to capacity_unit and capacity_position, written by a trigger, as old and new row.
+capacity_staff_log = Table(
+    "capacity_staff_log",
+    metadata,
+    Column("id", BigInteger, primary_key=True),
+    Column("at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("actor", Text),
+    Column("batch_id", Text),
+    Column("op", Text, nullable=False),
+    Column("target", Text, nullable=False),  # the table changed
+    Column("version_id", SmallInteger, nullable=False),
+    Column("cost_center_id", Integer, nullable=False),
+    Column("old", JSONB),
+    Column("new", JSONB),
 )
 
 # Planned and actual hours (ADR 0001 shape): one column per dimension.

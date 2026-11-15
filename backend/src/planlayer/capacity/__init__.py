@@ -8,8 +8,11 @@ hours, a rate or a line's state recomputes the cost center's credits (hours x ra
 type and month, on the activity type's account) in the same transaction, so they share the
 request's change batch.
 
+A cost center's hours are typed per line, come from its positions (``staff``, ADR 0027), or
+both.
+
 The package's modules build on each other in this order: ``common``, ``credits``,
-``sheet``, ``edits``, ``rounds``. Names with a leading underscore are shared inside the
+``sheet``, ``staff``, ``edits``, ``rounds``. Names with a leading underscore are shared inside the
 package only."""
 
 from planlayer.capacity.common import productive as productive
@@ -26,3 +29,15 @@ from planlayer.capacity.sheet import CapacityUnit as CapacityUnit
 from planlayer.capacity.sheet import InactiveLine as InactiveLine
 from planlayer.capacity.sheet import read_sheet as read_sheet
 from planlayer.capacity.sheet import units as units
+from planlayer.capacity.staff import StaffLine as StaffLine
+from planlayer.capacity.staff import StaffRow as StaffRow
+from planlayer.capacity.staff import StaffView as StaffView
+from planlayer.capacity.staff import carry_staff as carry_staff
+from planlayer.capacity.staff import drop_sources as drop_sources
+from planlayer.capacity.staff import follow_positions as follow_positions
+from planlayer.capacity.staff import fte_hours as fte_hours
+from planlayer.capacity.staff import read_staff as read_staff
+from planlayer.capacity.staff import save_defaults as save_defaults
+from planlayer.capacity.staff import save_position as save_position
+from planlayer.capacity.staff import set_sources as set_sources
+from planlayer.capacity.staff import sources as sources

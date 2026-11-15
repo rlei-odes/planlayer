@@ -55,6 +55,7 @@ export type CapacityRowOut = {
   profile: string | null
   fallback: boolean
   editable: boolean
+  staffed: boolean
   account_code: string | null
   account_name: string | null
   notes?: NotesMarkerOut | null
@@ -81,6 +82,8 @@ export type CapacitySheetOut = {
   grain: "month" | "quarter"
   actuals_through: string | null
   closed_months: number
+  typed_hours: boolean
+  staff_hours: boolean
 }
 
 export type CapacityUnitOut = {
@@ -88,6 +91,7 @@ export type CapacityUnitOut = {
   name: string
   status: "not_started" | "in_progress" | "submitted" | "approved"
   can_write: boolean
+  staff_hours: boolean
 }
 
 export type CarryOverInInput = {
@@ -400,6 +404,11 @@ export type LineNotesOut = {
   threads: ThreadOut[]
   notepad: NotepadOut | null
   can_write: boolean
+}
+
+export type LineRefIO = {
+  work_center_code: string
+  activity_type_code: string
 }
 
 export type LineSpreadIO = {
@@ -1088,7 +1097,9 @@ export type SetupIO = {
   comparisons: ComparisonIO[]
   not_planned_accounts: string[]
   deadline: string | null
-  productive_cost_centers?: string[]
+  capacity_work_centers?: string[]
+  capacity_workforce?: string[]
+  fte_hours?: string | null
   planned_cost_centers?: string[] | null
   account_sets?: AccountSetIO[]
   grain?: "month" | "quarter"
@@ -1133,6 +1144,54 @@ export type SourceOut = {
 
 export type SpreadIn = {
   spread: LineSpreadIO | null
+}
+
+export type StaffDefaultsIn = {
+  line: LineRefIO | null
+  percent: string | null
+}
+
+export type StaffLineOut = {
+  work_center_code: string
+  work_center_name: string
+  activity_type_code: string
+  activity_type_name: string
+  rate: string
+  hours: string | null
+}
+
+export type StaffOut = {
+  cost_center_code: string
+  cost_center_name: string
+  lock_reason: string | null
+  fte_hours: string | null
+  typed_hours: boolean
+  default_work_center_code: string | null
+  default_activity_type_code: string | null
+  default_percent: string | null
+  lines: StaffLineOut[]
+  positions: StaffPositionOut[]
+  batch_id?: string | null
+}
+
+export type StaffPositionIn = {
+  line: LineRefIO | null
+  percent: string | null
+}
+
+export type StaffPositionOut = {
+  position_id: number
+  code: string
+  title: string
+  person_name: string | null
+  staff_type: string
+  entry_date: string | null
+  leave_date: string | null
+  contract_percent: string | null
+  productive_percent: string | null
+  work_center_code: string | null
+  activity_type_code: string | null
+  hours: string | null
 }
 
 export type StaffTypeOut = {

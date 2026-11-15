@@ -227,7 +227,7 @@ Mid-size manufacturer of industrial pumps and valves, ~400 employees.
     - [x] A walkthrough of `docs/scenarios/forecast-2026.md` with the user (quarter run; publish not yet walked).
     - [ ] Setup page redesign: in quarter grain, the entry-form defaults in step 3 speak of months ("Monthly" form, "planners type each month"): grey them out or present them as quarters.
     - [x] Account sets per round, assigned to cost center nodes or cost centers (nearest wins): sheets list the set's accounts, "add account" offers only them, the store refuses values outside ([ADR 0014](docs/adr/0014-preparing-a-round.md)).
-    - [x] The setup page's *Cost centers* tab: planned, account set, productive, prior-year actuals and the source round's plan per cost center; new and no longer delivered marked.
+    - [x] The setup page's *Cost centers* tab: planned, account set, productive (by work centers, by workforce), prior-year actuals and the source round's plan per cost center; new and no longer delivered marked.
     - [x] New rounds carry over by a checklist from a chosen round (default: the latest of the same kind), plan values optionally with an uplift, as one change batch; controllers prepare a round in setup without moving its workflow status.
     - [ ] Uplift per account group (today one percentage for all carried values).
     - [x] Carry planned hours (capacity) with the values: no uplift, credits recomputed from the new round's rates (ADR 0016).
@@ -303,6 +303,10 @@ German terms in parentheses, as controllers know them.
   - [x] Lines of work centers added by hand spread evenly by default.
   - [x] Planned hours in the published output: `fact_plan_capacity`, with work center and activity type dimensions ([ADR 0016](docs/adr/0016-capacity-in-rounds-and-forecasts.md)).
   - [x] The capacity sheet follows the round: setup preparation, carried hours, forecasts, quarters, comparison columns (ADR 0016).
+  - [x] Hours from the workforce: per productive cost center, hours typed per work center, from its positions, or both; the round's hours per FTE, a productive share and a line per position (a default per cost center); the lines' hours written from the positions and read only on the sheet; the *Workforce* tab on the capacity page ([ADR 0027](docs/adr/0027-capacity-from-the-workforce.md)).
+    - [ ] One position's hours split over several lines (e.g. an engineer 70 % customer projects, 30 % R&D); today one line per position.
+    - [ ] Hours per FTE per entity or cost center (countries differ in holidays and working time); today one figure per round.
+    - [ ] Available hours from positions next to typed machine hours, as a capacity limit (e.g. operators per machine).
   - [ ] The variable rate component: UI for a second rate, credited to the activity type's variable account (the tables hold it).
   - [ ] Rates entered on the master-data page, for installations without a rates source (today a line without a source rate is added on the sheet with its rate).
   - [ ] Clearing a cost center's capacity before it stops being productive (today the setup save is refused and names it).

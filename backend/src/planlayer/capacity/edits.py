@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import Connection, Engine, delete, select, tuple_, update
+from sqlalchemy import Connection, Engine, delete, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from planlayer.access import User
@@ -20,8 +20,11 @@ from planlayer.capacity.common import (
     _profiles,
     _run,
     _spread_of,
+    _unit,
+    _write_hours,
 )
 from planlayer.capacity.credits import _follow, _write_credits
+from planlayer.capacity.staff import refresh
 from planlayer.domain.entry_forms import weights
 from planlayer.domain.periods import QUARTERS, quarter_months
 from planlayer.domain.spreading import spread
@@ -37,14 +40,11 @@ from planlayer.sheet import (
 )
 from planlayer.store.schema import (
     ACTIVITY_TYPE,
-    BASE_LAYER,
-    HOURS,
     MODULE_CAPACITY,
     WORK_CENTER,
     capacity_change_log,
     capacity_line,
     capacity_line_log,
-    fact_capacity,
     member,
     seasonality_profile,
 )
@@ -67,6 +67,8 @@ def apply_edits(
 
     def work(conn: Connection) -> None:
         ctx = _editable(conn, actor, version_code, cc_code)
+        if not _unit(conn, ctx.version_id, ctx.cost_center_id).typed_hours:
+            raise EditError(f"{ctx.cost_center_code}'s hours come from its positions")
         lines = _lines(conn, ctx)
         codes = {
             (dim, c): _member_id(conn, dim, c)
@@ -105,6 +107,8 @@ def apply_edits(
                 raise EditError(f"{label} is not a line of {ctx.cost_center_code}")
             if not line.active:
                 raise EditError(f"{label} is inactive in this round")
+            if line.staffed:
+                raise EditError(f"{label}: its hours come from the positions")
             months = _targets(ctx, e, label)
             key = (line.work_center_id, line.activity_type_id)
             for m in months:
@@ -161,51 +165,6 @@ def _targets(ctx: _Context, e: HoursEdit, label: str) -> list[int]:
     if months[0] < ctx.closed:
         raise EditError(f"{label}: {ctx.periods[months[0]]:%B %Y} is closed in this forecast")
     return months
-
-
-def _write_hours(
-    conn: Connection,
-    ctx: _Context,
-    writes: dict[tuple[tuple[int, int], date], Decimal | None],
-    current: dict[tuple[tuple[int, int], date], int],
-) -> None:
-    f = fact_capacity
-    deletes = [
-        (wc, at, p) for ((wc, at), p), v in writes.items() if v is None and ((wc, at), p) in current
-    ]
-    if deletes:
-        conn.execute(
-            delete(f).where(
-                f.c.version_id == ctx.version_id,
-                f.c.layer_id == BASE_LAYER,
-                f.c.measure_id == HOURS,
-                f.c.dim_cost_center == ctx.cost_center_id,
-                tuple_(f.c.dim_work_center, f.c.dim_activity_type, f.c.period).in_(deletes),
-            )
-        )
-    upserts = [
-        {
-            "version_id": ctx.version_id,
-            "layer_id": BASE_LAYER,
-            "measure_id": HOURS,
-            "period": p,
-            "dim_entity": ctx.entity_id,
-            "dim_cost_center": ctx.cost_center_id,
-            "dim_work_center": wc,
-            "dim_activity_type": at,
-            "amount": v,
-        }
-        for ((wc, at), p), v in writes.items()
-        if v is not None
-    ]
-    if upserts:
-        stmt = pg_insert(f).values(upserts)
-        conn.execute(
-            stmt.on_conflict_do_update(
-                index_elements=list(f.primary_key.columns),
-                set_={"amount": stmt.excluded.amount, "row_version": f.c.row_version + 1},
-            )
-        )
 
 
 @dataclass
@@ -271,8 +230,7 @@ def change_line(
             )
             .values(**values)
         )
-        _write_credits(conn, ctx)
-        _follow(conn, ctx)
+        refresh(conn, ctx)  # the line's spread and state move hours from positions
 
     return _run(engine, actor, work)
 
@@ -463,7 +421,6 @@ def undo_batch(engine: Engine, actor: User, version_code: str, cc_code: str, bat
                     )
                 )
         _write_hours(conn, ctx, hours_before, current)
-        _write_credits(conn, ctx)
-        _follow(conn, ctx)
+        refresh(conn, ctx)  # hours from positions follow the restored lines
 
     return _run(engine, actor, work)

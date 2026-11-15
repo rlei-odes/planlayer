@@ -146,7 +146,7 @@ def test_notepad(client: TestClient) -> None:
 
 def test_capacity_lines_take_notes(client: TestClient) -> None:
     setup = client.get(f"/api/rounds/{R}/setup").json()["setup"]
-    productive = {**setup, "productive_cost_centers": ["CC1"]}
+    productive = {**setup, "capacity_work_centers": ["CC1"]}
     assert client.put(f"/api/rounds/{R}/setup", json=productive).status_code == 200
     line = {"module": "capacity", "cost_center": "CC1", "work_center": "WC1",
             "activity_type": "MH"}  # fmt: skip

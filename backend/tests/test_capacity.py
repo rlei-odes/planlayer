@@ -46,7 +46,7 @@ def engine(migrated: Settings, client: TestClient) -> Iterator[Engine]:
 def productive(client: TestClient, *codes: str) -> int:
     setup = client.get(f"/api/rounds/{R}/setup").json()["setup"]
     return client.put(
-        f"/api/rounds/{R}/setup", json={**setup, "productive_cost_centers": list(codes)}
+        f"/api/rounds/{R}/setup", json={**setup, "capacity_work_centers": list(codes)}
     ).status_code
 
 
@@ -101,12 +101,10 @@ def test_sync_brings_work_centers_rates_and_actual_hours(engine: Engine) -> None
         assert sum(actual) == Decimal(1120)
 
 
-def test_productive_cost_centers_get_a_capacity_sheet(client: TestClient) -> None:
+def test_capacity_work_centers_get_a_capacity_sheet(client: TestClient) -> None:
     assert client.get(SHEET).status_code == 404  # not productive yet
     assert productive(client, "CC1") == 200
-    assert client.get(f"/api/rounds/{R}/setup").json()["setup"]["productive_cost_centers"] == [
-        "CC1"
-    ]
+    assert client.get(f"/api/rounds/{R}/setup").json()["setup"]["capacity_work_centers"] == ["CC1"]
     assert [u["code"] for u in client.get(f"/api/versions/{R}/capacity").json()] == ["CC1"]
     sheet = client.get(SHEET).json()
     assert [(r["kind"], r["activity_type_code"]) for r in sheet["rows"]] == [
@@ -305,13 +303,13 @@ def test_locks(engine: Engine, client: TestClient) -> None:
         raw("CC2")
 
 
-def test_a_new_round_copies_productive_cost_centers(client: TestClient) -> None:
+def test_a_new_round_copies_capacity_work_centers(client: TestClient) -> None:
     productive(client, "CC1")
     new = {"code": "F2026", "name": "Forecast", "kind": "forecast", "fiscal_year": 2026,
            "copy_from": R}  # fmt: skip
     assert client.post("/api/rounds", json=new).status_code == 200
     setup = client.get("/api/rounds/F2026/setup").json()["setup"]
-    assert setup["productive_cost_centers"] == ["CC1"]
+    assert setup["capacity_work_centers"] == ["CC1"]
 
 
 def undo(client: TestClient, batch: str) -> object:

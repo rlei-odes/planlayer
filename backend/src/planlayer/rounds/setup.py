@@ -97,8 +97,11 @@ class Setup:
     comparisons: list[Comparison]
     not_planned_accounts: list[str]
     deadline: date | None
-    # Cost centers planned with capacity planning (ADR 0013), by code.
-    productive_cost_centers: list[str] = field(default_factory=list)
+    # Productive cost centers (ADR 0013), by code: hours typed per line of their work centers,
+    # and hours from their positions (ADR 0027). Either makes a cost center productive.
+    capacity_work_centers: list[str] = field(default_factory=list)
+    capacity_workforce: list[str] = field(default_factory=list)
+    fte_hours: Decimal | None = None  # hours a full-time position works in the year
     # Cost centers planned in the round, by code; None leaves them as they are.
     planned_cost_centers: list[str] | None = None
     account_sets: list[AccountSet] = field(default_factory=list)
@@ -154,7 +157,7 @@ def _created(conn: Connection, version_id: int) -> Created | None:
 
 def setup_of(engine: Engine, user: User, code: str) -> SetupView:
     user.require_controller()
-    with engine.connect() as conn:
+    with unit_of_work(engine, user) as conn:
         r = get_round(conn, code)
         default = conn.execute(
             select(round_module.c.default_form).where(
@@ -224,18 +227,18 @@ def setup_of(engine: Engine, user: User, code: str) -> SetupView:
             )
             .order_by(member.c.code)
         ).all()
-        productive = list(
+        # Imported here: capacity planning builds on this module.
+        from planlayer.capacity import fte_hours, sources
+
+        found = sources(conn, r.version_id)
+        codes = dict(
             conn.execute(
-                select(member.c.code)
-                .join(round_member, round_member.c.member_id == member.c.member_id)
-                .where(
-                    round_member.c.version_id == r.version_id,
-                    round_member.c.module == MODULE_CAPACITY,
-                    round_member.c.enabled.is_(True),
-                )
-                .order_by(member.c.code)
-            ).scalars()
+                select(member.c.member_id, member.c.code).where(member.c.member_id.in_(found))
+            ).all()
         )
+        typed = sorted(codes[cc] for cc, (on, _) in found.items() if on)
+        staffed = sorted(codes[cc] for cc, (_, on) in found.items() if on)
+        hours = fte_hours(conn, r.version_id)
         workforce: Mode | None = conn.execute(
             select(round_module.c.mode).where(
                 round_module.c.version_id == r.version_id,
@@ -255,7 +258,9 @@ def setup_of(engine: Engine, user: User, code: str) -> SetupView:
             columns,
             not_planned,
             r.deadline,
-            productive,
+            typed,
+            staffed,
+            hours,
             [c for c, _ in enabled],
             sets,
             r.grain,
@@ -352,7 +357,31 @@ def save_setup(engine: Engine, actor: User, code: str, setup: Setup) -> None:
             recompute(conn, r)
         _set_account_sets(conn, r, setup.account_sets)
         _clear_outside_sets(conn, r)
-        _set_productive(conn, r, setup.productive_cost_centers)
+        # Imported here: capacity planning builds on this module.
+        from planlayer.capacity import drop_sources, set_sources
+
+        if setup.capacity_workforce and setup.workforce_mode != "positions":
+            raise RoundError("hours from the workforce need workforce planning by positions")
+        if setup.fte_hours is not None and not 0 < setup.fte_hours < 10_000:
+            raise RoundError("the hours per FTE a year are between 0 and 10,000")
+        if setup.capacity_workforce and setup.fte_hours is None:
+            raise RoundError("hours from the workforce need the hours per FTE a year")
+        wanted = {
+            _member_id(conn, COST_CENTER, code, leaf=True): (
+                code in setup.capacity_work_centers,
+                code in setup.capacity_workforce,
+            )
+            for code in {*setup.capacity_work_centers, *setup.capacity_workforce}
+        }
+        drop_sources(conn, r, set(wanted))
+        _set_productive(conn, r, set(wanted))
+        conn.execute(
+            update(round_module)
+            .where(
+                round_module.c.version_id == r.version_id, round_module.c.module == MODULE_CAPACITY
+            )
+            .values(fte_hours=setup.fte_hours)
+        )
         _set_periods(conn, r, setup.grain, setup.actuals_through)
         # Imported here: workforce planning and personnel costs build on this module. Personnel
         # costs go off before positions do, and come on once the round plans them.
@@ -364,6 +393,8 @@ def save_setup(engine: Engine, actor: User, code: str, setup: Setup) -> None:
         set_mode(conn, r, setup.workforce_mode)
         if setup.personnel_costs:
             switch(conn, r, actor, on=True)
+        # After the workforce: hours from positions follow them.
+        set_sources(conn, r, actor.login, wanted)
         conn.execute(
             update(planning_round)
             .where(planning_round.c.version_id == r.version_id)
@@ -518,10 +549,9 @@ def _clear_outside_sets(conn: Connection, r: RoundRef) -> None:
     )
 
 
-def _set_productive(conn: Connection, r: RoundRef, codes: list[str]) -> None:
+def _set_productive(conn: Connection, r: RoundRef, wanted: set[int]) -> None:
     """The round's productive cost centers (ADR 0013). One that stops being productive must
     have no capacity planned in the round."""
-    wanted = {_member_id(conn, COST_CENTER, code, leaf=True) for code in codes}
     current = set(
         conn.execute(
             select(round_member.c.member_id).where(

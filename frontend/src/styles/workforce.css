@@ -230,3 +230,12 @@ revo-grid.pl-revo .rgCell.wf-total {
   border-color: var(--line);
   cursor: not-allowed;
 }
+
+.wf-fte-hours {
+  margin-top: 10px;
+  max-width: 420px;
+}
+
+.wf-fte-hours .su-input {
+  width: 120px;
+}

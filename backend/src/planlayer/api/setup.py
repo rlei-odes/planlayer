@@ -16,6 +16,7 @@ from planlayer.domain.entry_forms import Form
 from planlayer.domain.periods import fiscal_year_of
 from planlayer.domain.spreading import Profile, SpreadError
 from planlayer.domain.workforce import Mode
+from planlayer.sheet import EditError, parse_amount
 
 router = APIRouter(prefix="/api")
 
@@ -63,7 +64,11 @@ class SetupIO(BaseModel):
     comparisons: list[ComparisonIO]
     not_planned_accounts: list[str]
     deadline: date | None
-    productive_cost_centers: list[str] = []  # capacity planning (ADR 0013)
+    # Productive cost centers (ADR 0013): hours typed per work center line, and hours from
+    # positions (ADR 0027); either makes a cost center productive.
+    capacity_work_centers: list[str] = []
+    capacity_workforce: list[str] = []
+    fte_hours: str | None = None  # hours a full-time position works in the year
     # Cost centers planned in the round; null leaves them as they are.
     planned_cost_centers: list[str] | None = None
     account_sets: list[AccountSetIO] = []
@@ -230,7 +235,9 @@ def setup(request: Request, user: CurrentUser, code: str) -> SetupOut:
             ],
             not_planned_accounts=s.not_planned_accounts,
             deadline=s.deadline,
-            productive_cost_centers=s.productive_cost_centers,
+            capacity_work_centers=s.capacity_work_centers,
+            capacity_workforce=s.capacity_workforce,
+            fte_hours=None if s.fte_hours is None else f"{s.fte_hours:f}",
             planned_cost_centers=s.planned_cost_centers,
             account_sets=[
                 AccountSetIO(name=a.name, accounts=a.accounts, assigned_to=a.assigned_to)
@@ -247,6 +254,13 @@ def setup(request: Request, user: CurrentUser, code: str) -> SetupOut:
         sample_cost_center=v.sample_cost_center,
         periods=v.periods,
     )
+
+
+def _hours(value: str | None) -> Decimal | None:
+    try:
+        return parse_amount(value)
+    except EditError as e:
+        raise rounds.RoundError(f"hours per FTE a year: {e}") from None
 
 
 @router.put("/rounds/{code}/setup", responses={403: {}, 404: {}, 422: {}})
@@ -270,7 +284,9 @@ def save_setup(request: Request, user: CurrentUser, code: str, body: SetupIO) ->
                 ],
                 not_planned_accounts=body.not_planned_accounts,
                 deadline=body.deadline,
-                productive_cost_centers=body.productive_cost_centers,
+                capacity_work_centers=body.capacity_work_centers,
+                capacity_workforce=body.capacity_workforce,
+                fte_hours=_hours(body.fte_hours),
                 planned_cost_centers=body.planned_cost_centers,
                 account_sets=[
                     rounds.AccountSet(a.name, a.accounts, a.assigned_to) for a in body.account_sets

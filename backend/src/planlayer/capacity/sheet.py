@@ -21,6 +21,7 @@ from planlayer.capacity.common import (
     _lines,
     _profiles,
     _spread_of,
+    _unit,
     productive,
 )
 from planlayer.capacity.credits import _stored_credits
@@ -69,6 +70,7 @@ class CapacityRow:
     profile: str | None = None
     fallback: bool = False
     editable: bool = False
+    staffed: bool = False  # lines: hours from the cost center's positions (ADR 0027)
     # Credit rows: the account credited, and whether the activity type names none.
     account_code: str | None = None
     account_name: str | None = None
@@ -106,6 +108,9 @@ class CapacitySheet:
     # For adding a line: the cost center's work centers and every activity type.
     work_centers: list[tuple[str, str]] = field(default_factory=list)
     activity_types: list[tuple[str, str]] = field(default_factory=list)
+    # Where the hours come from (ADR 0027): typed per line, from positions, or both.
+    typed_hours: bool = True
+    staff_hours: bool = False
 
 
 def read_sheet(engine: Engine, user: User, version_code: str, cc_code: str) -> CapacitySheet:
@@ -169,6 +174,7 @@ def read_sheet(engine: Engine, user: User, version_code: str, cc_code: str) -> C
         profile_codes = {pid: code for pid, (code, _, _) in profiles.items()}
         options = _options(conn, ctx)
         note_marks = note_markers(conn, user, ctx.round, "capacity", ctx.cost_center_id)
+        unit = _unit(conn, ctx.version_id, ctx.cost_center_id)
 
     r = ctx.round
     sheet = CapacitySheet(
@@ -189,6 +195,8 @@ def read_sheet(engine: Engine, user: User, version_code: str, cc_code: str) -> C
         grain=r.grain,
         actuals_through=r.actuals_through,
         closed_months=ctx.closed,
+        typed_hours=unit.typed_hours,
+        staff_hours=unit.staff_hours,
     )
     editable = ctx.lock_reason is None
     blank = [Cell(None, None)] * MONTHS
@@ -238,6 +246,7 @@ def read_sheet(engine: Engine, user: User, version_code: str, cc_code: str) -> C
                     profile=_code(profile_codes, line.profile_id),
                     fallback=spreading.fallback,
                     editable=editable,
+                    staffed=line.staffed,
                     notes=note_marks.get((None, line.work_center_id, at)),
                 )
             )
@@ -347,6 +356,7 @@ class CapacityUnit:
     name: str
     status: Status
     can_write: bool
+    staff_hours: bool = False  # it has a workforce tab (ADR 0027)
 
 
 def units(engine: Engine, user: User, version_code: str) -> list[CapacityUnit]:
@@ -361,6 +371,12 @@ def units(engine: Engine, user: User, version_code: str) -> list[CapacityUnit]:
             .order_by(member.c.code)
         ).all()
         return [
-            CapacityUnit(code, name, status_of(conn, r.version_id, mid), rights[mid])
+            CapacityUnit(
+                code,
+                name,
+                status_of(conn, r.version_id, mid),
+                rights[mid],
+                _unit(conn, r.version_id, mid).staff_hours,
+            )
             for mid, code, name in rows
         ]

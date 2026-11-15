@@ -15,9 +15,30 @@ type Props = {
   sourceName: string | null
 }
 
-function Switch({ on, label, onChange }: { on: boolean; label: string; onChange: (on: boolean) => void }) {
+function Switch({
+  on,
+  label,
+  onChange,
+  disabled,
+  title,
+}: {
+  on: boolean
+  label: string
+  onChange: (on: boolean) => void
+  disabled?: boolean
+  title?: string
+}) {
   return (
-    <button type="button" role="switch" aria-checked={on} aria-label={label} className="pc-switch" onClick={() => onChange(!on)}>
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      aria-label={label}
+      className="pc-switch"
+      disabled={disabled}
+      title={title}
+      onClick={() => onChange(!on)}
+    >
       <i />
     </button>
   )
@@ -59,7 +80,10 @@ export function CostCentersTab({ draft, setDraft, rows, fiscalYear, sourceName }
   const [show, setShow] = useState<CostCenterFilter>('all')
   const sets = draft.account_sets ?? []
   const planned = new Set(draft.planned_cost_centers ?? rows.filter((r) => r.planned).map((r) => r.code))
-  const productive = new Set(draft.productive_cost_centers ?? [])
+  // Productive cost centers (ADR 0013, 0027): hours typed per work center, from positions, or both.
+  const typed = new Set(draft.capacity_work_centers ?? [])
+  const staffed = new Set(draft.capacity_workforce ?? [])
+  const positions = draft.workforce_mode === 'positions'
   const leaves = rows.filter((r) => !r.is_group)
   const q = query.trim().toLowerCase()
   const counts: Record<CostCenterFilter, number> = {
@@ -81,9 +105,10 @@ export function CostCentersTab({ draft, setDraft, rows, fiscalYear, sourceName }
     const next = on ? [...planned, code] : [...planned].filter((c) => c !== code)
     setDraft({ ...draft, planned_cost_centers: next.sort() })
   }
-  function setProductive(code: string, on: boolean) {
-    const next = on ? [...productive, code] : [...productive].filter((c) => c !== code)
-    setDraft({ ...draft, productive_cost_centers: next.sort() })
+  function setSource(key: 'capacity_work_centers' | 'capacity_workforce', code: string, on: boolean) {
+    const current = key === 'capacity_work_centers' ? typed : staffed
+    const next = on ? [...current, code] : [...current].filter((c) => c !== code)
+    setDraft({ ...draft, [key]: next.sort() })
   }
 
   const labels: Record<CostCenterFilter, string> = {
@@ -99,7 +124,8 @@ export function CostCentersTab({ draft, setDraft, rows, fiscalYear, sourceName }
           <h3>Cost centers</h3>
           <p className="su-hint">
             Which cost centers this round plans, the accounts each one plans (its account set, set on a node or a cost
-            center; the nearest one above wins), and which plan from capacity. {planned.size} of {leaves.length} planned.
+            center; the nearest one above wins), and which plan capacity: hours typed per work center, from the
+            positions, or both. {planned.size} of {leaves.length} planned.
           </p>
         </div>
         <div className="sc-tools">
@@ -120,7 +146,12 @@ export function CostCentersTab({ draft, setDraft, rows, fiscalYear, sourceName }
               <th>Cost center</th>
               <th className="sc-switch-col">Planned</th>
               <th className="sc-set-col">Account set</th>
-              <th className="sc-switch-col">Productive</th>
+              <th className="sc-switch-col" title="Hours typed per work center on the capacity sheet">
+                Work centers
+              </th>
+              <th className="sc-switch-col" title="Hours from the cost center’s positions">
+                Workforce
+              </th>
               <th className="num">Actual {fiscalYear - 1}</th>
               {sourceName && <th className="num">{sourceName}</th>}
             </tr>
@@ -154,7 +185,22 @@ export function CostCentersTab({ draft, setDraft, rows, fiscalYear, sourceName }
                   </td>
                   <td className="sc-switch-col">
                     {!r.is_group && (
-                      <Switch on={productive.has(r.code)} label={`${r.code} productive`} onChange={(on) => setProductive(r.code, on)} />
+                      <Switch
+                        on={typed.has(r.code)}
+                        label={`${r.code}: hours by work center`}
+                        onChange={(on) => setSource('capacity_work_centers', r.code, on)}
+                      />
+                    )}
+                  </td>
+                  <td className="sc-switch-col">
+                    {!r.is_group && (
+                      <Switch
+                        on={staffed.has(r.code)}
+                        label={`${r.code}: hours from the workforce`}
+                        disabled={!positions && !staffed.has(r.code)}
+                        title={positions ? undefined : 'Needs workforce planning by positions'}
+                        onChange={(on) => setSource('capacity_workforce', r.code, on)}
+                      />
                     )}
                   </td>
                   <td className="num">{thousands(r.prior_actuals)}</td>
@@ -164,7 +210,7 @@ export function CostCentersTab({ draft, setDraft, rows, fiscalYear, sourceName }
             })}
             {shown.length === 0 && (
               <tr>
-                <td colSpan={sourceName ? 6 : 5} className="su-empty">
+                <td colSpan={sourceName ? 7 : 6} className="su-empty">
                   No cost center matches.
                 </td>
               </tr>
