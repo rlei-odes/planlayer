@@ -53,6 +53,13 @@ export type TransferTarget = S.TransferTargetOut
 export type Home = S.HomeOut
 export type RoundWork = S.RoundWorkOut
 export type MyCostCenter = S.MyCostCenterOut
+// Personnel costs (ADR 0022).
+export type PayPage = S.PayPageOut
+export type PayPosition = S.PayPositionOut
+export type PayUnit = S.PayUnitOut
+export type PayRules = S.PayRulesIO
+export type PayRule = S.PayRuleIO
+export type PayRulesPage = S.PayRulesPageOut
 // Published signs (ADR 0019).
 export type Signs = S.SignsOut
 // Cost forwarding (ADR 0018).
@@ -229,6 +236,17 @@ export const api = {
     send('DELETE', `${wf(version, code)}/positions/${id}`).then((r) => json<WorkforceSheet>(r)),
   staffFromHr: (version: string, code: string) => post(`${wf(version, code)}/hr`, {}).then((r) => json<WorkforceSheet>(r)),
   workforceFromHr: (version: string) => post(`${v(version)}/workforce/hr`, {}).then((r) => json<S.HrTakenOut>(r)),
+  payUnits: (version: string) => fetch(`${v(version)}/personnel`).then((r) => json<PayUnit[]>(r)),
+  payPage: (version: string, code: string) =>
+    fetch(`${v(version)}/personnel/${encodeURIComponent(code)}`).then((r) => json<PayPage>(r)),
+  savePay: (version: string, code: string, id: number, pay: S.PayIn) =>
+    send('PUT', `${v(version)}/personnel/${encodeURIComponent(code)}/positions/${id}`, pay).then((r) => json<PayPage>(r)),
+  reviewPay: (version: string, code: string, confirmed: boolean) =>
+    send('PUT', `${v(version)}/personnel/${encodeURIComponent(code)}/review`, { confirmed }).then((r) => json<PayPage>(r)),
+  payRules: (version: string) => fetch(`${v(version)}/personnel/rules`).then((r) => json<PayRulesPage>(r)),
+  savePayRules: (version: string, rules: PayRules) =>
+    send('PUT', `${v(version)}/personnel/rules`, rules).then((r) => json<PayRulesPage>(r)),
+  payModule: (version: string, on: boolean) => send('PUT', `${v(version)}/personnel/module`, { on }).then((r) => json<null>(r)),
   costCenters: (version: string) => fetch(`${v(version)}/cost-centers`).then((r) => json<PlanningUnit[]>(r)),
   setEnabled: (version: string, code: string, enabled: boolean) =>
     post(`${cc(version, code)}/enabled`, { enabled }).then((r) => json<null>(r)),

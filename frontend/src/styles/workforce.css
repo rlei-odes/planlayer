@@ -111,12 +111,13 @@ revo-grid.pl-revo .rgCell.wf-total {
   gap: 10px;
 }
 
+.wf-dialog {
+  width: min(820px, 100%);
+}
+
 .wf-editor {
-  margin: 12px 0;
-  padding: 14px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-s);
-  background: var(--calc);
+  padding-top: 18px;
+  padding-bottom: 18px;
 }
 
 .wf-grid {
@@ -137,10 +138,6 @@ revo-grid.pl-revo .rgCell.wf-total {
 
 .wf-off {
   color: var(--ink-3);
-}
-
-.wf-editor-foot {
-  margin-top: 12px;
 }
 
 .wf-empty {

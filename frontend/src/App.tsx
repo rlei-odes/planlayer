@@ -12,6 +12,7 @@ import {
   LogoMark,
   LogoutIcon,
   MasterDataIcon,
+  PersonnelIcon,
   PlanningIcon,
   PublishIcon,
   ResponsibilitiesIcon,
@@ -26,6 +27,7 @@ import LoginPage from './LoginPage'
 import { initials } from './names'
 import Select from './Select'
 import MasterDataPage from './MasterDataPage'
+import PersonnelPage from './PersonnelPage'
 import PlanningPage from './PlanningPage'
 import PublishPage from './PublishPage'
 import ResponsibilitiesPage from './ResponsibilitiesPage'
@@ -43,6 +45,7 @@ type Page =
   | 'home'
   | 'capacity'
   | 'workforce'
+  | 'personnel'
   | 'planning'
   | 'status'
   | 'lists'
@@ -58,6 +61,7 @@ const NAV: Record<Page, { label: string; icon: () => ReactNode }> = {
   home: { label: 'Home', icon: HomeIcon },
   capacity: { label: 'Capacity', icon: CapacityIcon },
   workforce: { label: 'Workforce', icon: WorkforceIcon },
+  personnel: { label: 'Personnel costs', icon: PersonnelIcon },
   planning: { label: 'Planning', icon: PlanningIcon },
   status: { label: 'Status', icon: StatusIcon },
   lists: { label: 'My item lists', icon: ItemListIcon },
@@ -69,7 +73,7 @@ const NAV: Record<Page, { label: string; icon: () => ReactNode }> = {
   users: { label: 'Users', icon: UsersIcon },
   settings: { label: 'Settings', icon: SettingsIcon },
 }
-const ROUND_PAGES: Page[] = ['capacity', 'workforce', 'planning', 'status', 'setup', 'forwarding', 'publish']
+const ROUND_PAGES: Page[] = ['capacity', 'workforce', 'personnel', 'planning', 'status', 'setup', 'forwarding', 'publish']
 
 function groupsFor(me: Me): { label: string; pages: Page[] }[] {
   const round: Page[] = me.is_controller ? ['setup', 'forwarding', 'publish', 'responsibilities'] : []
@@ -81,6 +85,9 @@ function groupsFor(me: Me): { label: string; pages: Page[] }[] {
   // and workforce come first, the usual order of work (ADR 0013, ADR 0020).
   const plan: Page[] =
     me.is_controller || me.is_viewer || me.reads_cost_centers ? ['capacity', 'workforce', 'planning', 'status', 'lists'] : []
+  // Personnel costs (ADR 0022): pay for HR and owners as the source names them, the rules for HR
+  // and controllers. After Workforce: costs follow the positions.
+  if (me.reads_pay || me.is_hr || me.is_controller) plan.splice(Math.max(plan.indexOf('workforce') + 1, 0), 0, 'personnel')
   // Home comes first for everyone: what waits for the user and what they plan (ADR 0021).
   const groups: { label: string; pages: Page[] }[] = [
     { label: '', pages: ['home'] },
@@ -250,7 +257,7 @@ export default function App() {
   const pages = groups.flatMap((g) => g.pages)
   const current: Page | undefined = pages.includes(page) ? page : pages[0]
   const round = versions.find((v) => v.code === version)
-  const roles = [me.is_admin && 'Admin', me.is_controller && 'Controller', me.is_viewer && 'Viewer'].filter(Boolean)
+  const roles = [me.is_admin && 'Admin', me.is_controller && 'Controller', me.is_viewer && 'Viewer', me.is_hr && 'HR'].filter(Boolean)
   const roleText = roles.join(', ')
   const contact = me.email ?? me.login
   const subtitle = roleText && roleText !== me.display_name ? roleText : contact !== me.display_name ? contact : ''
@@ -396,6 +403,9 @@ export default function App() {
               onUnit={setCostCenter}
               onWidth={setSheetWidth}
             />
+          )}
+          {version && current === 'personnel' && (
+            <PersonnelPage key={`${me.login}/${version}`} version={version} unit={costCenter} onUnit={setCostCenter} me={me} />
           )}
           {version && current === 'planning' && (
             <PlanningPage

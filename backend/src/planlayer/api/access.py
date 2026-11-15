@@ -30,6 +30,7 @@ class UserOut(BaseModel):
     is_admin: bool
     is_controller: bool
     is_viewer: bool
+    is_hr: bool
     disabled: bool
 
 
@@ -40,6 +41,7 @@ class UserIn(BaseModel):
     is_admin: bool = False
     is_controller: bool = False
     is_viewer: bool = False
+    is_hr: bool = False
 
 
 class UserChange(BaseModel):
@@ -48,6 +50,7 @@ class UserChange(BaseModel):
     is_admin: bool | None = None
     is_controller: bool | None = None
     is_viewer: bool | None = None
+    is_hr: bool | None = None
     disabled: bool | None = None
 
 
@@ -102,6 +105,7 @@ def create_user(request: Request, user: CurrentUser, body: UserIn) -> None:
             is_admin=body.is_admin,
             is_controller=body.is_controller,
             is_viewer=body.is_viewer,
+            is_hr=body.is_hr,
         )
     except HANDLED as e:
         raise _http(e) from None

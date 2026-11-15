@@ -211,6 +211,12 @@ def create_round(
             from planlayer.workforce import carry as carry_workforce
 
             carry_workforce(conn, source, get_round(conn, code), planned, carry.values)
+        if carry.setup:
+            # The rules come with the setup, the positions' pay with the positions. Imported
+            # here: personnel costs build on workforce planning.
+            from planlayer.personnel import carry as carry_personnel
+
+            carry_personnel(conn, source, get_round(conn, code), actor.login)
         if carry.forwarding:
             # After the values: full forwardings pass on the carried costs. Imported here:
             # forwarding builds on this module.

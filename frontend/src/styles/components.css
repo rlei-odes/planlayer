@@ -697,6 +697,21 @@
   padding: 10px 22px 14px;
 }
 
+.il-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 22px;
+  border-top: 1px solid var(--line);
+  background: var(--canvas);
+}
+
+.il-foot .su-hint {
+  flex: 1 1 260px;
+  margin: 0;
+}
+
 /* --- Helpers ------------------------------------------------------------------------------ */
 
 .fw-gap {

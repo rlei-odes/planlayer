@@ -151,6 +151,7 @@ version = Table(
 MODULE_COST_CENTER = "cost_center"
 MODULE_CAPACITY = "capacity"  # its enabled members are the productive cost centers (ADR 0013)
 MODULE_WORKFORCE = "workforce"  # FTE, headcount or positions (ADR 0020)
+MODULE_PERSONNEL = "personnel_costs"  # costs from positions (ADR 0022)
 
 # A plan version for one fiscal year, one-to-one; the version's code and name are the round's.
 planning_round = Table(
@@ -366,6 +367,7 @@ app_user = Table(
     Column("is_admin", Boolean, nullable=False, server_default="false"),
     Column("is_controller", Boolean, nullable=False, server_default="false"),
     Column("is_viewer", Boolean, nullable=False, server_default="false"),
+    Column("is_hr", Boolean, nullable=False, server_default="false"),  # reads pay (ADR 0022)
     Column("is_system", Boolean, nullable=False, server_default="false"),
     Column("disabled", Boolean, nullable=False, server_default="false"),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
@@ -962,4 +964,144 @@ hr_staff = Table(
     Column("entry_date", Date),
     Column("leave_date", Date),
     Column("contract_percent", Numeric(5, 2)),
+)
+
+
+# --- Personnel costs (ADR 0022) ------------------------------------------------------------------
+# Pay is guarded by row-level security through the view ``pay_access``.
+
+
+def _personnel() -> list[Column | ForeignKeyConstraint]:  # type: ignore[type-arg]
+    return [
+        Column("module", Text, nullable=False, server_default=MODULE_PERSONNEL),
+        ForeignKeyConstraint(
+            ["version_id", "module"], ["round_module.version_id", "round_module.module"]
+        ),
+    ]
+
+
+# HR's monthly salaries from the dataset ``staff``, replaced by each sync.
+hr_pay = Table(
+    "hr_pay",
+    metadata,
+    Column("code", Text, primary_key=True),
+    Column("cost_center_id", Integer, ForeignKey("member.member_id"), nullable=False),
+    Column("monthly_salary", AMOUNT_TYPE, nullable=False),
+)
+
+pay_setting = Table(
+    "pay_setting",
+    metadata,
+    Column("version_id", SmallInteger, primary_key=True),
+    *_personnel(),
+    Column("min_group", SmallInteger, nullable=False, server_default="3"),
+    Column("bonus_account_id", Integer, ForeignKey("member.member_id")),
+    Column("changed_by", Text),
+    Column("changed_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)
+
+# Per staff type: the salary account, and whether its positions' amounts are typed.
+pay_staff_type = Table(
+    "pay_staff_type",
+    metadata,
+    Column("version_id", SmallInteger, nullable=False),
+    *_personnel(),
+    Column("staff_type_id", Integer, ForeignKey("member.member_id"), nullable=False),
+    Column("account_id", Integer, ForeignKey("member.member_id"), nullable=False),
+    Column("typed", Boolean, nullable=False),
+    PrimaryKeyConstraint("version_id", "staff_type_id"),
+)
+
+# A rule of the round: extra (salaries per year), raise (percent from a month), award (steps by
+# years of service), contribution (percent up to a monthly ceiling).
+pay_rule = Table(
+    "pay_rule",
+    metadata,
+    Column("rule_id", Integer, Identity(), primary_key=True),
+    Column("version_id", SmallInteger, nullable=False),
+    *_personnel(),
+    Column("kind", Text, nullable=False),
+    Column("name", Text, nullable=False),
+    Column("account_id", Integer, ForeignKey("member.member_id"), nullable=False),
+    Column("entity_id", Integer, ForeignKey("member.member_id")),
+    Column("salaries", Numeric(8, 4)),
+    Column("percent", Numeric(7, 4)),
+    Column("ceiling", AMOUNT_TYPE),
+    Column("starts", Date),
+    Column("changed_by", Text),
+    Column("changed_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)
+
+pay_rule_step = Table(
+    "pay_rule_step",
+    metadata,
+    Column("rule_id", Integer, ForeignKey("pay_rule.rule_id", ondelete="CASCADE"), nullable=False),
+    Column("years", SmallInteger, nullable=False),
+    Column("salaries", Numeric(8, 4)),
+    Column("amount", AMOUNT_TYPE),
+    PrimaryKeyConstraint("rule_id", "years"),
+)
+
+position_pay = Table(
+    "position_pay",
+    metadata,
+    Column(
+        "position_id",
+        Integer,
+        ForeignKey("workforce_position.position_id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column("version_id", SmallInteger, nullable=False),
+    *_personnel(),
+    Column("hr_salary", AMOUNT_TYPE),  # taken from HR, read only
+    Column("salary", AMOUNT_TYPE),  # planned, monthly; None: HR's
+    Column("bonus", AMOUNT_TYPE),  # yearly
+    Column("charged_to_id", Integer, ForeignKey("member.member_id")),
+    Column("changed_by", Text),
+    Column("changed_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)
+
+position_pay_log = Table(
+    "position_pay_log",
+    metadata,
+    Column("id", BigInteger, primary_key=True),
+    Column("at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("actor", Text),
+    Column("batch_id", Text),
+    Column("op", Text, nullable=False),
+    Column("version_id", SmallInteger, nullable=False),
+    Column("cost_center_id", Integer, nullable=False),
+    Column("position_id", Integer, nullable=False),
+    Column("old", JSONB),
+    Column("new", JSONB),
+)
+
+# Cost center x personnel account with values from fewer positions than the round's minimum;
+# rewritten by every recompute, read by the read policy of ``fact_cost_center``.
+pay_small_group = Table(
+    "pay_small_group",
+    metadata,
+    Column("version_id", SmallInteger, nullable=False),
+    Column("cost_center_id", Integer, ForeignKey("member.member_id"), nullable=False),
+    Column("account_id", Integer, ForeignKey("member.member_id"), nullable=False),
+    Column("positions", SmallInteger, nullable=False),
+    PrimaryKeyConstraint("version_id", "cost_center_id", "account_id"),
+)
+
+pay_review = Table(
+    "pay_review",
+    metadata,
+    Column("version_id", SmallInteger, nullable=False),
+    Column("cost_center_id", Integer, ForeignKey("member.member_id"), nullable=False),
+    Column("confirmed_by", Text, nullable=False),
+    Column("confirmed_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    PrimaryKeyConstraint("version_id", "cost_center_id"),
+)
+
+# Views (migration 0019).
+pay_access = Table(
+    "pay_access", metadata, Column("user_id", Integer), Column("cost_center_id", Integer)
+)
+pay_account = Table(
+    "pay_account", metadata, Column("version_id", SmallInteger), Column("account_id", Integer)
 )

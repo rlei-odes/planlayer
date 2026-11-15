@@ -54,6 +54,17 @@ export const WorkforceIcon = () => (
   </Icon>
 )
 
+// A pay slip with a lock: personnel costs, read by few (ADR 0022).
+export const PersonnelIcon = () => (
+  <Icon>
+    <path d="M4 3.5h8.5l2.5 2.5v5" />
+    <path d="M4 3.5v13h6" />
+    <path d="M6.5 7.5h5M6.5 10.5h3.5" />
+    <rect x="12" y="13" width="5" height="4" rx="0.8" />
+    <path d="M13 13v-1.2a1.5 1.5 0 0 1 3 0V13" />
+  </Icon>
+)
+
 // One source branching to several receivers: costs passed on.
 export const ForwardingIcon = () => (
   <Icon>

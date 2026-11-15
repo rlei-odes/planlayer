@@ -18,6 +18,7 @@ from planlayer.domain.workforce import (
     Mode,
     measures,
 )
+from planlayer.personnel.common import module_on
 from planlayer.rounds import RoundError, RoundRef, fiscal_periods
 from planlayer.store.bulk import insert_all
 from planlayer.store.schema import (
@@ -56,6 +57,8 @@ def set_mode(conn: Connection, r: RoundRef, mode: Mode | None) -> None:
     now = mode_of(conn, r.version_id)
     if now == mode:
         return
+    if mode != "positions" and module_on(conn, r.version_id):
+        raise RoundError("personnel costs need positions: turn them off first")
     if now is not None and has_workforce(conn, r.version_id):
         if r.status != "setup":
             raise RoundError(

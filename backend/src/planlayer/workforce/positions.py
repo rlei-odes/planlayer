@@ -27,6 +27,7 @@ from planlayer.domain.workforce import (
     month_end,
     rollup,
 )
+from planlayer.personnel import recompute, take_hr_salaries
 from planlayer.rounds import NotFoundError, RoundError, get_round
 from planlayer.sheet import (
     EditError,
@@ -254,6 +255,7 @@ def save_position(
             conn.execute(update(p).where(*where).values(**values, changed_at=func.now()))
             saved.append(position_id)
         write_rollup(conn, ctx)
+        recompute(conn, ctx.round, actor.login, by_hr=actor.is_hr, touched={ctx.cost_center_id})
 
     return _run(engine, actor, work), saved[0]
 
@@ -291,6 +293,7 @@ def delete_position(
         if found is None:
             raise NotFoundError(f"position {position_id} not found on {cc_code}")
         write_rollup(conn, ctx)
+        recompute(conn, ctx.round, actor.login, by_hr=actor.is_hr, touched={ctx.cost_center_id})
 
     return _run(engine, actor, work)
 
@@ -317,7 +320,10 @@ def _take_hr(conn: Connection, ctx: _Context, actor: User) -> int:
         for h in _hr_candidates(conn, ctx)
     ]
     if rows:
-        conn.execute(insert(workforce_position), rows)
+        ids = conn.execute(
+            insert(workforce_position).returning(workforce_position.c.position_id), rows
+        ).scalars()
+        take_hr_salaries(conn, ctx.round, list(ids), actor.login)
         write_rollup(conn, ctx)
     return len(rows)
 
@@ -327,7 +333,10 @@ def take_from_hr(engine: Engine, actor: User, version_code: str, cc_code: str) -
     added: list[int] = []
 
     def work(conn: Connection) -> None:
-        added.append(_take_hr(conn, _positions_context(conn, actor, version_code, cc_code), actor))
+        ctx = _positions_context(conn, actor, version_code, cc_code)
+        added.append(_take_hr(conn, ctx, actor))
+        if added[0]:
+            recompute(conn, ctx.round, actor.login, by_hr=actor.is_hr, touched={ctx.cost_center_id})
 
     return _run(engine, actor, work), added[0]
 
@@ -351,6 +360,8 @@ def take_all_from_hr(engine: Engine, actor: User, version_code: str) -> int:
                 continue
             total += _take_hr(conn, _plain_context(conn, r, "positions", cc_id), actor)
         added.append(total)
+        if total:
+            recompute(conn, r, actor.login, by_hr=actor.is_hr)
 
     _run(engine, actor, work)
     return added[0]

@@ -115,6 +115,16 @@ def plan_rows(engine: Engine, user: User, code: str, scope: Scope) -> tuple[Roun
     f, e, cc, acc = fact_cost_center, member.alias("e"), member.alias("cc"), member.alias("acc")
     with unit_of_work(engine, user) as conn:
         r = get_round(conn, code)
+        # No total over fewer people than the minimum leaves Planlayer (ADR 0022). Imported
+        # here: personnel costs build on planning.
+        from planlayer.personnel import small_groups
+
+        small = small_groups(conn, r.version_id)
+        if small:
+            raise PublishError(
+                f"{len(small)} cost center(s) have personnel costs of fewer people than the "
+                "minimum; HR charges them to other cost centers before the round is published"
+            )
         status = func.coalesce(workflow_status.c.status, "not_started")
         query = (
             select(f.c.period, e.c.code, cc.c.code, acc.c.code, f.c.amount, status)

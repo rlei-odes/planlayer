@@ -1,0 +1,233 @@
+/* Personnel costs (ADR 0022): pay per position, totals, the review, the rules. */
+
+.pc-h1 {
+  margin: 2px 0 0;
+  font-size: 22px;
+  font-weight: 650;
+}
+
+.pc-tabs {
+  margin-right: 4px;
+}
+
+.pc-review,
+.pc-module {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 16px;
+  border-left: 3px solid var(--warn-mid);
+}
+
+.pc-review.done {
+  border-left-color: var(--ok);
+}
+
+.pc-review > div,
+.pc-module > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+}
+
+.pc-review .su-hint,
+.pc-module .su-hint {
+  margin: 0;
+}
+
+.pc-small {
+  background: var(--danger-tint);
+  color: var(--danger);
+}
+
+.pc-small-row td {
+  background: var(--danger-tint);
+}
+
+.su-pill.warn {
+  margin-left: 6px;
+  background: var(--danger-tint);
+  color: var(--danger);
+}
+
+.pc-table td,
+.pc-totals td {
+  vertical-align: middle;
+}
+
+.pc-dialog {
+  width: min(640px, 100%);
+}
+
+.pc-dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-top: 18px;
+  padding-bottom: 18px;
+}
+
+.pc-compare {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+.pc-compare > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: var(--radius-s);
+  background: var(--calc);
+}
+
+.pc-compare strong {
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
+
+.pc-compare small {
+  color: var(--ink-3);
+}
+
+.pc-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 10px 12px;
+}
+
+.pc-account {
+  min-width: 260px;
+}
+
+.pc-warn {
+  margin: 0 16px 12px;
+}
+
+.pc-settings {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 16px;
+  padding: 14px 16px;
+}
+
+.pc-min input {
+  max-width: 120px;
+}
+
+.pc-low,
+input.pc-low {
+  color: var(--danger);
+  font-weight: 700;
+}
+
+input.pc-low {
+  border-color: var(--danger);
+}
+
+.pc-savebar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.pc-savebar .su-hint {
+  margin: 0;
+  flex: 1;
+}
+
+.pc-steps input {
+  max-width: 120px;
+}
+
+.pc-add-step {
+  align-self: flex-start;
+}
+
+.su-input.invalid {
+  border-color: var(--danger);
+}
+
+.pc .su-field .su-hint,
+.pc-dialog .su-hint {
+  margin: 0;
+}
+
+.pc-module.on {
+  border-left-color: var(--ok);
+}
+
+.pc-table .wf-pos strong,
+.pc-table td:nth-child(2),
+.pc-table .wf-date,
+.pc-table .num {
+  white-space: nowrap;
+}
+
+.pc-kind {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.3;
+}
+
+.pc-kind small {
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+.pc-kind small {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pc-table th,
+.pc-table td {
+  padding-left: 8px;
+  padding-right: 8px;
+}
+
+.pc-totals {
+  font-size: 12.5px;
+}
+
+.pc-totals .su-pill.warn {
+  display: table;
+  margin: 2px 0 0;
+}
+
+.pc-totals td:first-child {
+  max-width: 170px;
+}
+
+.pc-totals td:first-child,
+.pc-rules td:nth-child(3) {
+  max-width: 230px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pc-totals td,
+.pc-totals th {
+  padding-left: 4px;
+  padding-right: 4px;
+}
+
+.pc-totals td:first-child {
+  max-width: 170px;
+}
+
+.pc-grid.pc-extra {
+  grid-template-columns: auto 1fr;
+}
+
+.pc-extra .seg button {
+  white-space: nowrap;
+}

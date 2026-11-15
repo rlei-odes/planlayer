@@ -35,6 +35,7 @@ from planlayer.store.schema import (
     hier_edge,
     member,
     owner_override,
+    pay_access,
     planner_grant,
     user_session,
 )
@@ -57,6 +58,7 @@ class User(Actor):
     is_admin: bool = False
     is_controller: bool = False
     is_viewer: bool = False
+    is_hr: bool = False  # reads and writes pay (ADR 0022)
 
     def require_controller(self) -> None:
         if not self.is_controller:
@@ -65,6 +67,10 @@ class User(Actor):
     def require_admin(self) -> None:
         if not self.is_admin:
             raise AccessError("only an admin may do this")
+
+    def require_hr(self) -> None:
+        if not self.is_hr:
+            raise AccessError("only HR may do this")
 
 
 _USER_COLUMNS = (
@@ -75,6 +81,7 @@ _USER_COLUMNS = (
     app_user.c.is_admin,
     app_user.c.is_controller,
     app_user.c.is_viewer,
+    app_user.c.is_hr,
 )
 
 
@@ -111,6 +118,7 @@ class UserRow:
     is_admin: bool
     is_controller: bool
     is_viewer: bool
+    is_hr: bool
     disabled: bool
 
 
@@ -123,6 +131,7 @@ def users(engine: Engine, *, active_only: bool = False) -> list[UserRow]:
             app_user.c.is_admin,
             app_user.c.is_controller,
             app_user.c.is_viewer,
+            app_user.c.is_hr,
             app_user.c.disabled,
         )
         .where(app_user.c.is_system.is_(False))
@@ -144,6 +153,7 @@ def create_user(
     is_admin: bool = False,
     is_controller: bool = False,
     is_viewer: bool = False,
+    is_hr: bool = False,
 ) -> None:
     actor.require_admin()
     login = login.strip().lower()
@@ -161,15 +171,24 @@ def create_user(
                 is_admin=is_admin,
                 is_controller=is_controller,
                 is_viewer=is_viewer,
+                is_hr=is_hr,
             )
         )
 
 
 def update_user(engine: Engine, actor: User, login: str, **changes: bool | str | None) -> None:
-    """Change a user's roles (``is_admin``, ``is_controller``, ``is_viewer``), ``disabled``,
-    ``display_name`` or ``email``. Disabling ends the user's sessions."""
+    """Change a user's roles (``is_admin``, ``is_controller``, ``is_viewer``, ``is_hr``),
+    ``disabled``, ``display_name`` or ``email``. Disabling ends the user's sessions."""
     actor.require_admin()
-    allowed = {"is_admin", "is_controller", "is_viewer", "disabled", "display_name", "email"}
+    allowed = {
+        "is_admin",
+        "is_controller",
+        "is_viewer",
+        "is_hr",
+        "disabled",
+        "display_name",
+        "email",
+    }
     if not changes or set(changes) - allowed:
         raise UserError(f"can change only {', '.join(sorted(allowed))}")
     if login.lower() == actor.login and (
@@ -255,6 +274,22 @@ def reads_cost_centers(engine: Engine, user: User) -> bool:
         found = conn.execute(
             select(exists().where(cost_center_access.c.user_id == user.user_id))
         ).scalar()
+    return bool(found)
+
+
+def pay_cost_centers(conn: Connection, user: User) -> set[int]:
+    """The cost centers whose pay the user reads and writes (ADR 0022): every one for HR, their
+    own for the owner the source names."""
+    return set(
+        conn.execute(
+            select(pay_access.c.cost_center_id).where(pay_access.c.user_id == user.user_id)
+        ).scalars()
+    )
+
+
+def reads_pay(engine: Engine, user: User) -> bool:
+    with unit_of_work(engine, user) as conn:
+        found = conn.execute(select(exists().where(pay_access.c.user_id == user.user_id))).scalar()
     return bool(found)
 
 

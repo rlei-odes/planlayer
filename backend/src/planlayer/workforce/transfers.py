@@ -23,6 +23,8 @@ from planlayer.domain.workforce import (
     TransferKind,
     check_transfer,
 )
+from planlayer.personnel import recompute
+from planlayer.personnel.pay import continue_pay
 from planlayer.rounds import NotFoundError
 from planlayer.sheet import (
     EditError,
@@ -370,9 +372,11 @@ def decide_transfer(
                     )
                     .returning(wp.c.position_id)
                 ).scalar_one()
+                continue_pay(conn, p.position_id, new_id)
             write_rollup(conn, source)
             write_rollup(conn, target)
             _close(conn, actor, t, "accepted", new_position_id=new_id)
+        recompute(conn, target.round, actor.login, by_hr=actor.is_hr)
 
     return _run(engine, actor, work)
 

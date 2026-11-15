@@ -456,7 +456,9 @@ export type Me = {
   is_admin: boolean
   is_controller: boolean
   is_viewer: boolean
+  is_hr: boolean
   reads_cost_centers: boolean
+  reads_pay: boolean
 }
 
 export type MemberChange = {
@@ -512,7 +514,7 @@ export type MyCostCenterOut = {
   name: string
   status: "not_started" | "in_progress" | "submitted" | "approved"
   overdue: boolean
-  sheets: ("capacity" | "workforce" | "planning")[]
+  sheets: ("capacity" | "workforce" | "personnel" | "planning")[]
 }
 
 export type MyNotesOut = {
@@ -609,6 +611,128 @@ export type OverviewOut = {
 
 export type OwnerIn = {
   login: string | null
+}
+
+export type PayAccountOut = {
+  code: string
+  name: string
+  months: (string | null)[]
+  small: number | null
+}
+
+export type PayIn = {
+  salary?: string | null
+  bonus?: string | null
+  charged_to?: string | null
+}
+
+export type PayModuleIn = {
+  on: boolean
+}
+
+export type PayPageOut = {
+  round_code: string
+  round_name: string
+  round_status: "setup" | "open" | "closed"
+  fiscal_year: number
+  cost_center_code: string
+  cost_center_name: string
+  status: "not_started" | "in_progress" | "submitted" | "approved"
+  lock_reason: string | null
+  periods: string[]
+  closed_months: number
+  min_group: number
+  positions: PayPositionOut[]
+  accounts: PayAccountOut[]
+  review: PayReviewOut | null
+  may_review: boolean
+  may_charge: boolean
+  charge_targets: CodeName[]
+  batch_id?: string | null
+}
+
+export type PayPositionOut = {
+  position_id: number
+  code: string
+  title: string
+  person_name: string | null
+  staff_type: string
+  staff_category: string
+  entry_date: string | null
+  leave_date: string | null
+  contract_percent: string | null
+  is_plan: boolean
+  typed: boolean | null
+  hr_salary: string | null
+  salary: string | null
+  bonus: string | null
+  charged_to: string | null
+  year_cost: string
+  transferred_to: string | null
+}
+
+export type PayReviewIn = {
+  confirmed: boolean
+}
+
+export type PayReviewOut = {
+  confirmed_by: string
+  confirmed_at: string
+}
+
+export type PayRuleIO = {
+  kind: "extra" | "raise" | "award" | "contribution"
+  name: string
+  account: string
+  entity?: string | null
+  salaries?: string | null
+  percent?: string | null
+  ceiling?: string | null
+  starts?: string | null
+  steps: PayStepIO[]
+}
+
+export type PayRulesIO = {
+  min_group: number
+  bonus_account: string | null
+  staff_types: PayStaffTypeIO[]
+  rules: PayRuleIO[]
+}
+
+export type PayRulesPageOut = {
+  round_code: string
+  round_status: "setup" | "open" | "closed"
+  fiscal_year: number
+  workforce_positions: boolean
+  on: boolean
+  may_edit: boolean
+  periods: string[]
+  rules: PayRulesIO
+  accounts: CodeName[]
+  entities: CodeName[]
+}
+
+export type PayStaffTypeIO = {
+  code: string
+  name?: string
+  external?: boolean
+  account: string | null
+  typed: boolean
+}
+
+export type PayStepIO = {
+  years: number
+  salaries?: string | null
+  amount?: string | null
+}
+
+export type PayUnitOut = {
+  code: string
+  name: string
+  status: "not_started" | "in_progress" | "submitted" | "approved"
+  positions: number
+  small_groups: number
+  confirmed: boolean
 }
 
 export type PersonOut = {
@@ -780,6 +904,8 @@ export type RoundWorkOut = {
   cost_centers: MyCostCenterOut[]
   to_approve: number
   counts: Record<string, number> | null
+  small_groups: string[]
+  to_review: string[]
 }
 
 export type RowOut = {
@@ -801,6 +927,7 @@ export type RowOut = {
   total_editable: boolean
   capacity: boolean
   forwarded?: ForwardedOut | null
+  personnel?: boolean
   credit?: boolean
   not_planned?: "round" | "set" | null
   notes?: NotesMarkerOut | null
@@ -1010,6 +1137,7 @@ export type UserChange = {
   is_admin?: boolean | null
   is_controller?: boolean | null
   is_viewer?: boolean | null
+  is_hr?: boolean | null
   disabled?: boolean | null
 }
 
@@ -1020,6 +1148,7 @@ export type UserIn = {
   is_admin?: boolean
   is_controller?: boolean
   is_viewer?: boolean
+  is_hr?: boolean
 }
 
 export type UserOut = {
@@ -1029,6 +1158,7 @@ export type UserOut = {
   is_admin: boolean
   is_controller: boolean
   is_viewer: boolean
+  is_hr: boolean
   disabled: boolean
 }
 

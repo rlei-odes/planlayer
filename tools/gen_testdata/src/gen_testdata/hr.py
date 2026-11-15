@@ -10,6 +10,10 @@ lists contracts signed, and plan positions are the planners'.
 
 Names are made up from two short lists. Staff types are Planlayer's seeded codes (EMP, APP,
 TMP, FRL), so the data maps without staff types of its own.
+
+Monthly salaries (personnel costs, ADR 0022) come from a band per job family, at the contract
+percentage; freelancers and agency staff carry their monthly fee. Each person's salary is drawn
+from a random stream of its own, so adding it changed nobody else's data.
 """
 
 import random
@@ -51,6 +55,18 @@ TITLES: dict[str, tuple[tuple[str, str, int], ...]] = {
         ("Team lead", "MGMT", 1),
     ),
 }
+# Monthly full-time salary bands in EUR per job family, and the monthly amounts of other types.
+BANDS = {
+    "TECH": (3400, 4600),
+    "ENG": (5200, 7400),
+    "SALES": (4800, 7000),
+    "OFFICE": (3200, 4500),
+    "MGMT": (7200, 10500),
+}
+APPRENTICE = (1050, 1300)
+AGENCY = (4200, 5200)  # an agency's monthly invoice
+FREELANCE = (8000, 12000)  # a freelancer's monthly fee at full time
+
 # Cost centers whose people are engineers whatever their function says.
 ENGINEERING = ("Design", "Prototyping", "Materials Lab", "R&D", "Engineering")
 
@@ -77,6 +93,8 @@ class Person:
     entry: date
     exit: date | None
     percent: int | None  # None: a freelancer without one
+    salary: int = 0  # monthly, EUR
+
 
     def counts(self, period: date) -> bool:
         """Active on the month's last day (ADR 0020)."""
@@ -103,6 +121,20 @@ def _kind(rng: random.Random, cc: CostCenter, family: str) -> tuple[str, int | N
     if family == "ENG" and roll < 0.15:
         return "FRL", None if rng.random() < 0.6 else rng.choice((40, 60, 80))
     return "EMP", rng.choices((100, 80, 60, 50), weights=(14, 3, 2, 1))[0]
+
+
+def _salary(seed: int, code: str, kind: str, family: str, percent: int | None) -> int:
+    rng = random.Random(f"{seed}:pay:{code}")
+    match kind:
+        case "APP":
+            low, high = APPRENTICE
+        case "TMP":
+            low, high = AGENCY
+        case "FRL":
+            low, high = FREELANCE
+        case _:
+            low, high = BANDS[family]
+    return round(rng.randint(low, high) * (percent or 100) / 100 / 10) * 10
 
 
 def staff(master: Master, seed: int) -> list[Person]:
@@ -141,6 +173,7 @@ def staff(master: Master, seed: int) -> list[Person]:
                             entry,
                             shown_exit,
                             percent,
+                            _salary(seed, f"P{number:05d}", kind, family, percent),
                         )
                     )
                 if exit_ >= closed:
@@ -152,10 +185,10 @@ def staff(master: Master, seed: int) -> list[Person]:
 
 def staff_rows(people: list[Person]) -> Iterator[tuple[object, ...]]:
     """(personalnr, kostl, stellenbez, name, mitarbeitergruppe, jobfamilie, eintritt, austritt,
-    beschaeftigungsgrad)"""
+    beschaeftigungsgrad, gehalt_monat)"""
     for p in people:
         yield (p.code, p.cost_center, p.title, p.name, p.staff_type, p.family, p.entry, p.exit,
-               p.percent)  # fmt: skip
+               p.percent, p.salary)  # fmt: skip
 
 
 def snapshot_rows(people: list[Person], periods: list[date]) -> Iterator[tuple[object, ...]]:

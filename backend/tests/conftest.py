@@ -140,14 +140,15 @@ CREATE TABLE {s}.v_job_families (job_family text, job_family_name text);
 INSERT INTO {s}.v_job_families VALUES ('TECH', 'Technicians'), ('OFF', 'Office');
 CREATE TABLE {s}.v_staff (personnel_no text, cost_center text, job_title text,
     employee_name text, employee_group text, job_family text, entry_date date, exit_date date,
-    contract_pct numeric);
+    contract_pct numeric, monthly_salary numeric);
 INSERT INTO {s}.v_staff VALUES
-    ('P001', 'CC1', 'Machinist', 'Max Muster', 'EMP', 'TECH', '2015-03-01', NULL, 100),
-    ('P002', 'CC1', 'Machinist', 'Eva Teil', 'EMP', 'TECH', '2020-01-01', NULL, 50),
-    ('P003', 'CC1', 'Planner', 'Olga Plan', 'EMP', 'OFF', '2019-05-01', '2026-06-30', 80),
-    ('P004', 'CC1', 'CAD support', 'Fred Lance', 'FRL', 'TECH', NULL, NULL, NULL),
-    ('P005', 'CC1', 'Machinist', 'Old Timer', 'EMP', 'TECH', '2001-01-01', '2024-12-31', 100),
-    ('P009', 'CC2', 'Assembler', 'Ida Line', 'EMP', 'TECH', '2018-01-01', NULL, 100);
+    ('P001', 'CC1', 'Machinist', 'Max Muster', 'EMP', 'TECH', '2015-03-01', NULL, 100, 4000),
+    ('P002', 'CC1', 'Machinist', 'Eva Teil', 'EMP', 'TECH', '2020-01-01', NULL, 50, 2000),
+    ('P003', 'CC1', 'Planner', 'Olga Plan', 'EMP', 'OFF', '2019-05-01', '2026-06-30', 80, 3200),
+    ('P004', 'CC1', 'CAD support', 'Fred Lance', 'FRL', 'TECH', NULL, NULL, NULL, 9000),
+    ('P005', 'CC1', 'Machinist', 'Old Timer', 'EMP', 'TECH', '2001-01-01', '2024-12-31', 100,
+     4500),
+    ('P009', 'CC2', 'Assembler', 'Ida Line', 'EMP', 'TECH', '2018-01-01', NULL, 100, 3500);
 CREATE TABLE {s}.v_workforce_actuals (snapshot_month date, cost_center text,
     employee_group text, job_family text, headcount int, fte numeric);  -- whole heads
 INSERT INTO {s}.v_workforce_actuals

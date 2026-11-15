@@ -69,7 +69,7 @@ BRONZE_TABLES = {
     "personal": (
         "personalnr text PRIMARY KEY, kostl text, stellenbez text, name text, "
         "mitarbeitergruppe text, jobfamilie text, eintritt date, austritt date, "
-        "beschaeftigungsgrad numeric(5,2)"
+        "beschaeftigungsgrad numeric(5,2), gehalt_monat numeric(18,2)"
     ),
     "personal_stichtag": (
         "stichtag date, kostl text, mitarbeitergruppe text, jobfamilie text, koepfe int, "
@@ -213,7 +213,7 @@ GOLD_VIEWS = {
         SELECT personalnr AS personnel_no, kostl AS cost_center, stellenbez AS job_title,
                name AS employee_name, mitarbeitergruppe AS employee_group,
                jobfamilie AS job_family, eintritt AS entry_date, austritt AS exit_date,
-               beschaeftigungsgrad AS contract_pct
+               beschaeftigungsgrad AS contract_pct, gehalt_monat AS monthly_salary
         FROM {b}.personal""",
     "v_workforce_actuals": """
         SELECT stichtag AS snapshot_month, kostl AS cost_center,

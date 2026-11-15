@@ -5,12 +5,13 @@ import { initials } from './names'
 // Users (admin): roles and accounts (ADR 0009). Roles combine; planners need no role, their rights
 // come from cost center ownership and deputies.
 
-type Flag = 'is_admin' | 'is_controller' | 'is_viewer'
+type Flag = 'is_admin' | 'is_controller' | 'is_viewer' | 'is_hr'
 type Note = { kind: 'ok' | 'error'; text: string }
 const ROLES: [Flag, string, string][] = [
   ['is_admin', 'Admin', 'users and connections'],
   ['is_controller', 'Controller', 'sets up and runs rounds'],
   ['is_viewer', 'Viewer', 'reads every cost center'],
+  ['is_hr', 'HR', 'reads and confirms pay'],
 ]
 const BLANK = { login: '', display_name: '', email: '' }
 
@@ -60,7 +61,7 @@ export default function UsersPage() {
           onSubmit={(e) => {
             e.preventDefault()
             void run(
-              () => api.createUser({ ...draft, email: draft.email || null, is_admin: false, is_controller: false, is_viewer: false }),
+              () => api.createUser({ ...draft, email: draft.email || null, is_admin: false, is_controller: false, is_viewer: false, is_hr: false }),
               `${draft.login} added.`,
             ).then((ok) => ok && setDraft(BLANK))
           }}

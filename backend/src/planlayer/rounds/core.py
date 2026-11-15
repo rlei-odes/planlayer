@@ -227,6 +227,17 @@ def set_round_status(engine: Engine, actor: User, code: str, status: RoundStatus
     with unit_of_work(engine, actor) as conn:
         r = get_round(conn, code, lock="update")
         round_transition(r.status, status)
+        if status == "closed":
+            # No total over fewer people than the minimum stays in a closed round (ADR 0022).
+            # Imported here: personnel costs build on rounds.
+            from planlayer.personnel import small_groups
+
+            small = small_groups(conn, r.version_id)
+            if small:
+                raise RoundError(
+                    f"{len(small)} cost center(s) have personnel costs of fewer people than the "
+                    "minimum; HR charges them to other cost centers first"
+                )
         conn.execute(
             update(planning_round)
             .where(planning_round.c.version_id == r.version_id)

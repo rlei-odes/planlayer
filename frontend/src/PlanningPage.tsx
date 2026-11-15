@@ -82,6 +82,7 @@ function spreadChoosable(row: Row): boolean {
 function badgeLabel(row: Row): string {
   if (row.not_planned) return 'Not planned'
   if (row.capacity) return 'From capacity'
+  if (row.personnel) return 'Personnel costs'
   if (row.forwarded) return row.forwarded.side === 'credit' ? 'Passed on' : 'Charged'
   if (!row.entry_form) return ''
   if (row.entry_form === 'annual') return 'Year only'
@@ -137,6 +138,8 @@ function basisText(row: Row): string {
   if (row.not_planned === 'set')
     return 'Not among this cost center’s accounts in this round. Shown for its comparison values, which count in the totals.'
   if (row.capacity) return 'Credited by capacity planning: planned hours × rate of the work centers. Change it on the Capacity page.'
+  if (row.personnel)
+    return 'Written by personnel costs from the positions’ pay and the round’s rules. HR and the cost center’s owner change it on the Personnel costs page.'
   if (row.forwarded) return forwardedText(row.forwarded)
   const text =
     row.entry_form === 'monthly'
@@ -744,7 +747,7 @@ function accountCell(h: H, row: Row | undefined, profiles: ProfileRef[], quarter
     ? 'pv-form off'
     : row.capacity || row.forwarded?.side === 'credit'
     ? 'pv-form capacity'
-    : row.forwarded
+    : row.forwarded || row.personnel
     ? 'pv-form charged'
     : `pv-form${form === 'monthly' ? ' monthly' : ''}${row.chosen_spread ? ' chosen' : ''}`
   const profile = row.spread === 'profile' ? profiles.find((p) => p.code === row.profile) : undefined

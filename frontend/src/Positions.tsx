@@ -220,14 +220,37 @@ export default function Positions({
         </div>
 
         {editing !== null && (
+          <div className="il-backdrop" role="presentation" onMouseDown={(e) => e.target === e.currentTarget && setEditing(null)}>
           <form
-            className="wf-editor"
+            className="il-dialog wf-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="wf-edit-title"
+            onKeyDown={(e) => {
+              e.stopPropagation()
+              if (e.key === 'Escape') setEditing(null)
+            }}
             onSubmit={(e) => {
               e.preventDefault()
               if (!valid) return
               void onSave(positionIn(draft), editing === 'new' ? null : editing).then((ok) => ok && setEditing(null))
             }}
           >
+            <header className="il-head">
+              <div>
+                <div className="su-eyebrow">{editing === 'new' ? 'New position' : 'Edit position'}</div>
+                <h3 id="wf-edit-title">
+                  {current && <span className="pl-code">{current.code}</span>} {draft.title.trim() || 'Untitled position'}
+                </h3>
+                <div className="ink-3 il-sub">
+                  {sheet.cost_center_code} {sheet.cost_center_name}
+                </div>
+              </div>
+              <button type="button" className="su-icon" aria-label="Close" title="Close (Esc)" onClick={() => setEditing(null)}>
+                ×
+              </button>
+            </header>
+            <div className="il-body wf-editor">
             <div className="wf-grid">
               <label className="su-field wf-title">
                 Position (title)
@@ -320,21 +343,22 @@ export default function Positions({
                 />
               </label>
             </div>
-            <div className="su-row wf-editor-foot">
+            </div>
+            <footer className="il-foot">
               <span className="su-hint">
                 {fromHr
                   ? 'Taken from HR: number, name and entry date are HR’s. Plan its leaving with the leave date.'
                   : 'Blank dates mean “before the year” and “stays”. A position counts in a month when active on its last day.'}
               </span>
-              <span className="cp-grow" />
               <button type="button" className="su-btn ghost" onClick={() => setEditing(null)}>
                 Cancel
               </button>
               <button type="submit" className="su-btn primary" disabled={!valid || saving}>
                 {editing === 'new' ? 'Add position' : 'Save position'}
               </button>
-            </div>
+            </footer>
           </form>
+          </div>
         )}
 
         {sheet.positions.length === 0 ? (

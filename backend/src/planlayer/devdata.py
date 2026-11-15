@@ -59,6 +59,7 @@ def seed(engine: Engine) -> list[str]:
         ("controller@nordwerk.example", "Controller", {"is_controller": True}),
         ("cfo@nordwerk.example", "CFO", {"is_viewer": True}),
         ("auditor@nordwerk.example", "Auditor", {"is_viewer": True}),
+        ("hr@nordwerk.example", "HR", {"is_hr": True}),
     ]
     created = []
     for login, name, roles in wanted:

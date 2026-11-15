@@ -12,7 +12,7 @@ export type HomeTarget = 'status' | 'setup'
 const WHEN = new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeStyle: 'short' })
 const TODAY = new Intl.DateTimeFormat('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })
 const DAY = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })
-const SHEET_LABEL: Record<Sheet, string> = { capacity: 'Capacity', workforce: 'Workforce', planning: 'Costs' }
+const SHEET_LABEL: Record<Sheet, string> = { capacity: 'Capacity', workforce: 'Workforce', personnel: 'Pay', planning: 'Costs' }
 const ORDER: Status[] = ['not_started', 'in_progress', 'submitted', 'approved']
 
 function greeting(hour: number): string {
@@ -105,7 +105,9 @@ export default function HomePage({
   const threads = notes?.threads ?? []
   const assigned = threads.filter((t) => t.reason === 'assigned')
   const approvals = (home?.rounds ?? []).filter((w) => w.to_approve > 0)
-  const taskCount = toDecide.length + assigned.length + approvals.length
+  // HR (ADR 0022): small groups to charge elsewhere, and submitted pay to review.
+  const payTasks = (home?.rounds ?? []).filter((w) => w.small_groups.length > 0 || w.to_review.length > 0)
+  const taskCount = toDecide.length + assigned.length + approvals.length + payTasks.length
   const loaded = home !== null && (notes !== null || !readsNotes)
 
   return (
@@ -151,6 +153,34 @@ export default function HomePage({
                 <span className="tr-actions">
                   <button type="button" className="su-btn sm" onClick={() => onGo(w.round.code, 'status')}>
                     Open status
+                  </button>
+                </span>
+              </li>
+            ))}
+            {payTasks.map((w) => (
+              <li key={`p${w.round.code}`} className="hm-task">
+                <span className="hm-kind pay">Pay</span>
+                <span className="tr-line">
+                  <strong>
+                    {[
+                      w.to_review.length ? `${w.to_review.length} cost center${w.to_review.length === 1 ? '' : 's'} to review` : '',
+                      w.small_groups.length
+                        ? `${w.small_groups.length} with small groups to charge elsewhere`
+                        : '',
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}{' '}
+                    in {w.round.name}
+                  </strong>
+                  <span className="ink-3">{[...new Set([...w.to_review, ...w.small_groups])].slice(0, 8).join(', ')}</span>
+                </span>
+                <span className="tr-actions">
+                  <button
+                    type="button"
+                    className="su-btn sm"
+                    onClick={() => onOpenSheet(w.round.code, w.small_groups[0] ?? w.to_review[0], 'personnel')}
+                  >
+                    Open personnel costs
                   </button>
                 </span>
               </li>

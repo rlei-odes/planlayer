@@ -5,6 +5,8 @@
 - **Planning:** per open round, the cost centers they plan as owner, deputy or capacity planner,
   with their status and the sheets to fill in; the cost centers waiting for their approval; and
   for controllers and viewers, the round's statuses at a glance.
+- **HR** (ADR 0022): per open round, the small groups to charge elsewhere and the submitted cost
+  centers whose pay waits for HR's review.
 """
 
 from dataclasses import dataclass, field
@@ -13,16 +15,24 @@ from typing import Literal, cast
 
 from sqlalchemy import Engine, select
 
-from planlayer.access import User, approvers, capacity_rights, cost_center_rights, plans
+from planlayer.access import (
+    User,
+    approvers,
+    capacity_rights,
+    cost_center_rights,
+    pay_cost_centers,
+    plans,
+)
 from planlayer.capacity import productive
 from planlayer.domain.workflow import STATUSES, Status, is_overdue
+from planlayer.personnel import module_on, needs_review, small_groups
 from planlayer.rounds import RoundRef, rounds
 from planlayer.store.schema import member, workflow_status
 from planlayer.store.uow import unit_of_work
 from planlayer.workflow import enabled_members
 from planlayer.workforce import mode_of
 
-Sheet = Literal["capacity", "workforce", "planning"]
+Sheet = Literal["capacity", "workforce", "personnel", "planning"]
 
 
 @dataclass
@@ -41,6 +51,9 @@ class RoundWork:
     to_approve: int = 0  # submitted, and the user approves them
     # Controllers and viewers: every planned cost center of the round, per status.
     counts: dict[Status, int] | None = None
+    # HR: cost centers with small groups, and submitted ones waiting for HR's review.
+    small_groups: list[str] = field(default_factory=list)
+    to_review: list[str] = field(default_factory=list)
 
 
 def my_work(engine: Engine, user: User, today: date) -> list[RoundWork]:
@@ -52,7 +65,7 @@ def my_work(engine: Engine, user: User, today: date) -> list[RoundWork]:
             enabled = sorted(m for m, on in enabled_members(conn, r.version_id).items() if on)
             rights = cost_center_rights(conn, user)
             readable = [m for m in enabled if m in rights]
-            if not readable and not user.is_controller:
+            if not readable and not (user.is_controller or user.is_hr):
                 continue
             statuses = {
                 cc: cast(Status, s)
@@ -71,6 +84,7 @@ def my_work(engine: Engine, user: User, today: date) -> list[RoundWork]:
                 & set(enabled)
             )
             workforce = mode_of(conn, r.version_id) is not None
+            pay = pay_cost_centers(conn, user) if module_on(conn, r.version_id) else set()
             shown = sorted(mine | (set() if user.is_controller else capacity))
             names = {
                 m.member_id: m
@@ -82,8 +96,21 @@ def my_work(engine: Engine, user: User, today: date) -> list[RoundWork]:
             }
             submitted = [m for m in readable if statuses.get(m) == "submitted" and m not in mine]
             assigned = approvers(conn, submitted)
+            small: list[str] = []
+            review: list[str] = []
+            if user.is_hr and pay:
+                waiting = [m for m in enabled if statuses.get(m) == "submitted"]
+                codes = dict(
+                    conn.execute(
+                        select(member.c.member_id, member.c.code).where(
+                            member.c.member_id.in_(enabled)
+                        )
+                    ).all()
+                )
+                small = sorted(codes[m] for m in small_groups(conn, r.version_id) if m in codes)
+                review = sorted(codes[m] for m in needs_review(conn, r.version_id, waiting))
 
-        work = RoundWork(r)
+        work = RoundWork(r, small_groups=small, to_review=review)
         for cc in sorted(shown, key=lambda m: names[m].code):
             status = statuses.get(cc, "not_started")
             sheets: list[Sheet] = []
@@ -92,6 +119,8 @@ def my_work(engine: Engine, user: User, today: date) -> list[RoundWork]:
             if cc in mine:
                 if workforce:
                     sheets.append("workforce")
+                if cc in pay:
+                    sheets.append("personnel")
                 sheets.append("planning")
             work.cost_centers.append(
                 MyCostCenter(

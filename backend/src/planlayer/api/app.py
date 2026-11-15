@@ -20,6 +20,7 @@ from planlayer.api.home import router as home_router
 from planlayer.api.item_lists import router as item_lists_router
 from planlayer.api.masterdata import router as masterdata_router
 from planlayer.api.notes import router as notes_router
+from planlayer.api.personnel import router as personnel_router
 from planlayer.api.planning import router as planning_router
 from planlayer.api.publish import router as publish_router
 from planlayer.api.settings import router as settings_router
@@ -63,6 +64,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(planning_router)
     app.include_router(capacity_router)
     app.include_router(workforce_router)
+    app.include_router(personnel_router)
     app.include_router(transfers_router)
     app.include_router(home_router)
     app.include_router(forwarding_router)

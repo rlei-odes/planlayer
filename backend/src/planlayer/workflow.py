@@ -257,6 +257,11 @@ def act(
         rights = cost_center_rights(conn, actor)
         mine = plans(conn, actor, ids)
         assigned = approvers(conn, ids)
+        # Pay is approved once HR has confirmed it (ADR 0022). Imported here: personnel costs
+        # build on this module.
+        from planlayer.personnel import needs_review
+
+        unreviewed = needs_review(conn, r.version_id, ids) if action == "approve" else set()
 
         def why_not(cc: int) -> str | None:
             if cc not in rights:
@@ -268,7 +273,9 @@ def act(
             ids = [
                 m
                 for m in ids
-                if allows(action, status_of(conn, r.version_id, m)) and why_not(m) is None
+                if allows(action, status_of(conn, r.version_id, m))
+                and why_not(m) is None
+                and m not in unreviewed
             ]
             if not ids:
                 raise WorkflowError(f"nothing below {node} you may {action}")
@@ -297,6 +304,8 @@ def act(
             reason = why_not(cc_id)
             if reason is not None:
                 raise AccessError(f"{cc_code}: {reason}")
+            if cc_id in unreviewed:
+                raise WorkflowError(f"{cc_code}: HR hasn't confirmed its pay yet")
             try:
                 changes.append((cc_id, status, transition(status, action, comment)))
             except WorkflowError as e:

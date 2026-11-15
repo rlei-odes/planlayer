@@ -36,6 +36,7 @@ from planlayer.domain.workflow import EDITABLE, RoundStatus, Status
 from planlayer.item_lists import markers as list_markers
 from planlayer.notes import Marker
 from planlayer.notes import markers as note_markers
+from planlayer.personnel.common import pay_accounts
 from planlayer.rounds import (
     Grain,
     NotFoundError,
@@ -145,6 +146,7 @@ class Row:
     total_editable: bool = False
     capacity: bool = False  # credited by capacity planning: read only (ADR 0013)
     forwarded: Forwarded | None = None  # written by cost forwarding: read only (ADR 0018)
+    personnel: bool = False  # written by personnel costs: read only (ADR 0022)
     # A credit (capacity or forwarding): stored natural-positive, shown negative (T-7).
     credit: bool = False
     # Why the line takes no plan values in this round (ADR 0014); None: it is planned.
@@ -374,9 +376,10 @@ class _Scope:
     account_set: set[int] | None  # the leaves of its account set; None: every account
     credited: set[int]  # written by capacity planning, outside any set
     forwarded: set[int] = field(default_factory=set)  # written by cost forwarding (ADR 0018)
+    personnel: set[int] = field(default_factory=set)  # written by personnel costs (ADR 0022)
 
     def why_not(self, account_id: int) -> Literal["round", "set"] | None:
-        if account_id in self.forwarded:
+        if account_id in self.forwarded or account_id in self.personnel:
             return None
         if account_id in self.not_planned:
             return "round"
@@ -394,6 +397,7 @@ class _Scope:
             self.why_not(account_id) is None
             and account_id not in self.credited
             and account_id not in self.forwarded
+            and account_id not in self.personnel
         )
 
 
@@ -403,6 +407,7 @@ def _scope(conn: Connection, ctx: SheetContext) -> _Scope:
         account_scopes(conn, ctx.version_id, [ctx.cost_center_id])[ctx.cost_center_id],
         _credited(conn, ctx),
         set(_forwarded(conn, ctx.version_id)),
+        pay_accounts(conn, ctx.version_id),
     )
 
 
@@ -602,8 +607,9 @@ def read_grid(engine: Engine, user: User, version_code: str, cc_code: str) -> Gr
         w = weights(line.form.basis, MONTHS, line.profile, line.reference, ctx.open_months)
         from_capacity = line.account_id in credited
         by_forwarding = forwarded.get(line.account_id)
+        by_personnel = line.account_id in scope.personnel
         is_credit = from_capacity or (by_forwarding is not None and by_forwarding.side == "credit")
-        read_only = from_capacity or by_forwarding is not None
+        read_only = from_capacity or by_forwarding is not None or by_personnel
         why_not = scope.why_not(line.account_id)
         planned = why_not is None
         comparisons = [values.get(line.account_id, blank) for values in compared]
@@ -630,6 +636,7 @@ def read_grid(engine: Engine, user: User, version_code: str, cc_code: str) -> Gr
             total_editable=editable and planned and not read_only,
             capacity=from_capacity,
             forwarded=by_forwarding,
+            personnel=by_personnel,
             credit=is_credit,
             not_planned=why_not,
             notes=note_marks.get((line.account_id, None, None)),
@@ -814,6 +821,9 @@ def _apply(
     by_forwarding = sorted(c for c, a in accounts.items() if a in scope.forwarded)
     if by_forwarding:
         raise EditError(f"written by cost forwarding: {', '.join(by_forwarding)}")
+    by_personnel = sorted(c for c, a in accounts.items() if a in scope.personnel)
+    if by_personnel:
+        raise EditError(f"written by personnel costs: {', '.join(by_personnel)}")
     lines = {line.account_id: line for line in _lines(conn, ctx, accounts.values())}
 
     # Lock the cells this request may touch, then compare versions (D-19).

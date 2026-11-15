@@ -124,6 +124,7 @@ class RowOut(BaseModel):
     total_editable: bool
     capacity: bool  # credited by capacity planning, read only
     forwarded: ForwardedOut | None = None  # written by cost forwarding, read only
+    personnel: bool = False  # written by personnel costs, read only (ADR 0022)
     credit: bool = False  # a credit, shown negative (stored natural-positive, T-7)
     # Why the line takes no plan values (ADR 0014): not planned in the round, or outside the
     # cost center's account set; it shows read only for its comparison values.
@@ -294,6 +295,7 @@ def _grid_out(grid: planning.Grid, batch_id: str | None = None) -> GridOut:
                 months_editable=r.months_editable,
                 total_editable=r.total_editable,
                 capacity=r.capacity,
+                personnel=r.personnel,
                 forwarded=None
                 if r.forwarded is None
                 else ForwardedOut.model_validate(r.forwarded, from_attributes=True),

@@ -147,6 +147,10 @@
   color: var(--warn);
 }
 
+.hm-kind.pay {
+  color: var(--danger, var(--warn));
+}
+
 .hm-head h3 {
   margin: 4px 0 10px;
   font-size: 15px;

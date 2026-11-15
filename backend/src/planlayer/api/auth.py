@@ -47,8 +47,11 @@ class Me(BaseModel):
     is_admin: bool
     is_controller: bool
     is_viewer: bool
+    is_hr: bool
     # Reads at least one cost center, so the planning and status pages have something to show.
     reads_cost_centers: bool
+    # HR, or the owner the source names on a cost center: the personnel costs page (ADR 0022).
+    reads_pay: bool
 
 
 class LoginOptions(BaseModel):
@@ -73,6 +76,8 @@ def me_of(engine: Engine, user: access.User) -> Me:
         is_admin=user.is_admin,
         is_controller=user.is_controller,
         is_viewer=user.is_viewer,
+        is_hr=user.is_hr,
+        reads_pay=access.reads_pay(engine, user),
     )
 
 

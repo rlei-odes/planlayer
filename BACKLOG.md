@@ -272,6 +272,7 @@ Mid-size manufacturer of industrial pumps and valves, ~400 employees.
         - To decide: an installation default (setup page, E-12) with a per-user override, and where the choice sits on the planning page.
     - [ ] Real users' walkthroughs (R-4).
 - [ ] **E-11** Self-host packaging: container image on GHCR, the DBA install script and checklist (D-25), upgrade/migration procedure, the scheduled backup and restore (D-30), install docs.
+    - [ ] A guided installation in the app for the admin: connections, the first sync, the first users and roles (an HR user among them), and the encryption key for pay (W-18), generated in the app and shown once for HR to keep in a password manager, with a check that it was saved before going on.
 
 ### Cost center accounting (after v1)
 
@@ -319,12 +320,18 @@ FTE and headcount per cost center, staff type and category, as month-end levels,
 - [x] **W-4 Data:** staff types (seeded, editable, *external* flag) and categories as master data; datasets `staff_types`, `staff_categories`, `staff`, `workforce_actuals`.
 - [x] **W-5 Publishing:** `fact_plan_workforce`, `dim_staff_type`, `dim_staff_category`, `v_plan_workforce`, no names.
 - [ ] **W-6 Factors from the workforce:** a category carries per-head factors (e.g. one IT workplace per office worker, a CAD licence per engineer) that feed cost forwarding's quantities (K-3) by month.
-- [ ] **W-7 Personnel costs from positions:** salary bands or rates per category, pro-rata FTE by days, raises from a month, employer costs; written to the personnel accounts like credits from capacity.
+- [x] **W-7 Personnel costs from positions** ([ADR 0022](docs/adr/0022-personnel-costs.md)): monthly salary per position (HR's kept apart from the planned one), pro rata by days from entry to leave, typed amounts for staff types such as freelancers or hourly paid; yearly extras as salaries per year or % of base pay, spread over the year; raises from a month on their own account, also after approval; long-service awards by years since entry; a yearly bonus spread over the months worked; contributions per person and month up to a ceiling; rules per round, optionally per entity, carried with a new round; totals written to the personnel accounts of the cost center charged, read only on the sheet.
+  - [ ] Rules limited to staff categories (e.g. a raise for staff under a collective agreement only).
+  - [ ] Contributions on typed amounts (people paid by the hour are employees; today a typed amount bears nothing).
+  - [ ] Salary bands per category as the starting salary of a plan position (today it starts at 0).
+  - [ ] A transfer during the year splits the yearly bonus by months (today it stays with the sending half), and the receiving half's long-service award counts from the person's first entry, not the transfer.
+  - [ ] Undo on the pay of positions (the changes are in `position_pay_log` with the change batch).
+  - [ ] Paste of salaries from Excel into the pay table.
 - [ ] **W-8 Modes per cost center:** a round default with exceptions on the *Cost centers* tab (e.g. positions for the larger departments only).
 - [ ] **W-9 A replacement names the leaver** it replaces (today a free description), so the build-up can show open gaps: leavers without a replacement.
 - [ ] **W-10 Contract changes during the year** (e.g. 100 % to 80 % from September) and long absences (counted in headcount, not in FTE).
 - [ ] **W-11 Undo on the positions list** (today undo covers typed values; positions are logged in `workforce_position_log` with the change batch).
-- [ ] **W-12 Positions in the file downloads** of the Publish page are left out on purpose; decide whether a controller may download them with names.
+- [ ] **W-12 Positions in the file downloads** of the Publish page are left out on purpose; decide whether a controller may download them with names. Pay is never in them (ADR 0022).
 - [ ] **W-13 Status page:** FTE and headcount per node next to the plan status, and a comparison with last year.
 - [ ] **W-14 Paste of a position list** from Excel into the positions table.
 - [ ] **W-15 HR changes after taking:** a round holds HR's list as it was taken. Show where a position differs from HR's latest sync (a new leave date, another cost center, someone new) and offer to apply it.
@@ -333,14 +340,13 @@ FTE and headcount per cost center, staff type and category, as month-end levels,
   - [ ] Undo an accepted transfer (restore the original), and change its date on either side.
   - [ ] W-15 offers "apply as a transfer from <date>" when HR's sync shows a position under another cost center; personnel costs (W-7) split at the date.
   - [ ] E-mail the receiving side when a transfer is proposed, and the sender when it is decided.
-- [ ] **W-18 Confidential personnel data, before salaries (W-7).** Decide (ADR) how pay is kept from people who may read a cost center but not its pay:
-  - a separate right to read pay (an HR-confidential flag on accounts or on the salary tables), enforced by row-level security like `cost_center_access`; the Viewer role and approvers don't get it by default;
-  - small cells: a personnel account on a cost center with one or two people reveals a salary to every reader of the sheet, the published rows and the downloads; mask or aggregate below a minimum headcount;
-  - the change logs (`workforce_position_log`, `change_log`) hold full rows and have no row-level security; only the app reads them today, filtered by actor;
-  - `planlayer_out` has no row-level security: whatever is published, BI users with access to the schema read;
-  - reads with the system user's rights (a transfer shows the receiver the person) must never include pay;
-  - free text (notes, descriptions, item lists) can carry pay whatever the rules say;
-  - encryption at rest for pay columns (`pgcrypto`, key outside the database) against DBAs, backups and dumps, at the cost of sorting, summing and indexing in the database.
+- [x] **W-18 Confidential personnel data** ([ADR 0022](docs/adr/0022-personnel-costs.md)): the HR role; pay read by HR and by the owner the source names (not deputies, approvers, viewers, controllers or an owner set by override), enforced by row-level security through `pay_access`, logs included; small groups (fewer positions on a cost center and personnel account than the round's minimum, default 3, set by HR) hidden from other readers, listed for HR on *Home*, and blocking closing and publishing until HR charges the positions elsewhere; HR's review before approval; totals only in `planlayer_out`.
+  - [ ] Encryption at rest of pay columns (`pgcrypto`, key outside the database) against DBAs, backups and dumps; the key is set up in the guided installation (E-11), and the docs tell HR to keep it in a password manager.
+  - [ ] HR grants or withholds pay rights on a cost center (e.g. HR alone plans a sensitive one, or delegates it).
+  - [ ] A log of role changes (who gave whom the HR role), shown to HR.
+  - [ ] Actuals on the personnel accounts of a small cost center come from the ledger as they are; decide whether to mask them like plan values.
+  - [ ] The admin's source preview of the `staff` dataset shows `monthly_salary`; hide pay columns in the preview.
+  - [ ] Free text (descriptions, notes, item lists) can still carry pay whatever the rules say: say so in the user docs.
 - [ ] **W-16 Number prefix:** Planlayer's position numbers start with `N`; if a customer's HR numbers do too, make the prefix a setting.
 
 ### MCP access (after v1)

@@ -20,7 +20,7 @@ class MyCostCenterOut(BaseModel):
     name: str
     status: Status
     overdue: bool
-    sheets: list[Literal["capacity", "workforce", "planning"]]
+    sheets: list[Literal["capacity", "workforce", "personnel", "planning"]]
 
 
 class RoundWorkOut(BaseModel):
@@ -28,6 +28,9 @@ class RoundWorkOut(BaseModel):
     cost_centers: list[MyCostCenterOut]
     to_approve: int  # submitted cost centers the user approves
     counts: dict[Status, int] | None  # controllers and viewers: the round's statuses
+    # HR (ADR 0022): cost centers with small groups, and submitted ones waiting for the review.
+    small_groups: list[str]
+    to_review: list[str]
 
 
 class HomeOut(BaseModel):
@@ -46,7 +49,10 @@ def start(request: Request, user: CurrentUser) -> HomeOut:
     decide = sum(1 for t in transfers if t.status == "proposed" and t.can_decide)
     work = home.my_work(engine, user, date.today())
     return HomeOut(
-        tasks=note_tasks + decide + sum(1 for w in work if w.to_approve),
+        tasks=note_tasks
+        + decide
+        + sum(1 for w in work if w.to_approve)
+        + sum(1 for w in work if w.small_groups or w.to_review),
         transfers=[transfer_out(t) for t in transfers],
         rounds=[
             RoundWorkOut(
@@ -63,6 +69,8 @@ def start(request: Request, user: CurrentUser) -> HomeOut:
                 ],
                 to_approve=w.to_approve,
                 counts=w.counts,
+                small_groups=w.small_groups,
+                to_review=w.to_review,
             )
             for w in work
         ],

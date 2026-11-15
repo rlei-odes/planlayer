@@ -68,6 +68,7 @@ from planlayer.store.schema import (
     fact_workforce,
     hier_edge,
     hierarchy,
+    hr_pay,
     hr_staff,
     installation,
     member,
@@ -143,6 +144,8 @@ FIELDS: dict[str, dict[str, pa.DataType]] = {
         "entry_date": pa.date32(),
         "leave_date": pa.date32(),
         "contract_percent": pa.decimal128(5, 2),
+        # Pay (ADR 0022): stored apart, under the pay rules.
+        "monthly_salary": pa.decimal128(18, 2),
     },
     "workforce_actuals": {
         "period": pa.date32(),
@@ -500,7 +503,7 @@ def default_mappings(schema: str) -> list[Mapping]:
         Mapping(
             "staff",
             "SELECT personnel_no, cost_center, job_title, employee_name, employee_group, "
-            f"job_family, entry_date, exit_date, contract_pct FROM {s}.v_staff",
+            f"job_family, entry_date, exit_date, contract_pct, monthly_salary FROM {s}.v_staff",
             {
                 "code": "personnel_no",
                 "cost_center_code": "cost_center",
@@ -511,6 +514,7 @@ def default_mappings(schema: str) -> list[Mapping]:
                 "entry_date": "entry_date",
                 "leave_date": "exit_date",
                 "contract_percent": "contract_pct",
+                "monthly_salary": "monthly_salary",
             },
         ),
         Mapping(
@@ -896,6 +900,8 @@ def _plan_workforce(
                 p.problems.append(f"staff: {code} leaves before entering")
             if not str(r["title"] or "").strip():
                 p.problems.append(f"staff: {code} has no title")
+            if r.get("monthly_salary") is not None and r["monthly_salary"] < 0:
+                p.problems.append(f"staff: {code} has a negative salary")
         p.staff = rows
     if "workforce_actuals" in maps:
         try:
@@ -1394,6 +1400,21 @@ def _write_staff(
                 "contract_percent": r.get("contract_percent"),
             }
             for r in rows
+        ],
+    )
+    # Salaries go to their own table, which only readers of pay read (ADR 0022).
+    conn.execute(delete(hr_pay))
+    insert_all(
+        conn,
+        hr_pay,
+        [
+            {
+                "code": str(r["code"]),
+                "cost_center_id": ids[(COST_CENTER, str(r["cost_center_code"]))],
+                "monthly_salary": r["monthly_salary"],
+            }
+            for r in rows
+            if r.get("monthly_salary") is not None
         ],
     )
 
