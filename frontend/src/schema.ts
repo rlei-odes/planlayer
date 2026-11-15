@@ -181,6 +181,8 @@ export type DatasetOut = {
   has_hierarchy: boolean
   mapping: MappingIO | null
   window?: WindowOut | null
+  pay_fields: string[]
+  pay_from_source: boolean | null
 }
 
 export type DecisionIn = {
@@ -620,6 +622,10 @@ export type PayAccountOut = {
   small: number | null
 }
 
+export type PayFromSourceIn = {
+  on: boolean
+}
+
 export type PayHandoverIn = {
   handed_over: boolean
 }
@@ -995,6 +1001,37 @@ export type RuleIO = {
   form: "monthly" | "annual" | "annual_even" | "annual_profile" | "annual_reference"
   profile_code?: string | null
   reference_version_code?: string | null
+}
+
+export type SalaryUploadInfoOut = {
+  round_code: string
+  round_status: "setup" | "open" | "closed"
+  pay_from_source: boolean
+  people: number
+  with_salary: number
+  reason: string | null
+}
+
+export type SalaryUploadOut = {
+  round_code: string
+  applied: boolean
+  rows: SalaryUploadRowOut[]
+  ignored: string[]
+  positions: number
+  staff_list: number
+  batch_id?: string | null
+}
+
+export type SalaryUploadRowOut = {
+  line: number
+  number: string | null
+  name: string | null
+  cost_center: string | null
+  file_cost_center: string | null
+  old: string | null
+  new: string | null
+  outcome: "changed" | "unchanged" | "blank" | "not_in_round" | "unknown" | "failed"
+  message: string | null
 }
 
 export type SaveListIn = {

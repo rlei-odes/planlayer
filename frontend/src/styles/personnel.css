@@ -299,3 +299,53 @@ input.pc-low {
   border-bottom: 1px solid var(--line-2);
   font-size: 13px;
 }
+
+/* HR's salary upload (ADR 0025): template, file, the check's result. */
+.su-upload-tiles {
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  padding-top: 4px;
+}
+
+.su-upload-tiles .pb-tile {
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.su-upload-tiles .pb-tile[aria-pressed='true'] {
+  border-color: var(--accent-2);
+  box-shadow: 0 0 0 3px var(--accent-tint);
+}
+
+.su-file {
+  font-weight: 600;
+}
+
+.su-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.su-upload-rows {
+  max-height: 520px;
+}
+
+.su-upload-cc {
+  margin-left: 6px;
+}
+
+.su-upload-msg {
+  display: block;
+  margin-top: 2px;
+  color: var(--ink-3);
+}
+
+.su-upload-apply {
+  border-top: 1px solid var(--line-2);
+  padding-top: 12px;
+}

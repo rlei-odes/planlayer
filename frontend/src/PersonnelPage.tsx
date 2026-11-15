@@ -3,6 +3,7 @@ import { format, parse, sum } from './amounts'
 import { api, STATUS_LABEL, type Me, type PayPage, type PayPosition, type PayUnit } from './api'
 import PayAccess from './PayAccess'
 import PayRules from './PayRules'
+import SalaryUpload from './SalaryUpload'
 import Select from './Select'
 
 // Personnel costs (ADR 0022). Pay is read by HR and by the cost center's owner as the source
@@ -13,7 +14,7 @@ import Select from './Select'
 const MONTH = new Intl.DateTimeFormat('en', { month: 'short', timeZone: 'UTC' })
 const DAY = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })
 
-type Tab = 'pay' | 'access' | 'rules'
+type Tab = 'pay' | 'access' | 'upload' | 'rules'
 type Message = { kind: 'error' | 'ok'; text: string }
 
 function errorText(e: unknown): string {
@@ -105,7 +106,7 @@ export default function PersonnelPage({
   // only to those who have more than one; everyone else sees their one view without it.
   const views: [Tab, string][] = [
     ...(me.reads_pay ? ([['pay', 'Pay']] as [Tab, string][]) : []),
-    ...(me.is_hr ? ([['access', 'Access control']] as [Tab, string][]) : []),
+    ...(me.is_hr ? ([['access', 'Access control'], ['upload', 'Upload']] as [Tab, string][]) : []),
     ...(me.is_hr || me.is_controller ? ([['rules', 'Rules']] as [Tab, string][]) : []),
   ]
   const tabs =
@@ -131,6 +132,22 @@ export default function PersonnelPage({
           <div className="pl-actions">{tabs}</div>
         </div>
         <PayAccess version={version} onChanged={loadUnits} />
+      </div>
+    )
+  }
+
+  if (tab === 'upload') {
+    return (
+      <div className="su pc">
+        <div className="pl-head">
+          <div className="pl-title">
+            <div className="su-eyebrow">Personnel costs</div>
+            <h1 className="pc-h1">Upload</h1>
+            <div className="pl-sub">HR’s salaries for the round’s people, from a file. Nothing is written until HR applies the check.</div>
+          </div>
+          <div className="pl-actions">{tabs}</div>
+        </div>
+        <SalaryUpload version={version} onApplied={loadUnits} />
       </div>
     )
   }

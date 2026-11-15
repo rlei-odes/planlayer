@@ -4,7 +4,7 @@ the cost center charged. Pay is read by HR, and by the readers HR lists once HR 
 round (``pay_access``, ADR 0023).
 
 The package's modules build on each other in this order: ``common``, ``costs``, ``pay``,
-``rules``, ``rights``."""
+``rules``, ``rights``; ``salary_files`` and ``upload`` are HR's salary upload (ADR 0025)."""
 
 from planlayer.personnel.common import module_on as module_on
 from planlayer.personnel.costs import recompute as recompute

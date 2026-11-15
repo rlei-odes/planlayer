@@ -1,6 +1,6 @@
 # 0022: Personnel costs
 
-- **Status:** Accepted; who reads pay is amended by [ADR 0023](0023-pay-rights-by-hr.md)
+- **Status:** Accepted; who reads pay is amended by [ADR 0023](0023-pay-rights-by-hr.md), where HR's salaries come from by [ADR 0025](0025-hr-salary-upload.md)
 - **Closes:** W-7 (personnel costs from positions), W-18 (confidential personnel data), first cut
 - **Amends:** ADR 0009 (roles), ADR 0020 (positions), ADR 0011 (publishing), ADR 0008 (workflow)
 - **Date:** 2026-11-15

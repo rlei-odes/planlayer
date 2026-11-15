@@ -120,6 +120,13 @@ class DatasetOut(BaseModel):
     mapping: MappingIO | None
     # Values per period: the window a sync reads by default, filtered on the period column.
     window: WindowOut | None = None
+    # Staff (ADR 0025): its pay fields, and whether the sync reads them; off, HR uploads pay.
+    pay_fields: list[str]
+    pay_from_source: bool | None
+
+
+class PayFromSourceIn(BaseModel):
+    on: bool
 
 
 class QueryPreviewIn(MappingIO):
@@ -141,6 +148,7 @@ def datasets(request: Request, user: CurrentUser) -> list[DatasetOut]:
     with engine_of(request).connect() as conn:
         maps = sync.mappings(conn)
         default = _window(sync.window_of(conn, None))
+        pay = sync.pay_from_source(conn)
     return [
         DatasetOut(
             dataset=d,  # type: ignore[arg-type]
@@ -155,9 +163,21 @@ def datasets(request: Request, user: CurrentUser) -> list[DatasetOut]:
             if d in maps
             else None,
             window=default if d in sync.PERIOD_DATASETS else None,
+            pay_fields=list(sync.PAY_FIELDS) if d == "staff" else [],
+            pay_from_source=pay if d == "staff" else None,
         )
         for d in sync.DATASETS
     ]
+
+
+@router.put("/datasets/staff/pay-from-source", responses={403: {}})
+def set_pay_from_source(request: Request, user: CurrentUser, body: PayFromSourceIn) -> None:
+    """Whether the sync reads HR's salaries with the staff list; off, HR uploads them."""
+    try:
+        _admin(user)
+    except HANDLED as e:
+        raise _http(e) from None
+    sync.set_pay_from_source(engine_of(request), user, body.on)
 
 
 @router.put("/datasets/{dataset}/mapping", responses={403: {}, 422: {}})
@@ -203,9 +223,12 @@ def preview(
             dataset, body.query, {f: c for f, c in body.fields.items() if c}, body.hierarchy
         )
         m.validate()
-        # Values per period read the default window, as a sync would.
+        # Values per period read the default window, as a sync would; pay only when the sync
+        # reads it (ADR 0025).
         with engine_of(request).connect() as conn:
             window = sync.window_of(conn, None)
+            if dataset == "staff":
+                m = sync.staff_mapping(m, sync.pay_from_source(conn))
         read = sync.read(source, m, PREVIEW_ROWS, window)
         columns = list(m.columns())
         return QueryPreviewOut(columns=columns, rows=[[_text(r[c]) for c in columns] for r in read])

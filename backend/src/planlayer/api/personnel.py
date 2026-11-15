@@ -4,8 +4,10 @@ strings."""
 
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Body, Request
+from fastapi.responses import Response
 from pydantic import BaseModel
 
 from planlayer import personnel
@@ -13,7 +15,9 @@ from planlayer.api.auth import CurrentUser, engine_of
 from planlayer.api.capacity import CodeName
 from planlayer.api.planning import HANDLED, _errors, _s
 from planlayer.domain.workflow import RoundStatus, Status
+from planlayer.personnel import upload
 from planlayer.personnel.rules import Kind
+from planlayer.personnel.salary_files import MEDIA
 from planlayer.sheet import EditError, parse_amount
 
 router = APIRouter(prefix="/api")
@@ -193,6 +197,66 @@ class PayRulesPageOut(BaseModel):
     rules: PayRulesIO
     accounts: list[CodeName]
     entities: list[CodeName]
+
+
+class SalaryUploadInfoOut(BaseModel):
+    round_code: str
+    round_status: RoundStatus
+    pay_from_source: bool  # the sync reads HR's salaries; HR doesn't upload them
+    people: int  # rows of the template
+    with_salary: int  # the round's positions from HR that have HR's salary
+    reason: str | None  # why HR can't upload now
+
+
+class SalaryUploadRowOut(BaseModel):
+    line: int
+    number: str | None
+    name: str | None
+    cost_center: str | None
+    file_cost_center: str | None  # the file's, when it differs
+    old: str | None
+    new: str | None
+    outcome: Literal["changed", "unchanged", "blank", "not_in_round", "unknown", "failed"]
+    message: str | None
+
+
+class SalaryUploadOut(BaseModel):
+    round_code: str
+    applied: bool  # False: the check, nothing written
+    rows: list[SalaryUploadRowOut]
+    ignored: list[str]
+    positions: int  # positions whose HR salary changes
+    staff_list: int  # people whose salary in HR's staff list changes
+    batch_id: str | None = None
+
+
+def _upload_out(r: upload.UploadResult) -> SalaryUploadOut:
+    return SalaryUploadOut(
+        round_code=r.round_code,
+        applied=r.applied,
+        rows=[
+            SalaryUploadRowOut(
+                line=x.line,
+                number=x.number,
+                name=x.name,
+                cost_center=x.cost_center,
+                file_cost_center=x.file_cost_center,
+                old=_s(x.old),
+                new=_s(x.new),
+                outcome=x.outcome,
+                message=x.message,
+            )
+            for x in r.rows
+        ],
+        ignored=r.ignored,
+        positions=r.positions,
+        staff_list=r.staff_list,
+        batch_id=r.batch_id,
+    )
+
+
+# The uploaded file as the request body, as it is.
+FileBody = Annotated[bytes, Body(media_type="application/octet-stream")]
 
 
 def _page_out(p: personnel.PayPage, batch_id: str | None = None) -> PayPageOut:
@@ -447,6 +511,64 @@ def save_rules(
     try:
         personnel.save_rules(engine, user, version_code, _rules_in(body))
         return _rules_out(personnel.read_rules(engine, user, version_code))
+    except HANDLED as e:
+        raise _errors(e) from None
+
+
+# HR's salary upload (ADR 0025); before the cost center's routes, whose code would match.
+
+
+@router.get(V + "/salaries", responses={403: {}, 404: {}})
+def salary_upload(request: Request, user: CurrentUser, version_code: str) -> SalaryUploadInfoOut:
+    try:
+        i = upload.info(engine_of(request), user, version_code)
+    except HANDLED as e:
+        raise _errors(e) from None
+    return SalaryUploadInfoOut(
+        round_code=i.round_code,
+        round_status=i.round_status,  # type: ignore[arg-type]
+        pay_from_source=i.pay_from_source,
+        people=i.people,
+        with_salary=i.with_salary,
+        reason=i.reason,
+    )
+
+
+@router.get(V + "/salaries/template.{fmt}", responses={403: {}, 404: {}})
+def salary_template(
+    request: Request, user: CurrentUser, version_code: str, fmt: Literal["csv", "xlsx", "parquet"]
+) -> Response:
+    """The round's people with a blank salary column, for HR to fill in."""
+    try:
+        body = upload.template_file(engine_of(request), user, version_code, fmt)
+    except HANDLED as e:
+        raise _errors(e) from None
+    name = f"{version_code}-salaries.{fmt}"
+    return Response(
+        body,
+        media_type=MEDIA[fmt],
+        headers={"Content-Disposition": f'attachment; filename="{name}"'},
+    )
+
+
+@router.post(V + "/salaries/check", responses={403: {}, 404: {}, 422: {}})
+def check_salaries(
+    request: Request, user: CurrentUser, version_code: str, filename: str, file: FileBody
+) -> SalaryUploadOut:
+    """What the uploaded file would change; writes nothing."""
+    try:
+        return _upload_out(upload.check(engine_of(request), user, version_code, file, filename))
+    except HANDLED as e:
+        raise _errors(e) from None
+
+
+@router.post(V + "/salaries/apply", responses={403: {}, 404: {}, 422: {}, 423: {}})
+def apply_salaries(
+    request: Request, user: CurrentUser, version_code: str, filename: str, file: FileBody
+) -> SalaryUploadOut:
+    """Write the uploaded file's salaries as the check shows them; failed rows are left out."""
+    try:
+        return _upload_out(upload.apply(engine_of(request), user, version_code, file, filename))
     except HANDLED as e:
         raise _errors(e) from None
 

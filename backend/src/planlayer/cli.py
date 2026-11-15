@@ -169,9 +169,14 @@ def main(argv: list[str] | None = None) -> None:
                 system = access.system_user(engine)
                 for m in sync.default_mappings(settings.source_schema):
                     sync.save_mapping(engine, system, m)
+                # The test warehouse delivers salaries with the staff list (ADR 0025).
+                sync.set_pay_from_source(engine, system, True)
             finally:
                 engine.dispose()
-            print(f"mapped {', '.join(sync.DATASETS)} to the views in {settings.source_schema}")
+            print(
+                f"mapped {', '.join(sync.DATASETS)} to the views in {settings.source_schema}, "
+                "salaries from the source"
+            )
         case "republish":
             settings = Settings()  # type: ignore[call-arg]
             engine, output = create_app_engine(settings), create_output_engine(settings)

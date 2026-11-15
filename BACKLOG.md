@@ -336,7 +336,9 @@ FTE and headcount per cost center, staff type and category, as month-end levels,
   - [ ] A transfer during the year splits the yearly bonus by months (today it stays with the sending half), and the receiving half's long-service award counts from the person's first entry, not the transfer.
   - [ ] Undo on the pay of positions (the changes are in `position_pay_log` with the change batch).
   - [ ] Paste of salaries from Excel into the pay table.
-  - [ ] **HR's own salary upload,** next to the admin's `staff` dataset: HR downloads a template (number, name, cost center, monthly salary; CSV, Excel or Parquet), fills it, and uploads it on the Personnel costs page, without an admin. The upload is matched to the positions by number; a preview shows rows matched, salaries changed, and rows that match no position or whose cost center differs, before anything is written. Decide whether an upload sets HR's salary or the planned one, and how it relates to a synced `monthly_salary`.
+  - [x] **HR's own salary upload** ([ADR 0025](docs/adr/0025-hr-salary-upload.md)): the admin decides whether the sync reads salaries (`installation.pay_from_source`, off by default); off, HR downloads a template of the round's people (CSV, Excel or Parquet, salary blank) and uploads it on the *Upload* tab. Matched by number to the round's positions and HR's staff list; a check shows each row's outcome (changed, unchanged, not in the round, no salary, unknown, failed; another cost center flagged) before *Apply* writes HR's salary and recomputes the totals.
+    - [ ] Bonuses and planned salaries by upload (today HR's salary only).
+    - [ ] Remove an HR salary by upload (today a blank cell leaves it as it is).
 - [ ] **W-8 Modes per cost center:** a round default with exceptions on the *Cost centers* tab (e.g. positions for the larger departments only).
 - [ ] **W-9 A replacement names the leaver** it replaces (today a free description), so the build-up can show open gaps: leavers without a replacement.
 - [ ] **W-10 Contract changes during the year** (e.g. 100 % to 80 % from September) and long absences (counted in headcount, not in FTE).
@@ -357,7 +359,7 @@ FTE and headcount per cost center, staff type and category, as month-end levels,
   - [x] The order of a personnel costs round: the controller opens it, HR releases access, then hands pay over per cost center; HR's review before approval optional per round; HR's next step on Home ([ADR 0024](docs/adr/0024-order-of-a-personnel-costs-round.md)).
   - [ ] Hand over several cost centers at once (all, a node, a selection) from *Access control*, with the handover state per row.
   - [ ] Actuals on the personnel accounts of a small cost center come from the ledger as they are; decide whether to mask them like plan values.
-  - [ ] The admin's source preview of the `staff` dataset shows `monthly_salary`; hide pay columns in the preview.
+  - [ ] The admin's source preview of the `staff` dataset shows `monthly_salary`; hide pay columns in the preview. The mapped preview leaves them out while salaries aren't read from the source (ADR 0025); *Show columns* and the mapped preview with salaries on still show them.
   - [ ] Free text (descriptions, notes, item lists) can still carry pay whatever the rules say: say so in the user docs.
 - [ ] **W-16 Number prefix:** Planlayer's position numbers start with `N`; if a customer's HR numbers do too, make the prefix a setting.
 

@@ -220,9 +220,32 @@ function DatasetEditor({ info, onSaved }: { info: DatasetInfo; onSaved: () => vo
     { value: '', label: '–  not mapped' },
     ...[...new Set([...columns, value].filter(Boolean))].map((c) => ({ value: c, label: c })),
   ]
-  const choose = (value: string, onChange: (v: string) => void, label: string) => (
-    <Select value={value} options={columnOptions(value)} onChange={onChange} label={label} placeholder="–  not mapped" />
+  const choose = (value: string, onChange: (v: string) => void, label: string, disabled = false) => (
+    <Select
+      value={value}
+      options={columnOptions(value)}
+      onChange={onChange}
+      label={label}
+      placeholder="–  not mapped"
+      disabled={disabled}
+    />
   )
+  // Staff (ADR 0025): pay is read from the source only while the admin switches it on.
+  const payOff = info.pay_from_source === false
+  async function switchPay(on: boolean) {
+    try {
+      await api.setPayFromSource(on)
+      setNote({
+        kind: 'ok',
+        text: on
+          ? 'Salaries come from the source now: the next sync replaces HR’s salaries in the staff list.'
+          : 'Salaries are HR’s now: HR uploads them on the Personnel costs page, and the sync leaves them alone.',
+      })
+      onSaved()
+    } catch (e) {
+      setNote({ kind: 'error', text: errorText(e) })
+    }
+  }
   const h = m.hierarchy
   const setH = (next: Hierarchy | null) => setM({ ...m, hierarchy: next })
   const mappedCount = info.fields.filter((f) => m.fields[f.name]).length
@@ -232,6 +255,9 @@ function DatasetEditor({ info, onSaved }: { info: DatasetInfo; onSaved: () => vo
       <button type="button" className="md-dataset-head" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
         <strong>{DATASET_LABEL[info.dataset]}</strong>
         <span className={`su-pill ${info.mapping ? 'approved' : 'neutral'}`}>{info.mapping ? 'Mapped' : 'Not mapped'}</span>
+        {info.pay_from_source !== null && (
+          <span className="su-pill neutral">{info.pay_from_source ? 'Salaries from the source' : 'Salaries by HR'}</span>
+        )}
         {dirty && <span className="su-pill in_progress">Unsaved changes</span>}
         <span className="ink-3">
           {mappedCount} of {info.fields.length} fields
@@ -264,9 +290,22 @@ function DatasetEditor({ info, onSaved }: { info: DatasetInfo; onSaved: () => vo
             </span>
           </div>
 
+          {info.pay_from_source !== null && (
+            <label className={`wf-mode md-pay${info.pay_from_source ? ' on' : ''}`}>
+              <input type="checkbox" checked={info.pay_from_source} onChange={(e) => void switchPay(e.target.checked)} />
+              <span>
+                <strong>Salaries from the source</strong>
+                <span className="su-hint">
+                  {info.pay_from_source
+                    ? `The sync reads ${info.pay_fields.join(', ')} and replaces HR’s salaries in the staff list. Only HR and the owners HR names read them in the app.`
+                    : `Off: the sync doesn’t read ${info.pay_fields.join(', ')}, and HR uploads the salaries on the Personnel costs page, without an admin.`}
+                </span>
+              </span>
+            </label>
+          )}
           <div className="md-fields">
             {info.fields.map((f) => (
-              <div className="md-field" key={f.name}>
+              <div className={`md-field${payOff && info.pay_fields.includes(f.name) ? ' md-off' : ''}`} key={f.name}>
                 <span className="md-field-name">
                   {f.name}
                   {f.required && <span className="md-req" title="required">*</span>}
@@ -274,11 +313,15 @@ function DatasetEditor({ info, onSaved }: { info: DatasetInfo; onSaved: () => vo
                     {f.type}
                   </span>
                   {FIELD_HINT[f.name] && <span className="md-field-hint">{FIELD_HINT[f.name]}</span>}
+                  {payOff && info.pay_fields.includes(f.name) && (
+                    <span className="md-field-hint">not read: HR uploads salaries</span>
+                  )}
                 </span>
                 {choose(
                   m.fields[f.name] ?? '',
                   (v) => setM({ ...m, fields: { ...m.fields, [f.name]: v } }),
                   `${info.dataset} ${f.name}`,
+                  payOff && info.pay_fields.includes(f.name),
                 )}
               </div>
             ))}

@@ -189,6 +189,7 @@ def run_sync(settings: Settings, schema: str) -> sync.SyncResult:
         actor = access.system_user(engine)
         for m in sync.default_mappings(schema):
             sync.save_mapping(engine, actor, m)
+        sync.set_pay_from_source(engine, actor, True)  # the slice delivers HR's salaries
         return sync.run(engine, source, actor)
     finally:
         engine.dispose()

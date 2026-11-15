@@ -21,7 +21,7 @@ import logging
 import time
 from collections import defaultdict
 from collections.abc import Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date
 from decimal import Decimal
 from typing import Any, cast
@@ -310,6 +310,27 @@ def delete_mapping(engine: Engine, actor: Actor, dataset: str) -> None:
         conn.execute(delete(dataset_mapping).where(dataset_mapping.c.dataset == dataset))
 
 
+# Pay in the dataset ``staff`` (ADR 0025): read from the source only when the admin turns it on.
+PAY_FIELDS = ("monthly_salary",)
+
+
+def pay_from_source(conn: Connection) -> bool:
+    return bool(conn.execute(select(installation.c.pay_from_source)).scalar_one())
+
+
+def set_pay_from_source(engine: Engine, actor: Actor, on: bool) -> None:
+    """On, the sync replaces HR's salaries with the source's; off, HR uploads them."""
+    with unit_of_work(engine, actor) as conn:
+        conn.execute(update(installation).values(pay_from_source=on))
+
+
+def staff_mapping(m: Mapping, pay: bool) -> Mapping:
+    """The staff mapping as the sync reads it: without its pay columns unless ``pay``."""
+    if pay:
+        return m
+    return replace(m, fields={f: c for f, c in m.fields.items() if f not in PAY_FIELDS})
+
+
 # Datasets of values per period: synced for a window of fiscal years.
 PERIOD_DATASETS = ("actuals", "capacity_actuals", "workforce_actuals")
 
@@ -583,6 +604,7 @@ class SyncPlan:
     rates: dict[tuple[str, str], Decimal] | None = None  # None: rates not mapped
     capacity: dict[tuple[date, str, str], Decimal] | None = None  # None: hours not mapped
     staff: list[dict[str, Any]] | None = None  # None: HR's staff list not mapped
+    pay_from_source: bool = False  # the staff list's salaries replace HR's (ADR 0025)
     # Month-end FTE and headcount per period, cost center, staff type and category.
     workforce: dict[tuple[date, str, str, str], tuple[Decimal, Decimal | None]] | None = None
 
@@ -685,6 +707,7 @@ def plan(
         fy_start = start_month(conn)
         stored_by_year = _stored_actuals(conn, p.window, fy_start, entity)
         maps = mappings(conn)
+        p.pay_from_source = pay_from_source(conn)
         p.datasets = [d for d in DATASETS if d in maps]
         existing = {
             (r.dim_id, r.code): r
@@ -883,7 +906,7 @@ def _plan_workforce(
 
     if "staff" in maps:
         try:
-            rows = read(adapter, maps["staff"])
+            rows = read(adapter, staff_mapping(maps["staff"], p.pay_from_source))
         except SOURCE_ERRORS as e:
             p.problems.append(_failed("staff", e))
             rows = []
@@ -1050,7 +1073,7 @@ def run(
             hours = _write_capacity_actuals(conn, p.capacity, ids, entity, p.window)
             steps.done("write rates and actual hours", f"{hours} cells")
         if p.staff is not None:
-            _write_staff(conn, p.staff, ids)
+            _write_staff(conn, p.staff, ids, p.pay_from_source)
         if p.workforce is not None:
             cells = _write_workforce_actuals(conn, p.workforce, ids, entity, p.window)
             steps.done("write staff and workforce actuals", f"{cells} cells")
@@ -1380,9 +1403,10 @@ def _entity_of_cost_center() -> Any:
 
 
 def _write_staff(
-    conn: Connection, rows: list[dict[str, Any]], ids: dict[tuple[int, str], int]
+    conn: Connection, rows: list[dict[str, Any]], ids: dict[tuple[int, str], int], pay: bool
 ) -> None:
-    """HR's staff list replaces the stored one; rounds keep their own positions."""
+    """HR's staff list replaces the stored one; rounds keep their own positions. With ``pay``,
+    its salaries replace HR's; without, HR's uploaded salaries stay (ADR 0025)."""
     conn.execute(delete(hr_staff))
     insert_all(
         conn,
@@ -1402,6 +1426,8 @@ def _write_staff(
             for r in rows
         ],
     )
+    if not pay:
+        return
     # Salaries go to their own table, which only readers of pay read (ADR 0022).
     conn.execute(delete(hr_pay))
     insert_all(

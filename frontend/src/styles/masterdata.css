@@ -321,3 +321,12 @@
   color: var(--warn);
   background: var(--warn-tint);
 }
+
+/* Staff (HR): whether the sync reads salaries (ADR 0025), styled like the workforce modes. */
+.md-pay {
+  max-width: 720px;
+}
+
+.md-off .md-field-name {
+  color: var(--ink-3);
+}

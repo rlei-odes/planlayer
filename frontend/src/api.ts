@@ -63,6 +63,11 @@ export type PayRightsRow = S.PayRightsRowOut
 export type PayRules = S.PayRulesIO
 export type PayRule = S.PayRuleIO
 export type PayRulesPage = S.PayRulesPageOut
+// HR's salary upload (ADR 0025).
+export type SalaryUploadInfo = S.SalaryUploadInfoOut
+export type SalaryUpload = S.SalaryUploadOut
+export type SalaryUploadRow = S.SalaryUploadRowOut
+export type SalaryFormat = 'csv' | 'xlsx' | 'parquet'
 // Published signs (ADR 0019).
 export type Signs = S.SignsOut
 // Cost forwarding (ADR 0018).
@@ -161,6 +166,8 @@ export const api = {
   datasets: () => fetch('/api/datasets').then((res) => json<DatasetInfo[]>(res)),
   saveMapping: (d: Dataset, m: Mapping) => send('PUT', `/api/datasets/${d}/mapping`, m).then((res) => json<null>(res)),
   deleteMapping: (d: Dataset) => send('DELETE', `/api/datasets/${d}/mapping`).then((res) => json<null>(res)),
+  setPayFromSource: (on: boolean) =>
+    send('PUT', '/api/datasets/staff/pay-from-source', { on }).then((res) => json<null>(res)),
   preview: (d: Dataset, m: Mapping, mapped: boolean) =>
     post(`/api/datasets/${d}/preview`, { ...m, mapped }).then((res) => json<Preview>(res)),
   syncYears: () => fetch('/api/sync/years').then((res) => json<SyncYears>(res)),
@@ -257,6 +264,15 @@ export const api = {
     ),
   reviewPay: (version: string, code: string, confirmed: boolean) =>
     send('PUT', `${v(version)}/personnel/${encodeURIComponent(code)}/review`, { confirmed }).then((r) => json<PayPage>(r)),
+  salaryUpload: (version: string) =>
+    fetch(`${v(version)}/personnel/salaries`).then((r) => json<SalaryUploadInfo>(r)),
+  salaryTemplate: (version: string, format: SalaryFormat) => `${v(version)}/personnel/salaries/template.${format}`,
+  uploadSalaries: (version: string, file: File, step: 'check' | 'apply') =>
+    fetch(`${v(version)}/personnel/salaries/${step}?${new URLSearchParams({ filename: file.name })}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/octet-stream' },
+      body: file,
+    }).then((r) => json<SalaryUpload>(r)),
   payRules: (version: string) => fetch(`${v(version)}/personnel/rules`).then((r) => json<PayRulesPage>(r)),
   savePayRules: (version: string, rules: PayRules) =>
     send('PUT', `${v(version)}/personnel/rules`, rules).then((r) => json<PayRulesPage>(r)),

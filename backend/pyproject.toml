@@ -8,6 +8,8 @@ dependencies = [
     # Schema migrations of planlayer_app (planlayer.store.migrations).
     "alembic==1.20.1",
     "fastapi==0.162.2",
+    # Excel files of HR's salary upload and its template (ADR 0025).
+    "openpyxl==3.1.5",
     # Postgres driver for SQLAlchemy; the pool keeps connections per process.
     "psycopg[binary,pool]==3.3.8",
     # Interchange format of the adapters (ADR 0004).
@@ -34,6 +36,8 @@ dev = [
     # Runs the tests on every core; each database test has schemas of its own.
     "pytest-xdist==3.8.0",
     "ruff==0.17.4",
+    # openpyxl ships without types; mypy --strict checks the salary files with these.
+    "types-openpyxl==3.1.5.20250919",
 ]
 
 [tool.ruff]
