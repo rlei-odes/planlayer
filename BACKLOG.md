@@ -330,6 +330,7 @@ FTE and headcount per cost center, staff type and category, as month-end levels,
 - [x] **W-5 Publishing:** `fact_plan_workforce`, `dim_staff_type`, `dim_staff_category`, `v_plan_workforce`, no names.
 - [ ] **W-6 Factors from the workforce:** a category carries per-head factors (e.g. one IT workplace per office worker, a CAD licence per engineer) that feed cost forwarding's quantities (K-3) by month.
 - [x] **W-7 Personnel costs from positions** ([ADR 0022](docs/adr/0022-personnel-costs.md)): monthly salary per position (HR's kept apart from the planned one), pro rata by days from entry to leave, typed amounts for staff types such as freelancers or hourly paid; yearly extras as salaries per year or % of base pay, spread over the year; raises from a month on their own account, also after approval; long-service awards by years since entry; a yearly bonus spread over the months worked; contributions per person and month up to a ceiling; rules per round, optionally per entity, carried with a new round; totals written to the personnel accounts of the cost center charged, read only on the sheet.
+  - [x] HR excludes a position from rules of the round; the pay dialog shows the position's costs by part (salary, each rule, bonus), recalculated while it is filled in ([ADR 0026](docs/adr/0026-rule-exclusions-and-cost-breakdown.md)).
   - [ ] Rules limited to staff categories (e.g. a raise for staff under a collective agreement only).
   - [ ] Contributions on typed amounts (people paid by the hour are employees; today a typed amount bears nothing).
   - [ ] Salary bands per category as the starting salary of a plan position (today it starts at 0).
@@ -337,8 +338,8 @@ FTE and headcount per cost center, staff type and category, as month-end levels,
   - [ ] Undo on the pay of positions (the changes are in `position_pay_log` with the change batch).
   - [ ] Paste of salaries from Excel into the pay table.
   - [x] **HR's own salary upload** ([ADR 0025](docs/adr/0025-hr-salary-upload.md)): the admin decides whether the sync reads salaries (`installation.pay_from_source`, off by default); off, HR downloads a template of the round's people (CSV, Excel or Parquet, salary blank) and uploads it on the *Upload* tab. Matched by number to the round's positions and HR's staff list; a check shows each row's outcome (changed, unchanged, not in the round, no salary, unknown, failed; another cost center flagged) before *Apply* writes HR's salary and recomputes the totals.
-    - [ ] Bonuses and planned salaries by upload (today HR's salary only).
-    - [ ] Remove an HR salary by upload (today a blank cell leaves it as it is).
+    - [x] The yearly bonus by upload, on the round's positions.
+    - [ ] Remove a salary or bonus by upload (today a blank cell leaves it as it is).
 - [ ] **W-8 Modes per cost center:** a round default with exceptions on the *Cost centers* tab (e.g. positions for the larger departments only).
 - [ ] **W-9 A replacement names the leaver** it replaces (today a free description), so the build-up can show open gaps: leavers without a replacement.
 - [ ] **W-10 Contract changes during the year** (e.g. 100 % to 80 % from September) and long absences (counted in headcount, not in FTE).

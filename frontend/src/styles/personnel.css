@@ -349,3 +349,47 @@ input.pc-low {
   border-top: 1px solid var(--line-2);
   padding-top: 12px;
 }
+
+/* A position's costs by part in the pay dialog (ADR 0026). */
+.pc-breakdown {
+  margin-top: 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  overflow: hidden;
+  transition: opacity 0.15s;
+}
+
+.pc-breakdown.pending {
+  opacity: 0.55;
+}
+
+.pc-breakdown .tbl td,
+.pc-breakdown .tbl th {
+  padding: 6px 10px;
+  vertical-align: middle;
+}
+
+.pc-breakdown td small {
+  display: block;
+  color: var(--ink-3);
+  font-weight: 400;
+}
+
+.pc-breakdown tfoot td {
+  border-top: 1px solid var(--line);
+  background: var(--calc);
+}
+
+.pc-breakdown .pc-applies {
+  text-align: center;
+  width: 64px;
+}
+
+.pc-breakdown .pc-off strong {
+  color: var(--ink-3);
+  font-weight: 500;
+}
+
+.pc-breakdown > .su-hint {
+  padding: 6px 10px;
+}

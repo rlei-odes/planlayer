@@ -3,9 +3,9 @@ import { format } from './amounts'
 import { api, type SalaryFormat, type SalaryUpload as Result, type SalaryUploadInfo, type SalaryUploadRow } from './api'
 
 // HR's salary upload (ADR 0025): while the sync doesn't read salaries, HR downloads a template of
-// the round's people, fills in the monthly salaries and uploads it. The check shows each row's
-// outcome before anything is written; Apply writes HR's salary on the round's positions and in
-// HR's staff list, and recomputes the totals.
+// the round's people, fills in monthly salaries and yearly bonuses and uploads it. The check shows
+// each row's outcome before anything is written; Apply writes HR's salary on the round's positions
+// and in HR's staff list, the bonus on the positions, and recomputes the totals.
 
 type Outcome = SalaryUploadRow['outcome']
 type Filter = Outcome | 'all' | 'differs'
@@ -14,7 +14,7 @@ const OUTCOMES: { value: Outcome; label: string; tone: string; pill: string }[] 
   { value: 'changed', label: 'Changed', tone: 'chg', pill: 'in_progress' },
   { value: 'unchanged', label: 'Unchanged', tone: 'same', pill: 'neutral' },
   { value: 'not_in_round', label: 'Not in the round', tone: 'same', pill: 'submitted' },
-  { value: 'blank', label: 'No salary', tone: 'same', pill: 'neutral' },
+  { value: 'blank', label: 'Nothing given', tone: 'same', pill: 'neutral' },
   { value: 'unknown', label: 'Unknown number', tone: 'rem', pill: 'overdue' },
   { value: 'failed', label: 'Failed', tone: 'rem', pill: 'overdue' },
 ]
@@ -30,6 +30,9 @@ function errorText(e: unknown): string {
 }
 
 const money = (v: string | null) => (v === null ? '–' : format(v))
+// A value from the file, in bold where it changes what is stored.
+const changed = (old: string | null, value: string | null, outcome: Outcome) =>
+  outcome === 'changed' && value !== null && value !== old ? <strong>{money(value)}</strong> : money(value)
 
 export default function SalaryUpload({ version, onApplied }: { version: string; onApplied: () => void }) {
   const [info, setInfo] = useState<SalaryUploadInfo | null>(null)
@@ -93,8 +96,8 @@ export default function SalaryUpload({ version, onApplied }: { version: string; 
         <div className="fw-card-head">
           <h3>Template</h3>
           <span className="su-hint">
-            {info.people} people from HR’s staff list and the round, one per row, the salary blank. {info.with_salary} of
-            the round’s positions have HR’s salary so far.
+            {info.people} people from HR’s staff list and the round, one per row, salary and bonus blank.{' '}
+            {info.with_salary} of the round’s positions have HR’s salary so far.
           </span>
         </div>
         <div className="su-body su-row">
@@ -105,7 +108,7 @@ export default function SalaryUpload({ version, onApplied }: { version: string; 
           ))}
           <span className="su-hint">
             Columns <code>number</code>, <code>name</code>, <code>title</code>, <code>cost_center</code>,{' '}
-            <code>monthly_salary</code>.
+            <code>monthly_salary</code>, <code>bonus</code>.
           </span>
         </div>
       </section>
@@ -114,9 +117,9 @@ export default function SalaryUpload({ version, onApplied }: { version: string; 
         <div className="fw-card-head">
           <h3>File</h3>
           <span className="su-hint">
-            Read by its column names: <code>number</code> and <code>monthly_salary</code> are needed, <code>cost_center</code>{' '}
-            is compared, the rest is ignored. The salary per month, at the person’s contract percentage; a blank one stays
-            as it is.
+            Read by its column names: <code>number</code> with <code>monthly_salary</code>, <code>bonus</code> or both;{' '}
+            <code>cost_center</code> is compared, the rest is ignored. The salary per month at the person’s contract
+            percentage, the bonus per year; a blank cell leaves the value as it is.
           </span>
         </div>
         <div className="su-body su-row">
@@ -148,7 +151,7 @@ export default function SalaryUpload({ version, onApplied }: { version: string; 
             <h3>Result</h3>
             <span className="su-hint">
               {result.applied
-                ? `Applied: HR’s salary on ${result.positions} position${result.positions === 1 ? '' : 's'} and ${result.staff_list} in the staff list; the totals follow.`
+                ? `Applied: ${result.positions} position${result.positions === 1 ? '' : 's'} and ${result.staff_list} in the staff list; the totals follow.`
                 : 'Nothing is written yet.'}
             </span>
           </div>
@@ -203,6 +206,8 @@ export default function SalaryUpload({ version, onApplied }: { version: string; 
                     <th>Cost center</th>
                     <th className="num">HR salary now</th>
                     <th className="num">In the file</th>
+                    <th className="num">Bonus now</th>
+                    <th className="num">In the file</th>
                     <th>Result</th>
                   </tr>
                 </thead>
@@ -223,7 +228,9 @@ export default function SalaryUpload({ version, onApplied }: { version: string; 
                         )}
                       </td>
                       <td className="num muted">{money(r.old)}</td>
-                      <td className="num">{r.outcome === 'changed' ? <strong>{money(r.new)}</strong> : money(r.new)}</td>
+                      <td className="num">{changed(r.old, r.new, r.outcome)}</td>
+                      <td className="num muted">{money(r.old_bonus)}</td>
+                      <td className="num">{changed(r.old_bonus, r.new_bonus, r.outcome)}</td>
                       <td>
                         <span className={`su-pill ${LABEL[r.outcome].pill}`}>{LABEL[r.outcome].label}</span>
                         {r.message && <small className="su-upload-msg">{r.message}</small>}
@@ -241,8 +248,8 @@ export default function SalaryUpload({ version, onApplied }: { version: string; 
               </button>
               <span className="su-hint">
                 {writes === 0
-                  ? 'Nothing to change: every salary in the file is as it is already.'
-                  : `Writes HR’s salary on ${result.positions} position${result.positions === 1 ? '' : 's'} and ${result.staff_list} ${result.staff_list === 1 ? 'person' : 'people'} in the staff list, and recomputes the totals. Failed and unknown rows are left out.`}
+                  ? 'Nothing to change: every value in the file is as it is already.'
+                  : `Writes HR’s salary and bonus on ${result.positions} position${result.positions === 1 ? '' : 's'}, HR’s salary on ${result.staff_list} ${result.staff_list === 1 ? 'person' : 'people'} in the staff list, and recomputes the totals. Failed and unknown rows are left out.`}
               </span>
             </div>
           )}

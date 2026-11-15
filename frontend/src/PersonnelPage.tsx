@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { format, parse, sum } from './amounts'
-import { api, STATUS_LABEL, type Me, type PayPage, type PayPosition, type PayUnit } from './api'
+import { api, STATUS_LABEL, type Me, type PayIn, type PayPage, type PayPosition, type PayUnit } from './api'
 import PayAccess from './PayAccess'
+import PayBreakdown from './PayBreakdown'
 import PayRules from './PayRules'
 import SalaryUpload from './SalaryUpload'
 import Select from './Select'
@@ -335,11 +336,9 @@ export default function PersonnelPage({
                       <td>{p.charged_to ? <span className="su-pill neutral">{p.charged_to}</span> : <span className="muted">here</span>}</td>
                       <td className="num">{money(p.year_cost)}</td>
                       <td className="right">
-                        {!page.lock_reason && !p.transferred_to && (
-                          <button type="button" className="su-btn ghost sm" onClick={() => setEditing(p)}>
-                            Edit
-                          </button>
-                        )}
+                        <button type="button" className="su-btn ghost sm" onClick={() => setEditing(p)}>
+                          {page.lock_reason || p.transferred_to ? 'View' : 'Edit'}
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -408,16 +407,19 @@ export default function PersonnelPage({
           position={editing}
           canCharge={page.may_charge}
           isHr={me.is_hr}
+          readOnly={!!page.lock_reason || !!editing.transferred_to}
           onClose={() => setEditing(null)}
-          onSave={async (salary, bonus, charged, hrSalary) => {
+          onPreview={(pay) => api.previewPay(version, page.cost_center_code, editing.position_id, pay)}
+          onSave={async (salary, bonus, charged, hrSalary, excluded) => {
             setBusy(true)
             try {
               const updated = await api.savePay(version, page.cost_center_code, editing.position_id, {
                 salary,
                 bonus,
                 charged_to: charged,
-                // Only HR sends HR's salary; left out, it stays as it is.
+                // Only HR sends HR's salary and the exclusions; left out, they stay as they are.
                 ...(hrSalary !== undefined ? { hr_salary: hrSalary } : {}),
+                ...(excluded !== undefined ? { excluded_rules: excluded } : {}),
               })
               setPage(updated)
               setEditing(null)
@@ -533,19 +535,24 @@ function PayDialog({
   position: p,
   canCharge,
   isHr,
+  readOnly,
   onClose,
+  onPreview,
   onSave,
 }: {
   page: PayPage
   position: PayPosition
   canCharge: boolean
   isHr: boolean
+  readOnly: boolean
   onClose: () => void
+  onPreview: (pay: PayIn) => Promise<PayPosition>
   onSave: (
     salary: string | null,
     bonus: string | null,
     charged: string | null,
     hrSalary?: string | null,
+    excluded?: number[],
   ) => Promise<string | null>
 }) {
   const [salary, setSalary] = useState(p.salary ? format(p.salary) : '')
@@ -559,11 +566,46 @@ function PayDialog({
   const bonusValue = parse(bonus)
   const valid = salaryValue !== undefined && bonusValue !== undefined && (!isHr || hrValue !== undefined)
   const typed = p.typed === true
+  const [excluded, setExcluded] = useState<number[]>(p.excluded_rules)
+  const excludedChanged = excluded.join() !== p.excluded_rules.join()
+
+  // The breakdown follows the values typed here, recalculated by the server as a preview.
+  const key = JSON.stringify([salaryValue, bonusValue, hrValue, excluded])
+  const [shown, setShown] = useState<{ key: string; row: PayPosition }>({ key, row: p })
+  const pending = !readOnly && valid && shown.key !== key
+  useEffect(() => {
+    if (readOnly || !valid || shown.key === key) return
+    const pay: PayIn = {
+      salary: salaryValue,
+      bonus: bonusValue,
+      ...(isHr ? { hr_salary: hrValue as string | null, excluded_rules: excluded } : {}),
+    }
+    let current = true
+    const timer = window.setTimeout(() => {
+      onPreview(pay).then(
+        (row) => current && setShown({ key, row }),
+        () => undefined, // saving reports what is wrong
+      )
+    }, 250)
+    return () => {
+      current = false
+      window.clearTimeout(timer)
+    }
+    // ``key`` stands for the values the preview depends on.
+  }, [key, readOnly]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function submit() {
-    if (!valid) return
+    if (!valid || readOnly) return
     setBusy(true)
-    setError(await onSave(salaryValue, bonusValue, charged || null, isHr ? (hrValue as string | null) : undefined))
+    setError(
+      await onSave(
+        salaryValue,
+        bonusValue,
+        charged || null,
+        isHr ? (hrValue as string | null) : undefined,
+        isHr && excludedChanged ? excluded : undefined,
+      ),
+    )
     setBusy(false)
   }
 
@@ -610,6 +652,7 @@ function PayDialog({
                   inputMode="decimal"
                   value={hrSalary}
                   placeholder="none"
+                  disabled={readOnly}
                   autoFocus
                   onChange={(e) => setHrSalary(e.target.value)}
                 />
@@ -629,6 +672,7 @@ function PayDialog({
                 inputMode="decimal"
                 value={salary}
                 placeholder={p.hr_salary ? `${format(p.hr_salary)} (HR salary)` : '0.00'}
+                disabled={readOnly}
                 autoFocus={!isHr}
                 onChange={(e) => setSalary(e.target.value)}
               />
@@ -645,12 +689,13 @@ function PayDialog({
                 inputMode="decimal"
                 value={bonus}
                 placeholder="none"
+                disabled={readOnly}
                 onChange={(e) => setBonus(e.target.value)}
               />
               <span className="su-hint">Spread over the months the position is worked, on the round’s bonus account.</span>
             </label>
           )}
-          {canCharge && (
+          {canCharge && !readOnly && (
             <div className="su-field">
               Costs charged to
               <Select
@@ -671,15 +716,47 @@ function PayDialog({
               </span>
             </div>
           )}
+          <div className="su-field">
+            Calculation
+            <span className="su-hint">
+              {readOnly
+                ? 'The position’s costs for the year, by the round’s rules.'
+                : 'As it would be saved, by the round’s rules (Rules tab).'}
+              {isHr && !readOnly && !typed && ' Untick a rule to exclude this position from it.'}
+            </span>
+            <PayBreakdown
+              page={page}
+              position={shown.row}
+              excluded={excluded}
+              pending={pending}
+              onExclude={
+                isHr && !readOnly
+                  ? (rule, off) =>
+                      setExcluded((xs) => (off ? [...xs, rule].sort((a, b) => a - b) : xs.filter((x) => x !== rule)))
+                  : null
+              }
+            />
+          </div>
         </div>
         <footer className="il-foot">
-          <span className="su-hint">Saving recomputes the totals; a change by anyone but HR withdraws HR’s confirmation.</span>
-          <button type="button" className="su-btn ghost" onClick={onClose}>
-            Cancel
-          </button>
-          <button type="submit" className="su-btn primary" disabled={!valid || busy}>
-            {busy ? 'Saving…' : 'Save'}
-          </button>
+          {readOnly ? (
+            <>
+              <span className="su-hint">{lockText(page)}</span>
+              <button type="button" className="su-btn" onClick={onClose}>
+                Close
+              </button>
+            </>
+          ) : (
+            <>
+              <span className="su-hint">Saving recomputes the totals; a change by anyone but HR withdraws HR’s confirmation.</span>
+              <button type="button" className="su-btn ghost" onClick={onClose}>
+                Cancel
+              </button>
+              <button type="submit" className="su-btn primary" disabled={!valid || busy}>
+                {busy ? 'Saving…' : 'Save'}
+              </button>
+            </>
+          )}
         </footer>
       </form>
     </div>

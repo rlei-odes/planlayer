@@ -13,6 +13,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
+from typing import Literal
 
 ZERO = Decimal(0)
 ONE = Decimal(1)
@@ -29,6 +30,7 @@ class PayPosition:
     entry_date: date | None = None  # None: before the year
     leave_date: date | None = None  # None: stays
     bonus: Decimal | None = None  # yearly
+    excluded: frozenset[int] = frozenset()  # rules HR excluded this position from
 
 
 @dataclass(frozen=True)
@@ -36,6 +38,7 @@ class Extra:
     account: int
     salaries: Decimal  # per year: 1 for a 13th salary; percent of base pay x 12 / 100
     entity: int | None = None
+    rule: int = 0  # the stored rule's id
 
 
 @dataclass(frozen=True)
@@ -44,6 +47,7 @@ class Raise:
     percent: Decimal
     starts: date  # the first month it applies to
     entity: int | None = None
+    rule: int = 0
 
 
 @dataclass(frozen=True)
@@ -58,6 +62,7 @@ class Award:
     account: int
     steps: tuple[Step, ...]
     entity: int | None = None
+    rule: int = 0
 
 
 @dataclass(frozen=True)
@@ -66,6 +71,7 @@ class Contribution:
     percent: Decimal
     ceiling: Decimal | None = None  # monthly
     entity: int | None = None
+    rule: int = 0
 
 
 @dataclass(frozen=True)
@@ -107,37 +113,58 @@ def active_share(period: date, entry: date | None, leave: date | None) -> Decima
     return Decimal(last - first + 1) / Decimal(days)
 
 
-def _applies(entity: int | None, p: PayPosition) -> bool:
+def applies(entity: int | None, p: PayPosition) -> bool:
+    """A rule limited to an entity applies to that entity's positions only."""
     return entity is None or entity == p.entity
 
 
+def _applies(entity: int | None, rule: int, p: PayPosition) -> bool:
+    return applies(entity, p) and rule not in p.excluded
+
+
 Costs = dict[int, list[Decimal]]  # account: months
+# What a part of the costs comes from: the salary (or a typed amount), the bonus, or a rule.
+Source = int | Literal["pay", "bonus"]
 
 
 @dataclass
 class _Months:
     n: int
     by_account: Costs = field(default_factory=dict)
+    by_source: dict[Source, Decimal] = field(default_factory=dict)  # over the year
 
-    def add(self, account: int, m: int, value: Decimal) -> None:
+    def add(self, account: int, m: int, value: Decimal, source: Source) -> None:
         if value:
             self.by_account.setdefault(account, [ZERO] * self.n)[m] += value
+            self.by_source[source] = self.by_source.get(source, ZERO) + value
 
 
 def costs(p: PayPosition, rules: Rules, periods: Sequence[date]) -> Costs:
     """The position's costs per account over ``periods`` (the fiscal year's months), unrounded;
     accounts with nothing are left out."""
+    return _compute(p, rules, periods).by_account
+
+
+def parts(p: PayPosition, rules: Rules, periods: Sequence[date]) -> dict[Source, Decimal]:
+    """The position's costs over the year by where they come from, unrounded: its pay, its
+    bonus, and each rule by id. Sources that add nothing are left out."""
+    return _compute(p, rules, periods).by_source
+
+
+def _compute(p: PayPosition, rules: Rules, periods: Sequence[date]) -> _Months:
     out = _Months(len(periods))
     shares = [active_share(period, p.entry_date, p.leave_date) for period in periods]
     if p.typed:
         for m, share in enumerate(shares):
-            out.add(p.salary_account, m, p.salary * share)
-        return out.by_account
+            out.add(p.salary_account, m, p.salary * share, "pay")
+        return out
 
-    raises = sorted((r for r in rules.raises if _applies(r.entity, p)), key=lambda r: r.starts)
-    extras = [e for e in rules.extras if _applies(e.entity, p)]
-    awards = [a for a in rules.awards if _applies(a.entity, p)]
-    contributions = [c for c in rules.contributions if _applies(c.entity, p)]
+    raises = sorted(
+        (r for r in rules.raises if _applies(r.entity, r.rule, p)), key=lambda r: r.starts
+    )
+    extras = [e for e in rules.extras if _applies(e.entity, e.rule, p)]
+    awards = [a for a in rules.awards if _applies(a.entity, a.rule, p)]
+    contributions = [c for c in rules.contributions if _applies(c.entity, c.rule, p)]
     worked = sum(shares, ZERO)
     with_extras = ONE + sum((e.salaries for e in extras), ZERO) / TWELVE
 
@@ -146,16 +173,16 @@ def costs(p: PayPosition, rules: Rules, periods: Sequence[date]) -> Costs:
             continue
         base = p.salary * share
         gross = ZERO
-        out.add(p.salary_account, m, base)
+        out.add(p.salary_account, m, base, "pay")
         for e in extras:
-            out.add(e.account, m, base * e.salaries / TWELVE)
+            out.add(e.account, m, base * e.salaries / TWELVE, e.rule)
         gross += base * with_extras
         # Raises compound in the order they start; each adds its step on base pay and extras.
         factor = ONE
         for r in raises:
             if r.starts <= period:
                 step = base * with_extras * factor * r.percent / HUNDRED
-                out.add(r.account, m, step)
+                out.add(r.account, m, step, r.rule)
                 gross += step
                 factor *= ONE + r.percent / HUNDRED
         if p.entry_date is not None and p.entry_date.month == period.month:
@@ -166,16 +193,16 @@ def costs(p: PayPosition, rules: Rules, periods: Sequence[date]) -> Costs:
                         paid = s.amount if s.amount is not None else ZERO
                         if s.salaries is not None:
                             paid = s.salaries * p.salary * factor
-                        out.add(a.account, m, paid)
+                        out.add(a.account, m, paid, a.rule)
                         gross += paid
         if p.bonus and rules.bonus_account is not None and worked:
             part = p.bonus * share / worked
-            out.add(rules.bonus_account, m, part)
+            out.add(rules.bonus_account, m, part, "bonus")
             gross += part
         for c in contributions:
             assessed = gross if c.ceiling is None else min(gross, c.ceiling * share)
-            out.add(c.account, m, assessed * c.percent / HUNDRED)
-    return out.by_account
+            out.add(c.account, m, assessed * c.percent / HUNDRED, c.rule)
+    return out
 
 
 def group_counts(per_position: Sequence[Costs]) -> dict[int, int]:

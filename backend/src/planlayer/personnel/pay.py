@@ -4,13 +4,16 @@ read and write, HR's review, and the cost centers they read pay of."""
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Any, Literal
 
-from sqlalchemy import Connection, Engine, delete, func, select
+from sqlalchemy import Connection, Engine, delete, func, select, true
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from planlayer.access import AccessError, User, pay_cost_centers
-from planlayer.domain.personnel import PayPosition, costs
+from planlayer.domain.personnel import PayPosition, Source, parts
 from planlayer.personnel.common import (
+    PayContext,
+    RoundRules,
     StaffTypePay,
     editable,
     load_rules,
@@ -19,7 +22,7 @@ from planlayer.personnel.common import (
     pay_round,
     run,
 )
-from planlayer.personnel.costs import recompute, small_groups
+from planlayer.personnel.costs import entities_of, recompute, small_groups
 from planlayer.rounds import NotFoundError, RoundRef, not_open
 from planlayer.sheet import EditError
 from planlayer.store.schema import (
@@ -32,6 +35,7 @@ from planlayer.store.schema import (
     member,
     pay_handover,
     pay_review,
+    pay_rule,
     position_pay,
     workforce_position,
 )
@@ -39,6 +43,25 @@ from planlayer.store.uow import system_rights, unit_of_work
 from planlayer.workflow import enabled_members, status_of
 
 CENT = Decimal("0.01")
+
+
+@dataclass
+class PayPart:
+    """A part of a position's costs over the year: its pay (salary or typed amount), its bonus,
+    or a rule's."""
+
+    source: Literal["pay", "bonus", "rule"]
+    rule_id: int | None
+    year: Decimal
+
+
+@dataclass
+class RuleRef:
+    rule_id: int
+    kind: str
+    name: str
+    account: str
+    entity: str | None  # limited to this entity
 
 
 @dataclass
@@ -60,6 +83,10 @@ class PayRow:
     charged_to: str | None
     year_cost: Decimal  # on every account, wherever charged
     transferred_to: str | None
+    entity: str = ""  # of its cost center: entity-limited rules apply by it
+    salary_account: str | None = None  # of its staff type; None: not costed
+    excluded_rules: list[int] = field(default_factory=list)
+    parts: list[PayPart] = field(default_factory=list)
 
 
 @dataclass
@@ -99,6 +126,8 @@ class PayPage:
     released: bool = False
     handover: Review | None = None  # who handed it over, and when
     review_required: bool = False
+    rules: list[RuleRef] = field(default_factory=list)  # the round's, for the breakdown
+    bonus_account: str | None = None
 
 
 def _code_names(conn: Connection, ids: set[int]) -> dict[int, tuple[str, str]]:
@@ -114,59 +143,136 @@ def _code_names(conn: Connection, ids: set[int]) -> dict[int, tuple[str, str]]:
     }
 
 
+def _cost_row(
+    r: Any,
+    rules: RoundRules,
+    periods: list[date],
+    entity: int,
+    names: dict[int, tuple[str, str]],
+) -> PayRow:
+    """A position's pay with its costs over the year, in total and by part (ADR 0026)."""
+    kind: StaffTypePay | None = rules.staff_types.get(r.staff_type_id)
+    salary = r.salary if r.salary is not None else (r.hr_salary or Decimal(0))
+    excluded = sorted(r.excluded_rules or ())
+    found: dict[Source, Decimal] = {}
+    if kind is not None:
+        found = parts(
+            PayPosition(
+                entity,
+                kind.account_id,
+                kind.typed,
+                salary,
+                r.entry_date,
+                r.leave_date,
+                r.bonus,
+                frozenset(excluded),
+            ),
+            rules.rules,
+            periods,
+        )
+    return PayRow(
+        r.position_id,
+        r.code,
+        r.title,
+        r.person_name,
+        names[r.staff_type_id][1],
+        names[r.staff_category_id][1],
+        r.entry_date,
+        r.leave_date,
+        r.contract_percent,
+        r.is_plan,
+        None if kind is None else kind.typed,
+        r.hr_salary,
+        r.salary,
+        r.bonus,
+        names[r.charged_to_id][0] if r.charged_to_id else None,
+        sum(found.values(), Decimal(0)).quantize(CENT),
+        names[r.transferred_to_id][0] if r.transferred_to_id else None,
+        names[entity][0] if entity in names else "",
+        names[kind.account_id][0] if kind is not None else None,
+        excluded,
+        [
+            PayPart(
+                "rule" if isinstance(k, int) else k,
+                k if isinstance(k, int) else None,
+                v.quantize(CENT),
+            )
+            for k, v in found.items()
+        ],
+    )
+
+
+def _positions(conn: Connection, ctx: PayContext, where: Any) -> list[Any]:
+    p, pay = workforce_position, position_pay
+    return list(
+        conn.execute(
+            select(
+                p,
+                pay.c.hr_salary,
+                pay.c.salary,
+                pay.c.bonus,
+                pay.c.charged_to_id,
+                pay.c.excluded_rules,
+            )
+            .outerjoin(pay, pay.c.position_id == p.c.position_id)
+            .where(
+                p.c.version_id == ctx.version_id,
+                p.c.cost_center_id == ctx.cost_center_id,
+                where,
+            )
+            .order_by(p.c.is_plan, p.c.title, p.c.person_name, p.c.position_id)
+        ).all()
+    )
+
+
+def _names_for(
+    conn: Connection, rows: list[Any], rules: RoundRules, entity: int
+) -> dict[int, tuple[str, str]]:
+    return _code_names(
+        conn,
+        {r.staff_type_id for r in rows}
+        | {r.staff_category_id for r in rows}
+        | {r.charged_to_id for r in rows if r.charged_to_id}
+        | {r.transferred_to_id for r in rows if r.transferred_to_id}
+        | {t.account_id for t in rules.staff_types.values()}
+        | {entity},
+    )
+
+
+def _rule_refs(conn: Connection, version_id: int) -> list[RuleRef]:
+    acc, ent = member.alias("acc"), member.alias("ent")
+    return [
+        RuleRef(x.rule_id, x.kind, x.name, x.account, x.entity)
+        for x in conn.execute(
+            select(
+                pay_rule.c.rule_id,
+                pay_rule.c.kind,
+                pay_rule.c.name,
+                acc.c.code.label("account"),
+                ent.c.code.label("entity"),
+            )
+            .join(acc, acc.c.member_id == pay_rule.c.account_id)
+            .outerjoin(ent, ent.c.member_id == pay_rule.c.entity_id)
+            .where(pay_rule.c.version_id == version_id)
+            .order_by(pay_rule.c.rule_id)
+        )
+    ]
+
+
 def read_page(engine: Engine, user: User, version_code: str, cc_code: str) -> PayPage:
     with unit_of_work(engine, user) as conn:
         ctx = pay_context(conn, user, version_code, cc_code)
         rules = load_rules(conn, ctx.version_id)
-        p, pay = workforce_position, position_pay
-        rows = conn.execute(
-            select(p, pay.c.hr_salary, pay.c.salary, pay.c.bonus, pay.c.charged_to_id)
-            .outerjoin(pay, pay.c.position_id == p.c.position_id)
-            .where(p.c.version_id == ctx.version_id, p.c.cost_center_id == ctx.cost_center_id)
-            .order_by(p.c.is_plan, p.c.title, p.c.person_name, p.c.position_id)
-        ).all()
-        names = _code_names(
-            conn,
-            {r.staff_type_id for r in rows}
-            | {r.staff_category_id for r in rows}
-            | {r.charged_to_id for r in rows if r.charged_to_id}
-            | {r.transferred_to_id for r in rows if r.transferred_to_id},
+        entity = entities_of(conn)[ctx.cost_center_id]
+        rows = _positions(conn, ctx, true())
+        names = _names_for(conn, rows, rules, entity)
+        positions = [_cost_row(r, rules, ctx.periods, entity, names) for r in rows]
+        rule_refs = _rule_refs(conn, ctx.version_id)
+        bonus_account = (
+            _code_names(conn, {rules.rules.bonus_account})[rules.rules.bonus_account][0]
+            if rules.rules.bonus_account
+            else None
         )
-        positions = []
-        for r in rows:
-            kind: StaffTypePay | None = rules.staff_types.get(r.staff_type_id)
-            salary = r.salary if r.salary is not None else (r.hr_salary or Decimal(0))
-            year = Decimal(0)
-            if kind is not None:
-                c = costs(
-                    PayPosition(
-                        0, kind.account_id, kind.typed, salary, r.entry_date, r.leave_date, r.bonus
-                    ),
-                    rules.rules,
-                    ctx.periods,
-                )
-                year = sum((v for months in c.values() for v in months), Decimal(0))
-            positions.append(
-                PayRow(
-                    r.position_id,
-                    r.code,
-                    r.title,
-                    r.person_name,
-                    names[r.staff_type_id][1],
-                    names[r.staff_category_id][1],
-                    r.entry_date,
-                    r.leave_date,
-                    r.contract_percent,
-                    r.is_plan,
-                    None if kind is None else kind.typed,
-                    r.hr_salary,
-                    r.salary,
-                    r.bonus,
-                    names[r.charged_to_id][0] if r.charged_to_id else None,
-                    year.quantize(CENT),
-                    names[r.transferred_to_id][0] if r.transferred_to_id else None,
-                )
-            )
         accounts = pay_accounts(conn, ctx.version_id)
         f = fact_cost_center
         index = {d: i for i, d in enumerate(ctx.periods)}
@@ -236,6 +342,8 @@ def read_page(engine: Engine, user: User, version_code: str, cc_code: str) -> Pa
         released=is_released,
         handover=Review(handover.handed_by, handover.handed_at) if handover else None,
         review_required=rules.review_required,
+        rules=rule_refs,
+        bonus_account=bonus_account,
     )
 
 
@@ -302,6 +410,7 @@ class PayIn:
     charged_to: str | None = None  # a cost center's code; HR only
     hr_salary: Decimal | None = None  # HR only, and only with ``hr_salary_given``
     hr_salary_given: bool = False
+    excluded_rules: list[int] | None = None  # HR only; None: as they are (ADR 0026)
 
 
 def _amount(value: Decimal | None, what: str) -> Decimal | None:
@@ -312,6 +421,55 @@ def _amount(value: Decimal | None, what: str) -> Decimal | None:
     if value != value.quantize(CENT):
         raise EditError(f"a {what} has at most two decimal places")
     return value
+
+
+def _exclusions(conn: Connection, user: User, version_id: int, given: PayIn) -> list[int] | None:
+    """The rules HR excludes the position from, checked; None: left as they are."""
+    if given.excluded_rules is None:
+        return None
+    if not user.is_hr:
+        raise AccessError("only HR excludes a position from a rule")
+    ids = set(
+        conn.execute(select(pay_rule.c.rule_id).where(pay_rule.c.version_id == version_id))
+        .scalars()
+        .all()
+    )
+    if set(given.excluded_rules) - ids:
+        raise EditError("the rules changed meanwhile; reload the page")
+    return sorted(set(given.excluded_rules))
+
+
+def preview(
+    engine: Engine, user: User, version_code: str, cc_code: str, position_id: int, given: PayIn
+) -> PayRow:
+    """A position's costs as they would be with ``given``; writes nothing. The pay dialog shows
+    it while it is being filled in."""
+    with unit_of_work(engine, user) as conn:
+        ctx = pay_context(conn, user, version_code, cc_code)
+        rows = _positions(conn, ctx, workforce_position.c.position_id == position_id)
+        if not rows:
+            raise NotFoundError(f"position {position_id} not found on {cc_code}")
+        values = dict(rows[0]._mapping)
+        values["salary"] = _amount(given.salary, "salary")
+        values["bonus"] = _amount(given.bonus, "bonus")
+        if given.hr_salary_given:
+            if not user.is_hr:
+                raise AccessError("only HR changes HR's salary")
+            values["hr_salary"] = _amount(given.hr_salary, "salary")
+        excluded = _exclusions(conn, user, ctx.version_id, given)
+        if excluded is not None:
+            values["excluded_rules"] = excluded
+        rules = load_rules(conn, ctx.version_id)
+        entity = entities_of(conn)[ctx.cost_center_id]
+        row = _Values(values)
+        return _cost_row(row, rules, ctx.periods, entity, _names_for(conn, [row], rules, entity))
+
+
+class _Values:
+    """A position's row with some values replaced, read like a result row."""
+
+    def __init__(self, values: dict[str, Any]) -> None:
+        self.__dict__.update(values)
 
 
 def save_pay(
@@ -359,6 +517,9 @@ def save_pay(
             "changed_by": user.login,
             "changed_at": func.now(),
         }
+        excluded = _exclusions(conn, user, ctx.version_id, given)
+        if excluded is not None:
+            values["excluded_rules"] = excluded
         stmt = pg_insert(position_pay).values(
             position_id=position_id, version_id=ctx.version_id, module=MODULE_PERSONNEL, **values
         )
@@ -488,6 +649,7 @@ def continue_pay(conn: Connection, old_id: int, new_id: int) -> None:
             module=MODULE_PERSONNEL,
             hr_salary=old.hr_salary,
             salary=old.salary,
+            excluded_rules=old.excluded_rules,
             changed_by=old.changed_by,
         )
     )

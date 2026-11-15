@@ -1062,6 +1062,9 @@ position_pay = Table(
     Column("salary", AMOUNT_TYPE),  # planned, monthly; None: HR's
     Column("bonus", AMOUNT_TYPE),  # yearly
     Column("charged_to_id", Integer, ForeignKey("member.member_id")),
+    # Rules of the round HR excluded the position from (ADR 0026); ids of removed rules are
+    # ignored.
+    Column("excluded_rules", ARRAY(Integer), nullable=False, server_default="{}"),
     Column("changed_by", Text),
     Column("changed_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )

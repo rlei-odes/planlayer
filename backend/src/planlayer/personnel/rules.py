@@ -7,7 +7,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Literal, cast
 
-from sqlalchemy import Connection, Engine, delete, func, insert, literal, select
+from sqlalchemy import Connection, Engine, delete, func, insert, literal, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from planlayer.access import AccessError, User
@@ -71,6 +71,7 @@ class RuleIO:
     ceiling: Decimal | None = None  # contribution
     starts: date | None = None  # raise
     steps: list[StepIO] = field(default_factory=list)  # award
+    id: int | None = None  # the stored rule; None: a new one
 
 
 @dataclass
@@ -178,6 +179,7 @@ def _current(conn: Connection, version_id: int) -> RulesIO:
                 r.ceiling,
                 r.starts,
                 steps.get(r.rule_id, []),
+                r.rule_id,
             )
             for r in rows
         ],
@@ -247,7 +249,9 @@ def _positive(value: Decimal | None, what: str, name: str) -> Decimal:
 def _rows(
     conn: Connection, r: RoundRef, given: RulesIO
 ) -> tuple[
-    dict[str, object], list[dict[str, object]], list[tuple[dict[str, object], list[StepIO]]]
+    dict[str, object],
+    list[dict[str, object]],
+    list[tuple[int | None, dict[str, object], list[StepIO]]],
 ]:
     """The setting, staff type rows and rule rows to store, checked."""
     accounts, entities, types = (
@@ -284,7 +288,7 @@ def _rows(
                     "typed": t.typed,
                 }
             )
-    rules: list[tuple[dict[str, object], list[StepIO]]] = []
+    rules: list[tuple[int | None, dict[str, object], list[StepIO]]] = []
     for g in given.rules:
         name = g.name.strip()
         if not name:
@@ -325,7 +329,7 @@ def _rows(
                         raise EditError(f"{name}: a step pays salaries or an amount")
                     _positive(s.salaries if s.salaries is not None else s.amount, "a step", name)
                 steps = g.steps
-        rules.append((row, steps))
+        rules.append((g.id, row, steps))
     return setting, staff, rules
 
 
@@ -348,12 +352,21 @@ def save_rules(engine: Engine, user: User, version_code: str, given: RulesIO) ->
         old = pay_accounts(conn, r.version_id)
         new = (
             {cast(int, s["account_id"]) for s in staff}
-            | {cast(int, row["account_id"]) for row, _ in rules}
+            | {cast(int, row["account_id"]) for _, row, _ in rules}
             | ({cast(int, setting["bonus_account_id"])} if setting["bonus_account_id"] else set())
         )
         clear(conn, r, old - new)
         vid = r.version_id
-        conn.execute(delete(pay_rule).where(pay_rule.c.version_id == vid))
+        # Rules are changed in place, so positions excluded from one stay excluded (ADR 0026).
+        stored = set(
+            conn.execute(select(pay_rule.c.rule_id).where(pay_rule.c.version_id == vid)).scalars()
+        )
+        kept = {rule_id for rule_id, _, _ in rules if rule_id is not None}
+        if kept - stored:
+            raise EditError("the rules changed meanwhile; reload them and save again")
+        conn.execute(
+            delete(pay_rule).where(pay_rule.c.version_id == vid, pay_rule.c.rule_id.not_in(kept))
+        )
         conn.execute(delete(pay_staff_type).where(pay_staff_type.c.version_id == vid))
         values = setting | {"changed_by": user.login, "changed_at": func.now()}
         stmt = pg_insert(pay_setting).values(version_id=vid, module=MODULE_PERSONNEL, **values)
@@ -365,12 +378,21 @@ def save_rules(engine: Engine, user: User, version_code: str, given: RulesIO) ->
                 insert(pay_staff_type),
                 [{"version_id": vid, "module": MODULE_PERSONNEL, **s} for s in staff],
             )
-        for row, steps in rules:
-            rule_id = conn.execute(
-                insert(pay_rule)
-                .values(version_id=vid, module=MODULE_PERSONNEL, changed_by=user.login, **row)
-                .returning(pay_rule.c.rule_id)
-            ).scalar_one()
+        for given_id, row, steps in rules:
+            if given_id is None:
+                rule_id = conn.execute(
+                    insert(pay_rule)
+                    .values(version_id=vid, module=MODULE_PERSONNEL, changed_by=user.login, **row)
+                    .returning(pay_rule.c.rule_id)
+                ).scalar_one()
+            else:
+                rule_id = given_id
+                conn.execute(
+                    update(pay_rule)
+                    .where(pay_rule.c.rule_id == rule_id)
+                    .values(changed_by=user.login, **row)
+                )
+                conn.execute(delete(pay_rule_step).where(pay_rule_step.c.rule_id == rule_id))
             if steps:
                 conn.execute(
                     insert(pay_rule_step),
@@ -487,9 +509,10 @@ def carry(conn: Connection, source: RoundRef, target: RoundRef, actor: str) -> N
             ).where(pay_staff_type.c.version_id == s),
         )
     )
+    new_ids: dict[int, int] = {}
     for rule in conn.execute(select(pay_rule).where(pay_rule.c.version_id == s)).all():
         starts = rule.starts.replace(year=rule.starts.year + shift) if rule.starts else None
-        new_id = conn.execute(
+        new_id = new_ids[rule.rule_id] = conn.execute(
             insert(pay_rule)
             .values(
                 version_id=t,
@@ -532,6 +555,7 @@ def carry(conn: Connection, source: RoundRef, target: RoundRef, actor: str) -> N
                 position_pay.c.salary,
                 position_pay.c.bonus,
                 position_pay.c.charged_to_id,
+                position_pay.c.excluded_rules,
                 hr_pay.c.monthly_salary,
             )
             .join(position_pay, position_pay.c.position_id == old_p.c.position_id)
@@ -558,6 +582,10 @@ def carry(conn: Connection, source: RoundRef, target: RoundRef, actor: str) -> N
                         "salary": x.salary,
                         "bonus": x.bonus,
                         "charged_to_id": x.charged_to_id if x.charged_to_id in planned else None,
+                        # Exclusions follow the rules into the new round (ADR 0026).
+                        "excluded_rules": [
+                            new_ids[i] for i in x.excluded_rules or () if i in new_ids
+                        ],
                         "changed_by": actor,
                     }
                     for x in rows

@@ -111,14 +111,14 @@ def test_template_in_three_formats(engine: Engine, client: TestClient) -> None:
     login(client, HR)
     text = client.get(f"{SALARIES}/template.csv").content.decode("utf-8-sig")
     lines = list(csv.reader(io.StringIO(text)))
-    assert lines[0] == ["number", "name", "title", "cost_center", "monthly_salary"]
+    assert lines[0] == ["number", "name", "title", "cost_center", "monthly_salary", "bonus"]
     # Everyone on HR's staff list and in the round, by cost center; no pay in the file.
     assert [r[0] for r in lines[1:]] == ["P001", "P002", "P003", "P004", "P005", "P009"]
-    assert lines[1] == ["P001", "Max Muster", "Machinist", "CC1", ""]
-    assert all(r[4] == "" for r in lines[1:])
+    assert lines[1] == ["P001", "Max Muster", "Machinist", "CC1", "", ""]
+    assert all(r[4] == r[5] == "" for r in lines[1:])
     wb = openpyxl.load_workbook(io.BytesIO(client.get(f"{SALARIES}/template.xlsx").content))
     ws = wb.worksheets[0]
-    assert [c.value for c in ws[1]] == ["number", "name", "title", "cost_center", "monthly_salary"]
+    assert [c.value for c in ws[1]][-2:] == ["monthly_salary", "bonus"]
     assert ws.cell(7, 1).value == "P009" and ws.cell(7, 5).value is None
     table = pq.read_table(io.BytesIO(client.get(f"{SALARIES}/template.parquet").content))
     assert table.column("number").to_pylist()[-1] == "P009"
@@ -256,3 +256,34 @@ def test_files_that_cant_be_read() -> None:
         (7, None, False),
     ]
     assert f.rows[0].cost_center == "CC1"
+
+
+def test_bonuses_by_upload(engine: Engine, client: TestClient) -> None:
+    start(client, bonus_account="6010")
+    source_pay(client, False)
+    login(client, HR)
+    data = as_csv(
+        ("P001", "", "1200"),  # a bonus only
+        ("P002", "2100", "600.50"),
+        ("P004", "", "500"),  # the freelancer's amount is typed
+        ("P005", "", "100"),  # not in the round
+        header=("number", "monthly_salary", "bonus"),
+    )
+    result = upload(client, data, "apply")
+    assert outcomes(result) == [
+        ("P001", "changed"),
+        ("P002", "changed"),
+        ("P004", "failed"),
+        ("P005", "failed"),
+    ]
+    rows = result["rows"]
+    assert rows[0]["old_bonus"] is None and rows[0]["new_bonus"] == "1200.00"
+    assert "typed amount" in rows[2]["message"] and "belongs to a position" in rows[3]["message"]
+    p = by_code(client.get(f"{PAY}/CC1").json())
+    assert p["P001"]["bonus"] == "1200.00" and p["P001"]["hr_salary"] == "4000.00"
+    assert p["P002"]["bonus"] == "600.50" and p["P002"]["hr_salary"] == "2100.00"
+    # A file with neither amount column isn't read.
+    response = client.post(
+        f"{SALARIES}/check", params={"filename": "s.csv"}, content=b"number,name\nP001,x\n"
+    )
+    assert response.status_code == 422 and "monthly_salary or bonus" in response.text

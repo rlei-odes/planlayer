@@ -63,6 +63,8 @@ export type PayRightsRow = S.PayRightsRowOut
 export type PayRules = S.PayRulesIO
 export type PayRule = S.PayRuleIO
 export type PayRulesPage = S.PayRulesPageOut
+export type PayRuleRef = S.PayRuleRefOut
+export type PayIn = S.PayIn
 // HR's salary upload (ADR 0025).
 export type SalaryUploadInfo = S.SalaryUploadInfoOut
 export type SalaryUpload = S.SalaryUploadOut
@@ -258,6 +260,10 @@ export const api = {
     fetch(`${v(version)}/personnel/${encodeURIComponent(code)}`).then((r) => json<PayPage>(r)),
   savePay: (version: string, code: string, id: number, pay: S.PayIn) =>
     send('PUT', `${v(version)}/personnel/${encodeURIComponent(code)}/positions/${id}`, pay).then((r) => json<PayPage>(r)),
+  previewPay: (version: string, code: string, id: number, pay: S.PayIn) =>
+    post(`${v(version)}/personnel/${encodeURIComponent(code)}/positions/${id}/preview`, pay).then((r) =>
+      json<PayPosition>(r),
+    ),
   handOverPay: (version: string, code: string, handedOver: boolean) =>
     send('PUT', `${v(version)}/personnel/${encodeURIComponent(code)}/handover`, { handed_over: handedOver }).then((r) =>
       json<PayPage>(r),

@@ -1,10 +1,10 @@
 """HR's salary upload (ADR 0025): while the sync doesn't read salaries, HR downloads a template
-of the round's people, fills in each one's monthly salary and uploads it. A check shows what the
-upload would do before anything is written; applying it writes the same.
+of the round's people, fills in each one's monthly salary and yearly bonus and uploads it. A
+check shows what the upload would do before anything is written; applying it writes the same.
 
 An uploaded salary is HR's salary: on the round's positions with the person's number, and in HR's
-staff list (``hr_pay``), from which positions taken later get it. Plan positions carry
-Planlayer's numbers and are never matched."""
+staff list (``hr_pay``), from which positions taken later get it. A bonus belongs to the round's
+positions only. Plan positions carry Planlayer's numbers and are never matched."""
 
 from collections import Counter
 from collections.abc import Callable
@@ -17,7 +17,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from planlayer.access import User
 from planlayer.domain.workflow import EDITABLE
-from planlayer.personnel.common import pay_round, run
+from planlayer.personnel.common import load_rules, pay_round, run
 from planlayer.personnel.costs import recompute
 from planlayer.personnel.salary_files import (
     FileRow,
@@ -57,6 +57,8 @@ class UploadRow:
     new: Decimal | None
     outcome: Outcome
     message: str | None = None
+    old_bonus: Decimal | None = None  # the position's bonus now
+    new_bonus: Decimal | None = None
 
 
 @dataclass
@@ -65,7 +67,7 @@ class UploadResult:
     applied: bool
     rows: list[UploadRow]
     ignored: list[str]  # the file's columns that aren't read
-    positions: int  # positions whose HR salary changes
+    positions: int  # positions whose HR salary or bonus changes
     staff_list: int  # people whose salary in HR's staff list changes
     batch_id: str | None = None
 
@@ -92,6 +94,8 @@ class _Position:
     title: str
     hr_salary: Decimal | None
     transferred: bool  # the sending half of a transfer
+    bonus: Decimal | None = None
+    staff_type_id: int = 0
 
 
 @dataclass
@@ -126,7 +130,9 @@ def _people(conn: Connection, version_id: int) -> _People:
             p.c.person_name,
             p.c.title,
             p.c.transferred_to_id,
+            p.c.staff_type_id,
             pay.c.hr_salary,
+            pay.c.bonus,
         )
         .join(cc, cc.c.member_id == p.c.cost_center_id)
         .outerjoin(pay, pay.c.position_id == p.c.position_id)
@@ -142,6 +148,8 @@ def _people(conn: Connection, version_id: int) -> _People:
                 r.title,
                 r.hr_salary,
                 r.transferred_to_id is not None,
+                r.bonus,
+                r.staff_type_id,
             )
         )
     for s in conn.execute(
@@ -224,13 +232,14 @@ def template_file(engine: Engine, user: User, version_code: str, fmt: Format) ->
 @dataclass
 class _Plan:
     rows: list[UploadRow]
-    positions: dict[int, Decimal]  # position id -> HR's salary
+    positions: dict[int, tuple[Decimal | None, Decimal | None]]  # id -> HR's salary, bonus
     touched: set[int]  # cost centers of those positions
     staff: dict[str, tuple[int, Decimal]]  # number -> cost center id, salary
 
 
 def _plan(conn: Connection, r: RoundRef, upload: SalaryFile) -> _Plan:
     people = _people(conn, r.version_id)
+    typed = {t for t, kind in load_rules(conn, r.version_id).staff_types.items() if kind.typed}
     enabled = enabled_members(conn, r.version_id)
     statuses: dict[int, str] = {}
 
@@ -249,7 +258,7 @@ def _plan(conn: Connection, r: RoundRef, upload: SalaryFile) -> _Plan:
     counts = Counter({n: len(ls) for n, ls in lines.items()})
     plan = _Plan([], {}, set(), {})
     for row in upload.rows:
-        plan.rows.append(_row(row, people, counts, lines, lock, plan))
+        plan.rows.append(_row(row, people, counts, lines, lock, typed, plan))
     return plan
 
 
@@ -259,56 +268,78 @@ def _row(
     counts: Counter[str],
     lines: dict[str, list[int]],
     lock: Callable[[int], str | None],
+    typed: set[int],
     plan: _Plan,
 ) -> UploadRow:
     """One row of the file: what happens to it, added to ``plan``."""
-    number, salary = row.number, row.salary
-
-    def out(
-        outcome: Outcome,
-        message: str | None = None,
-        known: tuple[str | None, str | None, str | None, Decimal | None] = (None,) * 4,
-    ) -> UploadRow:
-        name, cc, differs, old = known
-        return UploadRow(row.line, number, name, cc, differs, old, salary, outcome, message)
-
-    if number is None:
-        return out("failed", "no number")
-    current, staff = people.current(number), people.staff.get(number)
-    name: str | None
-    cc: str | None
-    old: Decimal | None
+    number, salary, bonus = row.number, row.salary, row.bonus
+    current, staff = (people.current(number), people.staff.get(number)) if number else (None, None)
+    name: str | None = None
+    cc: str | None = None
+    old: Decimal | None = None
     if current is not None:
         name, cc, old = current.name, current.cost_center, current.hr_salary
     elif staff is not None:
-        name, cc, old = staff.name, staff.cost_center, people.staff_salary.get(number)
-    else:
-        name = cc = old = None
+        name, cc, old = staff.name, staff.cost_center, people.staff_salary.get(number or "")
     differs = row.cost_center if cc is not None and row.cost_center not in (None, cc) else None
-    known = (name, cc, differs, old)
+
+    def out(outcome: Outcome, message: str | None = None) -> UploadRow:
+        return UploadRow(
+            row.line,
+            number,
+            name,
+            cc,
+            differs,
+            old,
+            salary,
+            outcome,
+            message,
+            current.bonus if current else None,
+            bonus,
+        )
+
+    if number is None:
+        return out("failed", "no number")
     if counts[number] > 1:
         others = ", ".join(str(n) for n in lines[number] if n != row.line)
-        return out("failed", f"the number is also on line {others}", known)
+        return out("failed", f"the number is also on line {others}")
     if cc is None:
         return out("unknown", "no one in HR's staff list or the round has this number")
     if row.error is not None:
-        return out("failed", row.error, known)
-    if salary is None:
-        return out("blank", "no salary in the file: left as it is", known)
+        return out("failed", row.error)
+    if salary is None and bonus is None:
+        return out("blank", "no salary or bonus in the file: left as it is")
     if current is None:
-        result = out("not_in_round", "kept in HR's staff list for when the person is taken", known)
+        if salary is None:
+            return out("failed", "not in the round: a bonus belongs to a position of the round")
+        result = out(
+            "not_in_round",
+            "kept in HR's staff list for when the person is taken"
+            + ("; the bonus isn't kept" if bonus is not None else ""),
+        )
     else:
-        moving = [p for p in people.positions[number] if p.hr_salary != salary]
+        ps = people.positions[number]
+        if bonus is not None and any(p.staff_type_id in typed for p in ps):
+            return out("failed", "a typed amount gets no bonus")
+        moving = [
+            p
+            for p in ps
+            if (salary is not None and p.hr_salary != salary)
+            or (bonus is not None and p.bonus != bonus)
+        ]
         locked = {p.cost_center: why for p in moving if (why := lock(p.cost_center_id))}
         applied = [p for p in moving if p.cost_center not in locked]
         if moving and not applied:
             text = "; ".join(f"{c} {why}" for c, why in sorted(locked.items()))
-            return out("failed", f"{text}: its pay can't change now", known)
-        result = out("changed" if moving else "unchanged", None, known)
+            return out("failed", f"{text}: its pay can't change now")
+        result = out("changed" if moving else "unchanged")
         for p in applied:
-            plan.positions[p.position_id] = salary
+            plan.positions[p.position_id] = (
+                salary if salary is not None else p.hr_salary,
+                bonus if bonus is not None else p.bonus,
+            )
             plan.touched.add(p.cost_center_id)
-    if staff is not None and people.staff_salary.get(number) != salary:
+    if staff is not None and salary is not None and people.staff_salary.get(number) != salary:
         plan.staff[number] = (staff.cost_center_id, salary)
     return result
 
@@ -357,10 +388,12 @@ def apply(
                         "position_id": pid,
                         "version_id": r.version_id,
                         "module": MODULE_PERSONNEL,
-                        "hr_salary": plan.positions[pid],
+                        "hr_salary": hr_salary,
+                        "bonus": bonus,
                         "changed_by": user.login,
                     }
                     for pid in ids[i : i + CHUNK]
+                    for hr_salary, bonus in [plan.positions[pid]]
                 ]
             )
             conn.execute(
@@ -368,6 +401,7 @@ def apply(
                     index_elements=[position_pay.c.position_id],
                     set_={
                         "hr_salary": stmt.excluded.hr_salary,
+                        "bonus": stmt.excluded.bonus,
                         "changed_by": user.login,
                         "changed_at": func.now(),
                     },

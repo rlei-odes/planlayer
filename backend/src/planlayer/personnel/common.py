@@ -91,13 +91,17 @@ def load_rules(conn: Connection, version_id: int) -> RoundRules:
     for r in rows:
         match r.kind:
             case "extra":
-                extras.append(Extra(r.account_id, r.salaries, r.entity_id))
+                extras.append(Extra(r.account_id, r.salaries, r.entity_id, r.rule_id))
             case "raise":
-                raises.append(Raise(r.account_id, r.percent, r.starts, r.entity_id))
+                raises.append(Raise(r.account_id, r.percent, r.starts, r.entity_id, r.rule_id))
             case "award":
-                awards.append(Award(r.account_id, tuple(steps.get(r.rule_id, [])), r.entity_id))
+                awards.append(
+                    Award(r.account_id, tuple(steps.get(r.rule_id, [])), r.entity_id, r.rule_id)
+                )
             case "contribution":
-                contributions.append(Contribution(r.account_id, r.percent, r.ceiling, r.entity_id))
+                contributions.append(
+                    Contribution(r.account_id, r.percent, r.ceiling, r.entity_id, r.rule_id)
+                )
     return RoundRules(
         Rules(
             tuple(extras),

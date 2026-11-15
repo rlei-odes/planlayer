@@ -635,6 +635,7 @@ export type PayIn = {
   bonus?: string | null
   charged_to?: string | null
   hr_salary?: string | null
+  excluded_rules?: number[] | null
 }
 
 export type PayLogOut = {
@@ -667,7 +668,15 @@ export type PayPageOut = {
   released: boolean
   handover: PayReviewOut | null
   review_required: boolean
+  rules: PayRuleRefOut[]
+  bonus_account: string | null
   batch_id?: string | null
+}
+
+export type PayPartOut = {
+  source: "pay" | "bonus" | "rule"
+  rule_id: number | null
+  year: string
 }
 
 export type PayPersonOut = {
@@ -693,6 +702,10 @@ export type PayPositionOut = {
   charged_to: string | null
   year_cost: string
   transferred_to: string | null
+  entity: string
+  salary_account: string | null
+  excluded_rules: number[]
+  parts: PayPartOut[]
 }
 
 export type PayReadersIn = {
@@ -733,6 +746,7 @@ export type PayRightsRowOut = {
 }
 
 export type PayRuleIO = {
+  id?: number | null
   kind: "extra" | "raise" | "award" | "contribution"
   name: string
   account: string
@@ -742,6 +756,14 @@ export type PayRuleIO = {
   ceiling?: string | null
   starts?: string | null
   steps: PayStepIO[]
+}
+
+export type PayRuleRefOut = {
+  id: number
+  kind: "extra" | "raise" | "award" | "contribution"
+  name: string
+  account: string
+  entity: string | null
 }
 
 export type PayRulesIO = {
@@ -1032,6 +1054,8 @@ export type SalaryUploadRowOut = {
   new: string | null
   outcome: "changed" | "unchanged" | "blank" | "not_in_round" | "unknown" | "failed"
   message: string | null
+  old_bonus: string | null
+  new_bonus: string | null
 }
 
 export type SaveListIn = {

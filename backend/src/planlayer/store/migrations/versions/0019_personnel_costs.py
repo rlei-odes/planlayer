@@ -538,9 +538,25 @@ def _lock_fact_cost_center(s: str) -> None:
     """)
 
 
-def _lock_position_pay(s: str, *, hr_edits_hr_salary: bool, handover: bool = False) -> None:
+def _lock_position_pay(
+    s: str, *, hr_edits_hr_salary: bool, handover: bool = False, exclusions: bool = False
+) -> None:
     """The lock on pay; HR's salary changes only by the system user, or also by HR (ADR 0023);
-    with ``handover``, others change pay only once HR has handed the cost center over."""
+    with ``handover``, others change pay only once HR has handed the cost center over; with
+    ``exclusions``, only HR excludes a position from a rule (ADR 0026)."""
+    excluded = (
+        f"""
+            IF TG_OP = 'UPDATE' THEN
+                was_excluded := OLD.excluded_rules;
+            END IF;
+            IF NEW.excluded_rules IS DISTINCT FROM was_excluded AND NOT {s}.writes_as_hr() THEN
+                RAISE EXCEPTION 'plan values are locked: only HR excludes a position from a '
+                    'rule' USING ERRCODE = 'PL001';
+            END IF;"""
+        if exclusions
+        else ""
+    )
+    declare_excluded = "\n            was_excluded int[] := '{}';" if exclusions else ""
     handed = (
         f"""
             IF NOT {s}.writes_as_hr() AND NOT EXISTS (
@@ -571,7 +587,7 @@ def _lock_position_pay(s: str, *, hr_edits_hr_salary: bool, handover: bool = Fal
             cc int;
             problem text;
             was_hr numeric;
-            was_charged int;
+            was_charged int;{declare_excluded}
             system boolean := EXISTS (SELECT 1 FROM {s}.app_user u
                                       WHERE u.user_id = {USER} AND u.is_system);
         BEGIN
@@ -615,7 +631,7 @@ def _lock_position_pay(s: str, *, hr_edits_hr_salary: bool, handover: bool = Fal
             IF NEW.charged_to_id IS DISTINCT FROM was_charged AND NOT {s}.writes_as_hr() THEN
                 RAISE EXCEPTION 'plan values are locked: only HR charges a position to another '
                     'cost center' USING ERRCODE = 'PL001';
-            END IF;
+            END IF;{excluded}
             RETURN NULL;
         END $$
     """)

@@ -4,7 +4,7 @@ strings."""
 
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
-from typing import Annotated, Literal
+from typing import Annotated, Literal, cast
 
 from fastapi import APIRouter, Body, Request
 from fastapi.responses import Response
@@ -21,6 +21,20 @@ from planlayer.personnel.salary_files import MEDIA
 from planlayer.sheet import EditError, parse_amount
 
 router = APIRouter(prefix="/api")
+
+
+class PayPartOut(BaseModel):
+    source: Literal["pay", "bonus", "rule"]
+    rule_id: int | None
+    year: str
+
+
+class PayRuleRefOut(BaseModel):
+    id: int
+    kind: Kind
+    name: str
+    account: str
+    entity: str | None
 
 
 class PayPositionOut(BaseModel):
@@ -41,6 +55,10 @@ class PayPositionOut(BaseModel):
     charged_to: str | None  # another cost center carrying the costs
     year_cost: str
     transferred_to: str | None
+    entity: str  # of its cost center; entity-limited rules apply by it
+    salary_account: str | None  # of its staff type; null: not costed
+    excluded_rules: list[int]  # rules HR excluded it from (ADR 0026)
+    parts: list[PayPartOut]  # its costs over the year by where they come from
 
 
 class PayAccountOut(BaseModel):
@@ -76,6 +94,8 @@ class PayPageOut(BaseModel):
     released: bool  # access control released (ADR 0023)
     handover: PayReviewOut | None  # HR handed the pay over to its readers (ADR 0024)
     review_required: bool  # approval waits for HR's review
+    rules: list[PayRuleRefOut]  # the round's rules, for the positions' breakdown
+    bonus_account: str | None
     batch_id: str | None = None
 
 
@@ -142,6 +162,8 @@ class PayIn(BaseModel):
     charged_to: str | None = None
     # HR only (ADR 0023); left out, HR's salary stays as it is.
     hr_salary: str | None = None
+    # HR only (ADR 0026); left out, the exclusions stay as they are.
+    excluded_rules: list[int] | None = None
 
 
 class PayReviewIn(BaseModel):
@@ -159,6 +181,7 @@ class PayStepIO(BaseModel):
 
 
 class PayRuleIO(BaseModel):
+    id: int | None = None  # the stored rule; null: a new one
     kind: Kind
     name: str
     account: str
@@ -218,6 +241,8 @@ class SalaryUploadRowOut(BaseModel):
     new: str | None
     outcome: Literal["changed", "unchanged", "blank", "not_in_round", "unknown", "failed"]
     message: str | None
+    old_bonus: str | None  # the position's yearly bonus now
+    new_bonus: str | None
 
 
 class SalaryUploadOut(BaseModel):
@@ -225,7 +250,7 @@ class SalaryUploadOut(BaseModel):
     applied: bool  # False: the check, nothing written
     rows: list[SalaryUploadRowOut]
     ignored: list[str]
-    positions: int  # positions whose HR salary changes
+    positions: int  # positions whose HR salary or bonus changes
     staff_list: int  # people whose salary in HR's staff list changes
     batch_id: str | None = None
 
@@ -245,6 +270,8 @@ def _upload_out(r: upload.UploadResult) -> SalaryUploadOut:
                 new=_s(x.new),
                 outcome=x.outcome,
                 message=x.message,
+                old_bonus=_s(x.old_bonus),
+                new_bonus=_s(x.new_bonus),
             )
             for x in r.rows
         ],
@@ -257,6 +284,34 @@ def _upload_out(r: upload.UploadResult) -> SalaryUploadOut:
 
 # The uploaded file as the request body, as it is.
 FileBody = Annotated[bytes, Body(media_type="application/octet-stream")]
+
+
+def _position_out(r: personnel.PayRow) -> PayPositionOut:
+    return PayPositionOut(
+        position_id=r.position_id,
+        code=r.code,
+        title=r.title,
+        person_name=r.person_name,
+        staff_type=r.staff_type,
+        staff_category=r.staff_category,
+        entry_date=r.entry_date,
+        leave_date=r.leave_date,
+        contract_percent=_s(r.contract_percent),
+        is_plan=r.is_plan,
+        typed=r.typed,
+        hr_salary=_s(r.hr_salary),
+        salary=_s(r.salary),
+        bonus=_s(r.bonus),
+        charged_to=r.charged_to,
+        year_cost=f"{r.year_cost:.2f}",
+        transferred_to=r.transferred_to,
+        entity=r.entity,
+        salary_account=r.salary_account,
+        excluded_rules=r.excluded_rules,
+        parts=[
+            PayPartOut(source=x.source, rule_id=x.rule_id, year=f"{x.year:.2f}") for x in r.parts
+        ],
+    )
 
 
 def _page_out(p: personnel.PayPage, batch_id: str | None = None) -> PayPageOut:
@@ -272,28 +327,7 @@ def _page_out(p: personnel.PayPage, batch_id: str | None = None) -> PayPageOut:
         periods=p.periods,
         closed_months=p.closed_months,
         min_group=p.min_group,
-        positions=[
-            PayPositionOut(
-                position_id=r.position_id,
-                code=r.code,
-                title=r.title,
-                person_name=r.person_name,
-                staff_type=r.staff_type,
-                staff_category=r.staff_category,
-                entry_date=r.entry_date,
-                leave_date=r.leave_date,
-                contract_percent=_s(r.contract_percent),
-                is_plan=r.is_plan,
-                typed=r.typed,
-                hr_salary=_s(r.hr_salary),
-                salary=_s(r.salary),
-                bonus=_s(r.bonus),
-                charged_to=r.charged_to,
-                year_cost=f"{r.year_cost:.2f}",
-                transferred_to=r.transferred_to,
-            )
-            for r in p.positions
-        ],
+        positions=[_position_out(r) for r in p.positions],
         accounts=[
             PayAccountOut(code=a.code, name=a.name, months=[_s(v) for v in a.months], small=a.small)
             for a in p.accounts
@@ -311,6 +345,17 @@ def _page_out(p: personnel.PayPage, batch_id: str | None = None) -> PayPageOut:
             else None
         ),
         review_required=p.review_required,
+        rules=[
+            PayRuleRefOut(
+                id=x.rule_id,
+                kind=cast(Kind, x.kind),
+                name=x.name,
+                account=x.account,
+                entity=x.entity,
+            )
+            for x in p.rules
+        ],
+        bonus_account=p.bonus_account,
         batch_id=batch_id,
     )
 
@@ -352,6 +397,7 @@ def _rules_in(body: PayRulesIO) -> personnel.RulesIO:
                     )
                     for s in r.steps
                 ],
+                r.id,
             )
             for r in body.rules
         ],
@@ -384,6 +430,7 @@ def _rules_out(p: personnel.RulesPage) -> PayRulesPageOut:
             ],
             rules=[
                 PayRuleIO(
+                    id=x.id,
                     kind=x.kind,
                     name=x.name,
                     account=x.account,
@@ -595,17 +642,42 @@ def save_pay(
     """A position's planned salary, bonus and (HR) the cost center charged."""
     engine = engine_of(request)
     try:
-        given = personnel.PayIn(
-            parse_amount(body.salary),
-            parse_amount(body.bonus),
-            body.charged_to or None,
-            parse_amount(body.hr_salary),
-            "hr_salary" in body.model_fields_set,
-        )
-        batch = personnel.save_pay(engine, user, version_code, cc_code, position_id, given)
+        batch = personnel.save_pay(engine, user, version_code, cc_code, position_id, _pay_in(body))
         return _page_out(personnel.read_page(engine, user, version_code, cc_code), batch)
     except HANDLED as e:
         raise _errors(e) from None
+
+
+@router.post(
+    V + "/{cc_code}/positions/{position_id}/preview", responses={403: {}, 404: {}, 422: {}}
+)
+def preview_pay(
+    request: Request,
+    user: CurrentUser,
+    version_code: str,
+    cc_code: str,
+    position_id: int,
+    body: PayIn,
+) -> PayPositionOut:
+    """The position's costs as they would be with ``body``; writes nothing."""
+    try:
+        row = personnel.preview(
+            engine_of(request), user, version_code, cc_code, position_id, _pay_in(body)
+        )
+    except HANDLED as e:
+        raise _errors(e) from None
+    return _position_out(row)
+
+
+def _pay_in(body: PayIn) -> personnel.PayIn:
+    return personnel.PayIn(
+        parse_amount(body.salary),
+        parse_amount(body.bonus),
+        body.charged_to or None,
+        parse_amount(body.hr_salary),
+        "hr_salary" in body.model_fields_set,
+        body.excluded_rules,
+    )
 
 
 @router.put(V + "/{cc_code}/review", responses={403: {}, 404: {}, 422: {}})

@@ -1,9 +1,9 @@
 """The files of HR's salary upload (ADR 0025): the template HR downloads and the file HR sends
 back, as CSV, Excel or Parquet. No database access here; ``upload`` matches the rows.
 
-A file holds one row per person under fixed column names. ``number`` and ``monthly_salary``
-are required; ``cost_center`` is checked against the position when given; the other columns
-are there for HR to read and are ignored."""
+A file holds one row per person under fixed column names. ``number`` is required, with
+``monthly_salary``, ``bonus`` (yearly) or both; ``cost_center`` is checked against the position
+when given; the other columns are there for HR to read and are ignored."""
 
 import csv
 import io
@@ -43,8 +43,8 @@ MEDIA: dict[Format, str] = {
     "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     "parquet": "application/vnd.apache.parquet",
 }
-COLUMNS = ("number", "name", "title", "cost_center", "monthly_salary")
-REQUIRED = ("number", "monthly_salary")
+COLUMNS = ("number", "name", "title", "cost_center", "monthly_salary", "bonus")
+AMOUNTS = ("monthly_salary", "bonus")  # at least one of them
 MAX_BYTES = 20 * 1024 * 1024
 MAX_ROWS = 100_000
 
@@ -66,8 +66,9 @@ class FileRow:
     line: int  # as HR sees it: the header is line 1
     number: str | None
     cost_center: str | None
-    salary: Decimal | None  # None: blank
-    error: str | None  # the salary can't be read
+    salary: Decimal | None  # None: blank, or no such column
+    bonus: Decimal | None  # yearly; None: blank, or no such column
+    error: str | None  # an amount can't be read
 
 
 @dataclass(frozen=True)
@@ -99,7 +100,7 @@ def template(rows: list[TemplateRow], fmt: Format) -> bytes:
             writer = csv.writer(out, lineterminator="\r\n")
             writer.writerow(COLUMNS)
             for r in rows:
-                writer.writerow([r.number, r.name or "", r.title, r.cost_center, ""])
+                writer.writerow([r.number, r.name or "", r.title, r.cost_center, "", ""])
             # With a byte order mark, Excel opens the file as UTF-8.
             return out.getvalue().encode("utf-8-sig")
         case "xlsx":
@@ -112,6 +113,7 @@ def template(rows: list[TemplateRow], fmt: Format) -> bytes:
                     "title": pa.array([r.title for r in rows], pa.string()),
                     "cost_center": pa.array([r.cost_center for r in rows], pa.string()),
                     "monthly_salary": pa.array([None] * len(rows), pa.decimal128(18, 2)),
+                    "bonus": pa.array([None] * len(rows), pa.decimal128(18, 2)),
                 }
             )
             buf = io.BytesIO()
@@ -128,13 +130,14 @@ def _xlsx(rows: list[TemplateRow]) -> bytes:
     for cell in ws[1]:
         cell.font = Font(bold=True)
     for r in rows:
-        ws.append([r.number, r.name, r.title, r.cost_center, None])
-    # Numbers and cost centers as text, so leading zeros stay; the salary as an amount.
+        ws.append([r.number, r.name, r.title, r.cost_center, None, None])
+    # Numbers and cost centers as text, so leading zeros stay; salary and bonus as amounts.
     for i in range(2, len(rows) + 2):
         ws.cell(i, 1).number_format = "@"
         ws.cell(i, 4).number_format = "@"
         ws.cell(i, 5).number_format = "#,##0.00"
-    for col, width in zip("ABCDE", (14, 28, 28, 14, 16), strict=True):
+        ws.cell(i, 6).number_format = "#,##0.00"
+    for col, width in zip("ABCDEF", (14, 28, 28, 14, 16, 16), strict=True):
         ws.column_dimensions[col].width = width
     ws.freeze_panes = "A2"
     buf = io.BytesIO()
@@ -166,11 +169,10 @@ def read(data: bytes, filename: str) -> SalaryFile:
         log.info("salary upload %s unreadable as %s: %s", filename, fmt, type(e).__name__)
         raise FileError(f"{filename} can't be read as {FORMAT_NAME[fmt]}") from None
     names = [_column(h) for h in header]
-    missing = [c for c in REQUIRED if c not in names]
-    if missing:
+    if "number" not in names or not any(c in names for c in AMOUNTS):
+        missing = "number" if "number" not in names else " or ".join(AMOUNTS)
         raise FileError(
-            f"{filename} has no column {', '.join(missing)}; "
-            f"the template's columns are {', '.join(COLUMNS)}"
+            f"{filename} has no column {missing}; the template's columns are {', '.join(COLUMNS)}"
         )
     doubled = sorted({n for n in names if n and names.count(n) > 1})
     if doubled:
@@ -187,8 +189,18 @@ def read(data: bytes, filename: str) -> SalaryFile:
             i = index.get(col)
             return values[i] if i is not None and i < len(values) else None
 
-        salary, error = _salary(get("monthly_salary"))
-        rows.append(FileRow(line, _text(get("number")), _text(get("cost_center")), salary, error))
+        salary, salary_error = _amount(get("monthly_salary"), "salary")
+        bonus, bonus_error = _amount(get("bonus"), "bonus")
+        rows.append(
+            FileRow(
+                line,
+                _text(get("number")),
+                _text(get("cost_center")),
+                salary,
+                bonus,
+                "; ".join(e for e in (salary_error, bonus_error) if e) or None,
+            )
+        )
     ignored = [str(h) for h, n in zip(header, names, strict=True) if n and n not in COLUMNS]
     return SalaryFile(rows, ignored)
 
@@ -252,8 +264,8 @@ def _text(value: object) -> str | None:
     return str(value).strip()
 
 
-def _salary(value: object) -> tuple[Decimal | None, str | None]:
-    """A monthly salary: blank, or a non-negative amount with at most two decimals."""
+def _amount(value: object, what: str) -> tuple[Decimal | None, str | None]:
+    """A salary or bonus: blank, or a non-negative amount with at most two decimals."""
     if _blank(value):
         return None, None
     match value:
@@ -272,11 +284,11 @@ def _salary(value: object) -> tuple[Decimal | None, str | None]:
         case _:
             amount = None
     if amount is None or not amount.is_finite():
-        return None, f"not an amount: {value}"
+        return None, f"{what}: not an amount: {value}"
     if amount < 0:
-        return None, f"a salary isn't negative: {value}"
+        return None, f"a {what} isn't negative: {value}"
     if amount != amount.quantize(Decimal("0.01")):
-        return None, f"at most two decimal places: {value}"
+        return None, f"{what}: at most two decimal places: {value}"
     return amount.quantize(Decimal("0.01")), None
 
 

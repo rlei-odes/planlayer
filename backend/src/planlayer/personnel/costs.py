@@ -39,7 +39,7 @@ RECOMPUTE_LOCK = 2022  # advisory lock class of personnel cost recomputes (ADR 0
 Key = tuple[int, int, date]  # cost center charged, account, period
 
 
-def _entities(conn: Connection) -> dict[int, int]:
+def entities_of(conn: Connection) -> dict[int, int]:
     """Each cost center's entity member."""
     entity = member.alias("entity")
     return dict(
@@ -64,7 +64,7 @@ def _wanted(
     account (group sizes)."""
     rules = load_rules(conn, r.version_id)
     enabled = {m for m, on in enabled_members(conn, r.version_id).items() if on}
-    entities = _entities(conn)
+    entities = entities_of(conn)
     p, pay = workforce_position, position_pay
     totals: dict[Key, Decimal] = defaultdict(Decimal)
     per_cc: dict[int, list[dict[int, list[Decimal]]]] = defaultdict(list)
@@ -78,6 +78,7 @@ def _wanted(
             pay.c.salary,
             pay.c.bonus,
             pay.c.charged_to_id,
+            pay.c.excluded_rules,
         )
         .outerjoin(pay, pay.c.position_id == p.c.position_id)
         .where(p.c.version_id == r.version_id)
@@ -95,6 +96,7 @@ def _wanted(
             row.entry_date,
             row.leave_date,
             row.bonus,
+            frozenset(row.excluded_rules or ()),
         )
         c = costs(position, rules.rules, periods)
         per_cc[charged].append(c)
@@ -149,7 +151,7 @@ def recompute(
                     scope, tuple_(f.c.dim_cost_center, f.c.dim_account, f.c.period).in_(gone)
                 )
             )
-        entities = _entities(conn)
+        entities = entities_of(conn)
         upserts = [
             {
                 "version_id": r.version_id,
