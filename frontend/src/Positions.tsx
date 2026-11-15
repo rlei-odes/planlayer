@@ -23,6 +23,10 @@ type Draft = {
   description: string
 }
 
+/** A contract % to start with: full time for internal staff, none for external staff (e.g.
+ * freelancers, whose capacity is typed in hours, ADR 0027). */
+const startingPercent = (external: boolean) => (external ? '' : '100')
+
 function draftOf(p: Position | null, sheet: WorkforceSheet): Draft {
   return {
     title: p?.title ?? '',
@@ -31,7 +35,11 @@ function draftOf(p: Position | null, sheet: WorkforceSheet): Draft {
     staff_category_code: p?.staff_category_code ?? sheet.staff_categories[0]?.code ?? '',
     entry_date: p?.entry_date ?? '',
     leave_date: p?.leave_date ?? '',
-    contract_percent: p?.contract_percent ? String(Number(p.contract_percent)) : p ? '' : '100',
+    contract_percent: p?.contract_percent
+      ? String(Number(p.contract_percent))
+      : p
+        ? ''
+        : startingPercent(sheet.staff_types[0]?.external ?? false),
     is_plan: p?.is_plan ?? true,
     is_replacement: p?.is_replacement ?? false,
     description: p?.description ?? '',
@@ -275,7 +283,16 @@ export default function Positions({
                 <Select
                   label="Staff type"
                   value={draft.staff_type_code}
-                  onChange={(v) => setDraft({ ...draft, staff_type_code: v })}
+                  onChange={(v) => {
+                    // A contract % still at the starting value follows the staff type.
+                    const starting = draft.contract_percent === startingPercent(external)
+                    const next = types[v]?.external ?? false
+                    setDraft({
+                      ...draft,
+                      staff_type_code: v,
+                      contract_percent: starting ? startingPercent(next) : draft.contract_percent,
+                    })
+                  }}
                   options={sheet.staff_types.map((t) => ({ value: t.code, label: t.name, hint: t.external ? 'external' : undefined }))}
                 />
               </div>
