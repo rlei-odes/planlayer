@@ -1,9 +1,12 @@
-"""Productive hours of positions (ADR 0027): the hours a full-time position works in the year,
-times the position's contract percentage and productive share, spread over the months by the
-line's weights and counted for the days the position is active.
+"""Productive hours of positions (ADR 0027).
 
-A position without a contract percentage (an external one) counts as full time. A position
-without a productive share gives no hours."""
+A position with a contract percentage works the hours a full-time position works in the year,
+times its contract percentage and productive share, spread over the months by the line's
+weights and counted for the days it is active. A position without a productive share gives no
+hours.
+
+A position without a contract percentage (e.g. a freelancer) has its year's hours typed. They
+are spread over the months it is active, by the line's weights, and add up to the typed total."""
 
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -22,27 +25,32 @@ class StaffPosition:
     productive_percent: Decimal | None
     entry_date: date | None
     leave_date: date | None
+    typed_hours: Decimal | None = None  # without a contract %: the year's hours
 
-    def year_hours(self, fte_hours: Decimal) -> Decimal | None:
-        """The hours a year at full activity; None without a productive share."""
-        if self.productive_percent is None:
-            return None
-        contract = HUNDRED if self.contract_percent is None else self.contract_percent
-        return fte_hours * contract / HUNDRED * self.productive_percent / HUNDRED
+    @property
+    def typed(self) -> bool:
+        return self.contract_percent is None
 
 
 def hours(
     p: StaffPosition, fte_hours: Decimal, weights: Sequence[Decimal], periods: Sequence[date]
 ) -> list[Decimal] | None:
-    """A position's productive hours per month, unrounded; None without a productive share.
-    ``weights`` are the line's month weights; they needn't sum to 1."""
-    year = p.year_hours(fte_hours)
-    if year is None:
-        return None
+    """A position's productive hours per month, unrounded; None without a productive share or
+    typed hours. ``weights`` are the line's month weights; they needn't sum to 1."""
     total = sum(weights, ZERO)
     if total <= 0:
         raise ValueError("month weights sum to zero")
-    return [
-        year * w / total * active_share(period, p.entry_date, p.leave_date)
-        for w, period in zip(weights, periods, strict=True)
-    ]
+    active = [active_share(period, p.entry_date, p.leave_date) for period in periods]
+    if p.typed:
+        if p.typed_hours is None:
+            return None
+        parts = [w * a for w, a in zip(weights, active, strict=True)]
+        worked = sum(parts, ZERO)
+        if worked == 0:
+            return [ZERO] * len(periods)
+        return [p.typed_hours * part / worked for part in parts]
+    if p.productive_percent is None:
+        return None
+    assert p.contract_percent is not None
+    year = fte_hours * p.contract_percent / HUNDRED * p.productive_percent / HUNDRED
+    return [year * w / total * a for w, a in zip(weights, active, strict=True)]

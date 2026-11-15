@@ -357,6 +357,7 @@ class StaffPositionOut(BaseModel):
     leave_date: date | None
     contract_percent: str | None
     productive_percent: str | None  # its own; null takes the default
+    typed_hours: str | None  # without a contract %: the year's hours, typed
     work_center_code: str | None  # its own line; null takes the default
     activity_type_code: str | None
     hours: str | None  # in the open months
@@ -387,10 +388,12 @@ class StaffDefaultsIn(BaseModel):
 
 
 class StaffPositionIn(BaseModel):
-    """Null takes the cost center's default."""
+    """Null takes the cost center's default. A position without a contract % takes ``hours``
+    for the year instead of a share."""
 
     line: LineRefIO | None
     percent: str | None
+    hours: str | None = None
 
 
 def _staff_out(v: capacity.StaffView, batch_id: str | None = None) -> StaffOut:
@@ -426,6 +429,7 @@ def _staff_out(v: capacity.StaffView, batch_id: str | None = None) -> StaffOut:
                 leave_date=x.leave_date,
                 contract_percent=_s(x.contract_percent),
                 productive_percent=_s(x.productive_percent),
+                typed_hours=_s(x.typed_hours),
                 work_center_code=x.work_center_code,
                 activity_type_code=x.activity_type_code,
                 hours=_s(x.hours),
@@ -478,7 +482,14 @@ def staff_position(
     engine = engine_of(request)
     try:
         batch = capacity.save_position(
-            engine, user, version_code, cc_code, position_id, _codes(body.line), body.percent
+            engine,
+            user,
+            version_code,
+            cc_code,
+            position_id,
+            _codes(body.line),
+            body.percent,
+            body.hours,
         )
         return _staff_out(capacity.read_staff(engine, user, version_code, cc_code), batch)
     except HANDLED as e:

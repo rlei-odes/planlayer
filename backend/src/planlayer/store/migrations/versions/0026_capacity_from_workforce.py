@@ -1,8 +1,8 @@
 """Capacity from the workforce (ADR 0027): a productive cost center's hours typed per line, from
 its positions, or both. ``round_module.fte_hours`` holds the round's hours per full-time
 position; ``capacity_unit`` where a cost center's hours come from and the line and productive
-share of its positions; ``capacity_position`` a position's own; ``capacity_line.staffed`` marks
-the lines whose hours the positions give.
+share of its positions; ``capacity_position`` a position's own, or its typed hours;
+``capacity_line.staffed`` marks the lines whose hours the positions give.
 
 Revision ID: 0026
 Revises: 0025
@@ -94,6 +94,7 @@ def upgrade() -> None:
         sa.Column("module", sa.Text, nullable=False, server_default="capacity"),
         sa.Column("cost_center_id", sa.Integer, sa.ForeignKey(member), nullable=False),
         sa.Column("productive_percent", sa.Numeric(5, 2)),
+        sa.Column("hours", sa.Numeric(10, 2)),  # a year's hours, without a contract %
         sa.Column("work_center_id", sa.Integer),
         sa.Column("activity_type_id", sa.Integer),
         *_changed(),
@@ -101,6 +102,7 @@ def upgrade() -> None:
         _line_fk(""),
         sa.CheckConstraint("module = 'capacity'", name="module"),
         sa.CheckConstraint("productive_percent BETWEEN 0 AND 100", name="productive_percent"),
+        sa.CheckConstraint("hours >= 0", name="hours"),
         schema=S,
     )
     op.create_table(

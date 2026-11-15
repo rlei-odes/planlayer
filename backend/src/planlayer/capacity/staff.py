@@ -4,6 +4,7 @@ Each position's productive hours go to one line of the cost center: the cost cen
 line, or the position's own. They are the round's hours per full-time position, times the
 position's contract percentage and productive share (its own, or the cost center's default),
 spread over the months by the line's weights and counted for the days the position is active.
+A position without a contract percentage (e.g. a freelancer) has its year's hours typed.
 
 The lines that take hours from positions are marked ``staffed``. Every recompute writes their
 hours in the open months, clears the hours of lines no longer staffed, and recomputes the
@@ -84,6 +85,7 @@ class _Staff:
     leave_date: date | None
     contract_percent: Decimal | None
     own_percent: Decimal | None
+    own_hours: Decimal | None  # typed, without a contract %
     own_line: Key | None
     line: Key | None = None  # the line its hours go to: its own, or the default
     percent: Decimal | None = None  # its productive share: its own, or the default
@@ -104,6 +106,7 @@ def _staff(conn: Connection, ctx: _Context, unit: _Unit) -> list[_Staff]:
             p.c.leave_date,
             p.c.contract_percent,
             c.c.productive_percent,
+            c.c.hours,
             c.c.work_center_id,
             c.c.activity_type_id,
         )
@@ -128,9 +131,15 @@ def _staff(conn: Connection, ctx: _Context, unit: _Unit) -> list[_Staff]:
                 r.leave_date,
                 r.contract_percent,
                 r.productive_percent,
+                r.hours,
                 own,
                 own or unit.default_line,
-                r.productive_percent if r.productive_percent is not None else unit.default_percent,
+                # A position without a contract % has its hours typed: no share applies.
+                None
+                if r.contract_percent is None
+                else r.productive_percent
+                if r.productive_percent is not None
+                else unit.default_percent,
             )
         )
     return out
@@ -168,7 +177,7 @@ def _computed(
     for s in staff:
         if s.line not in fed or fte is None:
             continue
-        p = StaffPosition(s.contract_percent, s.percent, s.entry_date, s.leave_date)
+        p = StaffPosition(s.contract_percent, s.percent, s.entry_date, s.leave_date, s.own_hours)
         s.months = hours(p, fte, month_weights[s.line], ctx.periods)
         if s.months is None:
             continue
@@ -271,6 +280,7 @@ class StaffRow:
     leave_date: date | None
     contract_percent: Decimal | None
     productive_percent: Decimal | None  # its own; None takes the default
+    typed_hours: Decimal | None  # without a contract %: the year's hours, typed
     work_center_code: str | None  # its own line; None takes the default
     activity_type_code: str | None
     hours: Decimal | None  # in the open months; None: no productive share, or no line
@@ -351,6 +361,7 @@ def read_staff(engine: Engine, user: User, version_code: str, cc_code: str) -> S
                 s.leave_date,
                 s.contract_percent,
                 s.own_percent,
+                s.own_hours,
                 code(s.own_line, 0),
                 code(s.own_line, 1),
                 None if year is None else year.quantize(CENT, ROUND_HALF_UP),
@@ -426,35 +437,48 @@ def save_position(
     position_id: int,
     line: tuple[str, str] | None,
     percent: str | None,
+    hours: str | None = None,
 ) -> str:
-    """A position's own line and productive share; None takes the cost center's default. The
-    hours follow. Returns the change batch."""
+    """A position's own line and productive share, or for a position without a contract % its
+    year's hours; None takes the cost center's default. The hours follow. Returns the change
+    batch."""
 
     def work(conn: Connection) -> None:
         ctx = _editable(conn, actor, version_code, cc_code)
         if not _unit(conn, ctx.version_id, ctx.cost_center_id).staff_hours:
             raise NotFoundError(f"{cc_code} plans no hours from its workforce in this round")
         found = conn.execute(
-            select(workforce_position.c.position_id).where(
+            select(workforce_position.c.position_id, workforce_position.c.contract_percent).where(
                 workforce_position.c.position_id == position_id,
                 workforce_position.c.version_id == ctx.version_id,
                 workforce_position.c.cost_center_id == ctx.cost_center_id,
             )
-        ).scalar()
+        ).first()
         if found is None:
             raise NotFoundError(f"position {position_id} not found on {cc_code}")
-        key, share = _line(conn, ctx, actor, line), _percent(percent)
-        if key is None and share is None:
-            conn.execute(delete(capacity_position).where(capacity_position.c.position_id == found))
+        key, share, typed = _line(conn, ctx, actor, line), _percent(percent), parse_amount(hours)
+        if found.contract_percent is None and share is not None:
+            raise EditError("a position without a contract % takes its hours, not a share")
+        if found.contract_percent is not None and typed is not None:
+            raise EditError("a position with a contract % takes a productive share, not hours")
+        if typed is not None and typed < 0:
+            raise EditError("hours can't be negative")
+        if key is None and share is None and typed is None:
+            conn.execute(
+                delete(capacity_position).where(
+                    capacity_position.c.position_id == found.position_id
+                )
+            )
         else:
             values = {
                 "productive_percent": share,
+                "hours": typed,
                 "work_center_id": None if key is None else key[0],
                 "activity_type_id": None if key is None else key[1],
                 "changed_by": actor.login,
             }
             stmt = pg_insert(capacity_position).values(
-                position_id=found,
+                position_id=found.position_id,
                 version_id=ctx.version_id,
                 module=MODULE_CAPACITY,
                 cost_center_id=ctx.cost_center_id,
@@ -628,6 +652,7 @@ def carry_staff(conn: Connection, source: RoundRef, target: RoundRef, actor: str
             new_p.c.position_id,
             new_p.c.cost_center_id,
             c.c.productive_percent,
+            c.c.hours,
             c.c.work_center_id,
             c.c.activity_type_id,
         )
@@ -656,6 +681,7 @@ def carry_staff(conn: Connection, source: RoundRef, target: RoundRef, actor: str
                     "module": MODULE_CAPACITY,
                     "cost_center_id": x.cost_center_id,
                     "productive_percent": x.productive_percent,
+                    "hours": x.hours,
                     "work_center_id": line(x.work_center_id, x.activity_type_id)[0],
                     "activity_type_id": line(x.work_center_id, x.activity_type_id)[1],
                     "changed_by": actor,

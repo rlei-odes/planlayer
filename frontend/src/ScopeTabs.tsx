@@ -124,8 +124,7 @@ export function CostCentersTab({ draft, setDraft, rows, fiscalYear, sourceName }
           <h3>Cost centers</h3>
           <p className="su-hint">
             Which cost centers this round plans, the accounts each one plans (its account set, set on a node or a cost
-            center; the nearest one above wins), and which plan capacity: hours typed per work center, from the
-            positions, or both. {planned.size} of {leaves.length} planned.
+            center; the nearest one above wins), and their capacity: by work centers, by workforce, or both. {planned.size} of {leaves.length} planned.
           </p>
         </div>
         <div className="sc-tools">
@@ -146,10 +145,10 @@ export function CostCentersTab({ draft, setDraft, rows, fiscalYear, sourceName }
               <th>Cost center</th>
               <th className="sc-switch-col">Planned</th>
               <th className="sc-set-col">Account set</th>
-              <th className="sc-switch-col" title="Hours typed per work center on the capacity sheet">
+              <th className="sc-switch-col" title="Work center capacity">
                 Work centers
               </th>
-              <th className="sc-switch-col" title="Hours from the cost center’s positions">
+              <th className="sc-switch-col" title="Workforce capacity">
                 Workforce
               </th>
               <th className="num">Actual {fiscalYear - 1}</th>
@@ -187,7 +186,7 @@ export function CostCentersTab({ draft, setDraft, rows, fiscalYear, sourceName }
                     {!r.is_group && (
                       <Switch
                         on={typed.has(r.code)}
-                        label={`${r.code}: hours by work center`}
+                        label={`${r.code}: work center capacity`}
                         onChange={(on) => setSource('capacity_work_centers', r.code, on)}
                       />
                     )}
@@ -196,7 +195,7 @@ export function CostCentersTab({ draft, setDraft, rows, fiscalYear, sourceName }
                     {!r.is_group && (
                       <Switch
                         on={staffed.has(r.code)}
-                        label={`${r.code}: hours from the workforce`}
+                        label={`${r.code}: workforce capacity`}
                         disabled={!positions && !staffed.has(r.code)}
                         title={positions ? undefined : 'Needs workforce planning by positions'}
                         onChange={(on) => setSource('capacity_workforce', r.code, on)}

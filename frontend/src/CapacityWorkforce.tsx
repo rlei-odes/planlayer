@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { format, sum } from './amounts'
 import { api, type LineRef, type Staff, type StaffPosition } from './api'
 import Select, { type Option } from './Select'
@@ -22,18 +22,30 @@ function lineOf(key: string): LineRef | null {
   return { work_center_code, activity_type_code }
 }
 
-/** A percentage typed into a table: saved on Enter or leaving the field, if it changed. */
-function PercentInput({
+/** Moves the focus to the entry field of another row of the positions table. */
+function focusRow(row: number) {
+  const next = document.querySelector<HTMLInputElement>(`input[data-entry-row="${row}"]`)
+  next?.focus()
+  next?.select()
+}
+
+/** A number typed into a form or table: saved when it changed, on leaving the field. In the
+ * positions table (``row``), Enter and arrow down go to the next row, arrow up to the one above. */
+function NumberInput({
   value,
+  unit,
   placeholder,
   label,
   disabled,
+  row,
   onSave,
 }: {
   value: string | null
+  unit: string
   placeholder?: string
   label: string
   disabled: boolean
+  row?: number
   onSave: (value: string | null) => void
 }) {
   const shown = pct(value)
@@ -51,12 +63,18 @@ function PercentInput({
         placeholder={placeholder}
         aria-label={label}
         disabled={disabled}
+        data-entry-row={row}
+        onFocus={(e) => e.currentTarget.select()}
         onBlur={(e) => commit(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === 'Enter') e.currentTarget.blur()
+          const down = e.key === 'Enter' || e.key === 'ArrowDown'
+          if (!down && e.key !== 'ArrowUp') return
+          e.preventDefault()
+          if (row === undefined) e.currentTarget.blur()
+          else focusRow(down ? row + 1 : row - 1)
         }}
       />
-      <span className="ink-3">%</span>
+      <span className="ink-3">{unit}</span>
     </span>
   )
 }
@@ -73,7 +91,8 @@ export default function CapacityWorkforce({
 }) {
   const [view, setView] = useState<Staff | null>(null)
   const [message, setMessage] = useState<Message | null>(null)
-  const [busy, setBusy] = useState(false)
+  // Saves run one after the other, so that typing down a column keeps its order.
+  const queue = useRef<Promise<void>>(Promise.resolve())
 
   const load = useCallback(() => {
     api.capacityStaff(version, unit).then(setView, (e: unknown) =>
@@ -82,23 +101,22 @@ export default function CapacityWorkforce({
   }, [version, unit])
   useEffect(load, [load])
 
-  async function apply(saving: Promise<Staff>) {
-    setBusy(true)
-    try {
-      setView(await saving)
-      setMessage(null)
-      onChanged()
-    } catch (e) {
-      setMessage({ kind: 'error', text: e instanceof Error ? e.message : String(e) })
-      load()
-    } finally {
-      setBusy(false)
-    }
+  function apply(save: () => Promise<Staff>) {
+    queue.current = queue.current.then(async () => {
+      try {
+        setView(await save())
+        setMessage(null)
+        onChanged()
+      } catch (e) {
+        setMessage({ kind: 'error', text: e instanceof Error ? e.message : String(e) })
+        load()
+      }
+    })
   }
 
   if (!view) return message ? <div className="su-note error pl-note">{message.text}</div> : null
 
-  const open = view.lock_reason === null && !busy
+  const open = view.lock_reason === null
   const lines: Option[] = view.lines.map((l) => ({
     value: lineKey(l.work_center_code, l.activity_type_code),
     label: `${l.work_center_code} ${l.work_center_name} · ${l.activity_type_name}`,
@@ -111,10 +129,15 @@ export default function CapacityWorkforce({
   const defaultLine = lineOf(lineKey(view.default_work_center_code, view.default_activity_type_code))
 
   function saveDefaults(line: LineRef | null, percent: string | null) {
-    void apply(api.saveStaffDefaults(version, unit, { line, percent }))
+    apply(() => api.saveStaffDefaults(version, unit, { line, percent }))
   }
-  function savePosition(p: StaffPosition, line: LineRef | null, percent: string | null) {
-    void apply(api.saveStaffPosition(version, unit, p.position_id, { line, percent }))
+  function savePosition(p: StaffPosition, change: { line?: LineRef | null; percent?: string | null; hours?: string | null }) {
+    const body = {
+      line: change.line !== undefined ? change.line : own(p),
+      percent: change.percent !== undefined ? change.percent : p.productive_percent,
+      hours: change.hours !== undefined ? change.hours : p.typed_hours,
+    }
+    apply(() => api.saveStaffPosition(version, unit, p.position_id, body))
   }
   const own = (p: StaffPosition) => lineOf(lineKey(p.work_center_code, p.activity_type_code))
   const staffed = view.lines.filter((l) => l.hours !== null)
@@ -147,8 +170,9 @@ export default function CapacityWorkforce({
           </div>
           <div className="su-field">
             Productive share
-            <PercentInput
+            <NumberInput
               value={view.default_percent}
+              unit="%"
               label="Default productive share"
               disabled={!open}
               onSave={(percent) => saveDefaults(defaultLine, percent)}
@@ -159,7 +183,10 @@ export default function CapacityWorkforce({
 
       <section className="su-card cw-card">
         <h3>Positions</h3>
-        <p className="su-hint">Hours = hours per FTE × contract % × productive share, for the days a position is active.</p>
+        <p className="su-hint">
+          Hours = hours per FTE × contract % × productive share, for the days a position is active. Without a contract %:
+          the year’s hours.
+        </p>
         {view.positions.length === 0 ? (
           <p className="su-empty">No positions on {view.cost_center_code}. They come from the Workforce page.</p>
         ) : (
@@ -177,7 +204,7 @@ export default function CapacityWorkforce({
                 </tr>
               </thead>
               <tbody>
-                {view.positions.map((p) => (
+                {view.positions.map((p, i) => (
                   <tr key={p.position_id}>
                     <td className="pl-code">{p.code}</td>
                     <td>
@@ -194,13 +221,26 @@ export default function CapacityWorkforce({
                     <td>{p.staff_type}</td>
                     <td className="num">{p.contract_percent === null ? '' : `${pct(p.contract_percent)} %`}</td>
                     <td>
-                      <PercentInput
-                        value={p.productive_percent}
-                        placeholder={pct(view.default_percent)}
-                        label={`Productive share of ${p.code}`}
-                        disabled={!open}
-                        onSave={(percent) => savePosition(p, own(p), percent)}
-                      />
+                      {p.contract_percent === null ? (
+                        <NumberInput
+                          value={p.typed_hours}
+                          unit="h"
+                          label={`Hours of ${p.code} a year`}
+                          disabled={!open}
+                          row={i}
+                          onSave={(hours) => savePosition(p, { hours })}
+                        />
+                      ) : (
+                        <NumberInput
+                          value={p.productive_percent}
+                          unit="%"
+                          placeholder={pct(view.default_percent)}
+                          label={`Productive share of ${p.code}`}
+                          disabled={!open}
+                          row={i}
+                          onSave={(percent) => savePosition(p, { percent })}
+                        />
+                      )}
                     </td>
                     <td className="cw-line">
                       <Select
@@ -209,7 +249,7 @@ export default function CapacityWorkforce({
                         value={lineKey(p.work_center_code, p.activity_type_code)}
                         options={[{ value: '', label: defaultLabel }, ...lines]}
                         disabled={!open}
-                        onChange={(key) => savePosition(p, lineOf(key), p.productive_percent)}
+                        onChange={(key) => savePosition(p, { line: lineOf(key) })}
                       />
                     </td>
                     <td className="num">{p.hours === null ? '' : format(p.hours)}</td>

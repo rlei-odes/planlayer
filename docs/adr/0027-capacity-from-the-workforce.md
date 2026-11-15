@@ -18,7 +18,7 @@ A round with workforce planning by positions (ADR 0020) knows every position of 
 
 ### Two sources of hours per productive cost center
 
-- On the setup page's *Cost centers* tab, two switches replace *Productive*: **Work centers** (hours typed per line, as before) and **Workforce** (hours from the positions). Either makes the cost center productive (the module `capacity`, ADR 0013); both together suit mixed recording.
+- On the setup page's *Cost centers* tab, two switches replace *Productive*: **Work centers** (work center capacity: hours typed per line, as before) and **Workforce** (workforce capacity: hours from the positions). Either makes the cost center productive (the module `capacity`, ADR 0013); both together suit mixed recording.
 - *Workforce* needs workforce planning by positions in the round. Without *Work centers*, the sheet takes no typed hours; a save that would leave typed hours there is refused until they are cleared.
 - The controller sets the round's **hours per FTE a year** (e.g. working days less holidays and vacation, × 8 hours), in the setup's workforce section. Required once a cost center plans hours from the workforce.
 
@@ -27,11 +27,13 @@ A round with workforce planning by positions (ADR 0020) knows every position of 
 - Each position has a **productive share** (0–100 %): the part of its hours that is output. A manager gets 0 %, an assembly worker e.g. 80 % (the rest is meetings, cleaning up, preparing tools).
 - Each position's hours go to **one line** of its cost center (work center × activity type), and the line's plan rate prices them.
 - The cost center has a **default line and default share**; a position may have its own of either. A position without a share gives no hours.
+- A position **without a contract %** (e.g. a freelancer) takes its year's **hours**, typed, instead of a share; the default share doesn't apply to it.
 - Owners, deputies, controllers and capacity planners set them on the capacity page's **Workforce** tab, which shows the positions, their hours and the hours per line. Who reads the cost center's capacity reads the tab.
 
 ### The hours
 
-- Per position and month: hours per FTE × contract % × productive share × the month's weight × the share of the month's days the position is active. A position without a contract % (an external one) counts as full time.
+- Per position and month: hours per FTE × contract % × productive share × the month's weight × the share of the month's days the position is active.
+- Typed hours are spread over the months the position is active, by the month's weight × the share of its days, and add up to the typed total.
 - The month's weight is the line's spread (ADR 0013): even by default for these lines, or a seasonality profile chosen on the sheet, e.g. one with the summer holidays.
 - The hours of a line's positions are summed per month, rounded per cell, and written to the line's planned hours (`fact_capacity`) in the round's open months. Such a line is **staffed** (`capacity_line.staffed`): its hours are read only on the sheet and marked *Workforce*; its rate, spread and state stay editable. A line no longer receiving hours from positions loses them.
 - Credits, the cost center's status, forecasts, publishing and comparisons work as for typed hours: the hours are planned hours.
@@ -39,7 +41,7 @@ A round with workforce planning by positions (ADR 0020) knows every position of 
 
 ### Storage and guards
 
-- `round_module.fte_hours` (module `capacity`); `capacity_unit` per round and cost center: the two switches, the default line and share; `capacity_position` per position: its own share and line.
+- `round_module.fte_hours` (module `capacity`); `capacity_unit` per round and cost center: the two switches, the default line and share; `capacity_position` per position: its own share and line, or its typed hours.
 - Row-level security on both tables reads `capacity_access`, as the capacity lines. A lock trigger applies the capacity locks (round open, or in setup for controllers; the cost center productive and editable). A trigger logs every change as old and new row in `capacity_staff_log`, with the actor and change batch.
 - Settings refer to stored capacity lines; a line removed (undo of an added line) clears the reference.
 - A new round's *Capacity* item copies the hours per FTE, the switches and defaults, and the positions' own settings, matched by number and cost center; the hours are recomputed there. Without positions in the new round, the cost center's hours are typed only.
@@ -49,6 +51,7 @@ A round with workforce planning by positions (ADR 0020) knows every position of 
 - **Hours written to the existing lines:** the rate, the credits, the published hours, forecasts and comparisons exist once. A line staffed by positions differs from a typed one only in where its hours come from.
 - **One line per position:** the smallest model that covers assembly, mixed recording and most engineering departments, with one choice per person. A split of one person over several lines is on the backlog.
 - **A default per cost center:** most positions of a cost center share the line and share; only the exceptions need input.
+- **Typed hours without a contract %:** a freelancer's hours are agreed as a total, not as a share of a full-time year; the missing contract % already marks such positions in the workforce plan.
 - **Hours per FTE per round:** working time is a planning assumption of the year, like rates. Contract % scales it per position.
 - **Settings in their own tables:** capacity planners write capacity, not positions; the tables follow capacity's rights and locks while positions follow the workforce's.
 - **Recomputed and stored, not computed on read:** the same pattern as credits (ADR 0013) and the workforce roll-up (ADR 0020).

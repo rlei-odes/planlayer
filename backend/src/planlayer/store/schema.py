@@ -618,7 +618,8 @@ capacity_unit = Table(
     _line_fk("default_"),
 )
 
-# A position's productive share and its own line, where they differ from the cost center's.
+# A position's productive share and its own line, where they differ from the cost center's;
+# a position without a contract % has its year's hours typed instead.
 capacity_position = Table(
     "capacity_position",
     metadata,
@@ -632,6 +633,7 @@ capacity_position = Table(
     Column("module", Text, nullable=False, server_default=MODULE_CAPACITY),
     Column("cost_center_id", Integer, ForeignKey("member.member_id"), nullable=False),
     Column("productive_percent", Numeric(5, 2)),
+    Column("hours", Numeric(10, 2)),  # a year's hours, for a position without a contract %
     Column("work_center_id", Integer),
     Column("activity_type_id", Integer),
     Column("changed_by", Text),

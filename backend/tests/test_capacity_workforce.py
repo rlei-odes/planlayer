@@ -94,15 +94,16 @@ def test_hours_from_positions(engine: Engine, client: TestClient) -> None:
     assert [(u["code"], u["staff_hours"]) for u in units] == [("CC1", True)]
 
     # Every position to repair work at 80 %: 1,800 x contract % x 80 %, the planner until June.
+    # The freelancer has no contract %: no share applies, his hours are typed.
     view = client.put(STAFF, json={"line": REPAIR, "percent": "80"}).json()
     hours = {c: p["hours"] for c, p in by_code(view).items()}
-    assert hours == {"P001": "1440.00", "P002": "720.00", "P003": "576.00", "P004": "1440.00"}
+    assert hours == {"P001": "1440.00", "P002": "720.00", "P003": "576.00", "P004": None}
     repair = next(x for x in view["lines"] if x["activity_type_code"] == "RW")
-    assert repair["hours"] == "4176.00" and repair["rate"] == "60.00"
+    assert repair["hours"] == "2736.00" and repair["rate"] == "60.00"
     sheet = client.get(CAP).json()
     assert sheet["staff_hours"] is True
     assert line(sheet, "WC2/RW")["staffed"] is True
-    assert months(sheet, "WC2/RW") == ["396.00"] * 6 + ["300.00"] * 6
+    assert months(sheet, "WC2/RW") == ["276.00"] * 6 + ["180.00"] * 6
     assert line(sheet, "WC1/MH")["staffed"] is False
 
     # A manager gives no hours; the freelancer runs the lathe, which credits 4900.
@@ -111,35 +112,41 @@ def test_hours_from_positions(engine: Engine, client: TestClient) -> None:
         f"{STAFF}/positions/{ids['P001']}", json={"line": None, "percent": "0"}
     ).json()
     assert by_code(view)["P001"]["hours"] == "0.00"
-    view = client.put(
-        f"{STAFF}/positions/{ids['P004']}", json={"line": WC1, "percent": None}
-    ).json()
-    assert by_code(view)["P004"]["work_center_code"] == "WC1"
+    url = f"{STAFF}/positions/{ids['P004']}"
+    assert client.put(url, json={"line": WC1, "percent": "80"}).status_code == 422
+    url_p001 = f"{STAFF}/positions/{ids['P001']}"
+    assert (
+        client.put(url_p001, json={"line": None, "percent": None, "hours": "5"}).status_code == 422
+    )
+    view = client.put(url, json={"line": WC1, "percent": None, "hours": "1200"}).json()
+    p004 = by_code(view)["P004"]
+    assert p004["work_center_code"] == "WC1" and p004["typed_hours"] == "1200.00"
+    assert p004["hours"] == "1200.00"
     sheet = client.get(CAP).json()
-    assert months(sheet, "WC1/MH") == ["120.00"] * 12
-    assert credit(sheet, "MH") == ["9600.00"] * 12
+    assert months(sheet, "WC1/MH") == ["100.00"] * 12
+    assert credit(sheet, "MH") == ["8000.00"] * 12
     # Hours from positions aren't typed; other lines still are.
     edit = {"work_center_code": "WC1", "activity_type_code": "MH", "month": 0, "value": "5",
             "expected": BLANK}  # fmt: skip
     assert client.post(f"{CAP}/edits", json={"edits": [edit]}).status_code == 422
     edit = {**edit, "work_center_code": "WC2"}
     assert client.post(f"{CAP}/edits", json={"edits": [edit]}).status_code == 200
-    assert credit(client.get(CAP).json(), "MH")[:2] == ["10102.50", "9600.00"]
+    assert credit(client.get(CAP).json(), "MH")[:2] == ["8502.50", "8000.00"]
 
-    # Back to the default: the lathe takes no hours from positions any more, and credits none.
-    client.put(f"{STAFF}/positions/{ids['P004']}", json={"line": None, "percent": None})
+    # Back to the default line: the lathe takes no hours from positions any more.
+    client.put(url, json={"line": None, "percent": None, "hours": "1200"})
     sheet = client.get(CAP).json()
     assert months(sheet, "WC1/MH") == BLANK and line(sheet, "WC1/MH")["staffed"] is False
     assert credit(sheet, "MH")[:2] == ["502.50", None]
     # A spread by profile weights the months, and the year stays: the planner works the
-    # whole first half, so all of her hours count.
+    # whole first half, so all of her hours count; the freelancer's 1,200 fall in it.
     profile = {"code": "H1", "name": "First half", "entered_as": "relative",
                "values": [1] * 6 + [0] * 6}  # fmt: skip
     assert client.post("/api/profiles", json=profile).status_code == 200
     spread = {"spread": {"basis": "profile", "profile_code": "H1"}}
     assert client.patch(f"{CAP}/lines/WC2/RW", json=spread).status_code == 200
     staffed = months(client.get(CAP).json(), "WC2/RW")
-    assert staffed == ["552.00"] * 6 + ["0.00"] * 6  # (720 + 1152 + 1440) / 6
+    assert staffed == ["512.00"] * 6 + ["0.00"] * 6  # (720 + 1152 + 1200) / 6
 
 
 def test_position_changes_follow(engine: Engine, client: TestClient) -> None:
@@ -155,11 +162,11 @@ def test_position_changes_follow(engine: Engine, client: TestClient) -> None:
     assert client.put(url, json=body).status_code == 200
     view = client.get(STAFF).json()
     assert by_code(view)["P002"]["hours"] == "1800.00"
-    assert next(x for x in view["lines"] if x["activity_type_code"] == "RW")["hours"] == "6120.00"
+    assert next(x for x in view["lines"] if x["activity_type_code"] == "RW")["hours"] == "4320.00"
     # A position removed takes its hours along.
     assert client.delete(url).status_code == 200
     view = client.get(STAFF).json()
-    assert next(x for x in view["lines"] if x["activity_type_code"] == "RW")["hours"] == "4320.00"
+    assert next(x for x in view["lines"] if x["activity_type_code"] == "RW")["hours"] == "2520.00"
 
 
 def test_setup_rules(engine: Engine, client: TestClient) -> None:
@@ -246,6 +253,8 @@ def test_a_new_round_carries_hours_from_positions(engine: Engine, client: TestCl
     client.put(STAFF, json={"line": REPAIR, "percent": "80"})
     p002 = by_code(view)["P002"]["position_id"]
     client.put(f"{STAFF}/positions/{p002}", json={"line": WC1, "percent": "100"})
+    p004 = by_code(view)["P004"]["position_id"]
+    client.put(f"{STAFF}/positions/{p004}", json={"line": None, "percent": None, "hours": "600"})
     new = {"code": "B2027", "name": "Budget 2027", "kind": "budget", "fiscal_year": 2027,
            "copy_from": R}  # fmt: skip
     assert client.post("/api/rounds", json=new).status_code == 200
@@ -253,7 +262,7 @@ def test_a_new_round_carries_hours_from_positions(engine: Engine, client: TestCl
     assert view["fte_hours"] == "1800.00" and view["default_percent"] == "80.00"
     # The planner who leaves in June 2026 stays behind; Eva keeps the lathe.
     hours = {c: p["hours"] for c, p in by_code(view).items()}
-    assert hours == {"P001": "1440.00", "P002": "900.00", "P004": "1440.00"}
+    assert hours == {"P001": "1440.00", "P002": "900.00", "P004": "600.00"}
     sheet = client.get("/api/versions/B2027/capacity/CC1").json()
     assert months(sheet, "WC1/MH") == ["75.00"] * 12
     assert credit(sheet, "MH") == ["6000.00"] * 12

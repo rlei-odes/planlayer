@@ -1177,6 +1177,7 @@ export type StaffOut = {
 export type StaffPositionIn = {
   line: LineRefIO | null
   percent: string | null
+  hours?: string | null
 }
 
 export type StaffPositionOut = {
@@ -1189,6 +1190,7 @@ export type StaffPositionOut = {
   leave_date: string | null
   contract_percent: string | null
   productive_percent: string | null
+  typed_hours: string | null
   work_center_code: string | null
   activity_type_code: string | null
   hours: string | null
