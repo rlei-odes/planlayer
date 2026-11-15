@@ -79,7 +79,7 @@ The statuses this decision set up are joined by those of later modules. This sec
 | Pay handover | handed over, not handed over | round × cost center | HR, once access is released | ADR 0024 |
 | Pay access | listed, not listed | round × cost center × user | HR | ADR 0023 |
 | Proposed owner | decided, proposal | round × cost center | source sync, HR | ADR 0023 |
-| HR review | confirmed, not confirmed; optional per round | round × cost center | HR, in an open round; withdrawn by others' changes | ADR 0022, ADR 0024 |
+| HR review | confirmed, not confirmed; off unless HR switches it on for the round | round × cost center | HR, in an open round; withdrawn by others' changes | ADR 0022, ADR 0024 |
 | Small group | small, not small | round × cost center × personnel account | recompute, from the minimum group size | ADR 0022 |
 | Note thread | open, resolved | line | anyone who reads the line | ADR 0017 |
 
@@ -107,7 +107,7 @@ A cost center's sheets share one workflow status: costs, capacity (productive co
 | Typed values, hours, positions, pay | write; the first write in an open round moves to `in_progress` | write | read only | read only |
 | Accept a transfer (both sides must be editable) | yes | yes | refused | refused |
 | Written by a calculation: forwarding charges and credits, personnel cost totals | written, status unchanged | written, status unchanged | written, status unchanged | written, status unchanged |
-| Approve | – | – | needs HR's review where the cost center has positions in a personnel costs round, unless HR switched the review off | – |
+| Approve | – | – | needs HR's review where the cost center has positions in a personnel costs round and HR switched the review on | – |
 | Overdue after the deadline | yes | yes | no | no |
 | Published with scope *approved* | no | no | no | yes |
 

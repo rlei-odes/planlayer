@@ -66,7 +66,7 @@ class RoundRules:
     rules: Rules
     staff_types: dict[int, StaffTypePay]
     min_group: int
-    review_required: bool = True
+    review_required: bool = False
 
 
 def load_rules(conn: Connection, version_id: int) -> RoundRules:
@@ -108,7 +108,7 @@ def load_rules(conn: Connection, version_id: int) -> RoundRules:
         ),
         staff_types,
         setting.min_group if setting else DEFAULT_MIN_GROUP,
-        setting.review_required if setting else True,
+        setting.review_required if setting else False,
     )
 
 

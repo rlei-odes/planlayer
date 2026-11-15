@@ -995,8 +995,8 @@ pay_setting = Table(
     Column("version_id", SmallInteger, primary_key=True),
     *_personnel(),
     Column("min_group", SmallInteger, nullable=False, server_default="3"),
-    # HR's review before approval (ADR 0024); HR may switch it off for the round.
-    Column("review_required", Boolean, nullable=False, server_default="true"),
+    # HR's review before approval (ADR 0024); off unless HR switches it on for the round.
+    Column("review_required", Boolean, nullable=False, server_default="false"),
     Column("bonus_account_id", Integer, ForeignKey("member.member_id")),
     Column("changed_by", Text),
     Column("changed_at", DateTime(timezone=True), nullable=False, server_default=func.now()),

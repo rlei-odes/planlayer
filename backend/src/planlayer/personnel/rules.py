@@ -88,7 +88,7 @@ class RulesIO:
     bonus_account: str | None
     staff_types: list[StaffTypeIO]
     rules: list[RuleIO]
-    review_required: bool = True  # HR's review before approval (ADR 0024)
+    review_required: bool = False  # HR's review before approval (ADR 0024)
 
 
 @dataclass
@@ -162,7 +162,7 @@ def _current(conn: Connection, version_id: int) -> RulesIO:
         steps.setdefault(s.rule_id, []).append(StepIO(s.years, s.salaries, s.amount))
     return RulesIO(
         min_group=setting.min_group if setting else DEFAULT_MIN_GROUP,
-        review_required=setting.review_required if setting else True,
+        review_required=setting.review_required if setting else False,
         bonus_account=(
             names[setting.bonus_account_id].code if setting and setting.bonus_account_id else None
         ),
@@ -469,7 +469,7 @@ def carry(conn: Connection, source: RoundRef, target: RoundRef, actor: str) -> N
             version_id=t,
             module=MODULE_PERSONNEL,
             min_group=setting.min_group if setting else DEFAULT_MIN_GROUP,
-            review_required=setting.review_required if setting else True,
+            review_required=setting.review_required if setting else False,
             bonus_account_id=setting.bonus_account_id if setting else None,
             changed_by=actor,
         )

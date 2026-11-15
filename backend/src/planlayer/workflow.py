@@ -319,6 +319,13 @@ def act(
                 )
                 .values(status=target, changed_at=func.now(), changed_by=actor.login)
             )
+        # Back with the planner, HR's confirmation of the pay goes (ADR 0024). Imported here:
+        # personnel costs build on this module.
+        back = [m for m, _, t in changes if t == "in_progress"]
+        if back:
+            from planlayer.personnel import withdraw_reviews
+
+            withdraw_reviews(conn, r.version_id, back)
         conn.execute(
             insert(workflow_event),
             [

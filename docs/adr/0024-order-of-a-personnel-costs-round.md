@@ -22,15 +22,24 @@ With personnel costs in a round, three parties act on pay: the controller, who o
 - **Handover** (`pay_handover`): until HR hands a cost center's pay over, the store refuses pay changes by anyone but HR, and the page tells the people with access that HR is preparing it. HR can take a handover back.
 - **The other sheets don't wait.** The cost center's costs, capacity and workforce follow the workflow status as before. The personnel cost totals on the cost sheet show HR's figures until the pay is handed over and changed.
 
-### The review before approval is optional
+### The review before approval is optional, off by default
 
-- HR's review (ADR 0022) stays the last step: after the people with access have changed pay, HR confirms it, and only then can the cost center be approved.
-- HR can switch it off for a round on the *Rules* tab (`pay_setting.review_required`, on by default). Then approval doesn't wait for HR; the handover still does.
+- HR's review (ADR 0022) stays the last step. Once the planners have submitted the cost center, HR confirms its pay, and only then can it be approved. Planners submit without waiting for HR.
+- HR confirms only a submitted cost center. Rejecting or reopening it sends it back to its planners and withdraws HR's confirmation with it.
+- It is off by default. HR switches it on for a round on the *Rules* tab (`pay_setting.review_required`). While it is off, approval doesn't wait for HR; the handover still does.
 - HR confirms only in an open round.
+
+| A cost center's pay | Step shown | HR's button |
+|---|---|---|
+| not handed over | *Handover* | *Hand over* (once the round is open and access released) |
+| handed over, not submitted | *With the planners* | *Take back* |
+| submitted, review on, not confirmed | *Review* | *Confirm pay* |
+| confirmed | *Confirmed* | *Take confirmation back* |
+| handed over, review off | *Handed over* | *Take back* |
 
 ### Guidance
 
-HR's *Home* shows, per open round, the next step: *Release access control*, then *Hand over pay* with the cost centers still waiting. The review and small groups follow as before. The personnel costs page shows the handover and the review per cost center, each with HR's button.
+HR's *Home* shows, per open round, the next step: *Release access control*, then *Hand over pay* with the cost centers still waiting. The review and small groups follow as before. The personnel costs page shows per cost center the one step due now, with its button for HR (table above).
 
 ### Enforcement
 

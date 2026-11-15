@@ -19,6 +19,7 @@ from planlayer.personnel.pay import read_page as read_page
 from planlayer.personnel.pay import save_pay as save_pay
 from planlayer.personnel.pay import take_hr_salaries as take_hr_salaries
 from planlayer.personnel.pay import units as units
+from planlayer.personnel.pay import withdraw_reviews as withdraw_reviews
 from planlayer.personnel.rights import Person as Person
 from planlayer.personnel.rights import RightsPage as RightsPage
 from planlayer.personnel.rights import read_rights as read_rights

@@ -95,7 +95,7 @@ HR and controllers edit the rules while the round is in setup or open. The rules
 ### HR's review
 
 - HR confirms each cost center's pay on the personnel costs page.
-- A change that moves the cost center's personnel totals withdraws the confirmation when someone other than HR makes it: pay, positions, or a rule (a controller's rule change withdraws every cost center's).
+- A change that moves the cost center's personnel totals withdraws the confirmation when someone other than HR makes it: pay, positions, or a rule (a controller's rule change withdraws every cost center's). HR confirms a submitted cost center, and rejecting or reopening it withdraws the confirmation (ADR 0024).
 - A cost center with positions **can't be approved until HR has confirmed it** (ADR 0008). Planners still submit without it, so HR reviews what is submitted.
 
 ### Publishing

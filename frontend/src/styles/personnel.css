@@ -23,6 +23,10 @@
   border-left-color: var(--ok);
 }
 
+.pc-review.wait {
+  border-left-color: var(--accent-2);
+}
+
 .pc-review > div,
 .pc-module > div {
   display: flex;

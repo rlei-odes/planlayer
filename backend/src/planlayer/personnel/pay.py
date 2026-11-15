@@ -98,7 +98,7 @@ class PayPage:
     # The order of the round (ADR 0024): access released, pay handed over, review switched on.
     released: bool = False
     handover: Review | None = None  # who handed it over, and when
-    review_required: bool = True
+    review_required: bool = False
 
 
 def _code_names(conn: Connection, ids: set[int]) -> dict[int, tuple[str, str]]:
@@ -389,12 +389,14 @@ def _charge_target(conn: Connection, r: RoundRef, own: int, code: str | None) ->
 
 
 def confirm(engine: Engine, user: User, version_code: str, cc_code: str, on: bool) -> None:
-    """HR confirms a cost center's pay, or takes the confirmation back."""
+    """HR confirms a submitted cost center's pay, or takes the confirmation back (ADR 0024)."""
     user.require_hr()
     with unit_of_work(engine, user) as conn:
         ctx = pay_context(conn, user, version_code, cc_code)
         if ctx.round.status != "open":
             raise EditError(not_open(ctx.round.status))
+        if on and ctx.status != "submitted":
+            raise EditError("HR confirms the pay of a submitted cost center")
         where = (
             pay_review.c.version_id == ctx.version_id,
             pay_review.c.cost_center_id == ctx.cost_center_id,
@@ -516,4 +518,14 @@ def hand_over(engine: Engine, user: User, version_code: str, cc_code: str, on: b
                 version_id=ctx.version_id, cost_center_id=ctx.cost_center_id, handed_by=user.login
             )
             .on_conflict_do_nothing()
+        )
+
+
+def withdraw_reviews(conn: Connection, version_id: int, cc_ids: list[int]) -> None:
+    """HR's confirmations of cost centers sent back to their planners (reject, reopen)."""
+    with system_rights(conn):
+        conn.execute(
+            delete(pay_review).where(
+                pay_review.c.version_id == version_id, pay_review.c.cost_center_id.in_(cc_ids)
+            )
         )

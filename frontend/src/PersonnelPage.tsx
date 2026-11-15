@@ -243,55 +243,7 @@ export default function PersonnelPage({
       )}
       {page?.lock_reason && <div className="su-note">{lockText(page)}</div>}
 
-      {page && (
-        <section className={`su-card pc-review${page.handover ? ' done' : ''}`}>
-          <div>
-            <strong>{page.handover ? 'Handed over' : 'Not handed over'}</strong>
-            <span className="su-hint">
-              {page.handover
-                ? `${page.handover.confirmed_by}, ${DAY.format(new Date(page.handover.confirmed_at))}. The people with access edit this cost center’s pay.`
-                : page.round_status !== 'open'
-                  ? 'HR prepares the pay; once the controller opens the round and HR releases access, HR hands it over.'
-                  : !page.released
-                    ? 'HR releases access control first, then hands each cost center’s pay over.'
-                    : 'The people with access see the pay read only until HR hands it over.'}
-            </span>
-          </div>
-          {me.is_hr && (
-            <button
-              type="button"
-              className={`su-btn${page.handover ? ' ghost' : ' primary'}`}
-              disabled={busy || (!page.handover && (page.round_status !== 'open' || !page.released))}
-              onClick={() => void handOver(!page.handover)}
-            >
-              {page.handover ? 'Take back' : 'Hand over'}
-            </button>
-          )}
-        </section>
-      )}
-
-      {page?.review_required && (
-        <section className={`su-card pc-review${page.review ? ' done' : ''}`}>
-          <div>
-            <strong>{page.review ? 'Confirmed by HR' : 'Waiting for HR’s review'}</strong>
-            <span className="su-hint">
-              {page.review
-                ? `${page.review.confirmed_by}, ${DAY.format(new Date(page.review.confirmed_at))}. A change by anyone else withdraws it.`
-                : 'The cost center can be approved once HR has confirmed its pay. Planners submit without it.'}
-            </span>
-          </div>
-          {page.may_review && (
-            <button
-              type="button"
-              className={`su-btn${page.review ? ' ghost' : ' primary'}`}
-              disabled={busy}
-              onClick={() => void review(!page.review)}
-            >
-              {page.review ? 'Take confirmation back' : 'Confirm pay'}
-            </button>
-          )}
-        </section>
-      )}
+      {page && <PayStep page={page} hr={me.is_hr} busy={busy} onHandOver={handOver} onReview={review} />}
 
       {page && smallCount > 0 && (
         <div className="su-note pc-small">
@@ -464,6 +416,86 @@ export default function PersonnelPage({
         />
       )}
     </div>
+  )
+}
+
+type Step = { tone: 'todo' | 'wait' | 'done'; title: string; text: string; action?: [string, () => void, boolean?] }
+
+/** The one step of a cost center's pay that is due now (ADR 0024): handover, with the planners,
+ * review, confirmed. HR sees the button of that step only. */
+function PayStep({
+  page,
+  hr,
+  busy,
+  onHandOver,
+  onReview,
+}: {
+  page: PayPage
+  hr: boolean
+  busy: boolean
+  onHandOver: (on: boolean) => void
+  onReview: (on: boolean) => void
+}) {
+  const by = (x: { confirmed_by: string; confirmed_at: string }) => `${x.confirmed_by}, ${DAY.format(new Date(x.confirmed_at))}`
+  let step: Step
+  if (!page.handover) {
+    const ready = page.round_status === 'open' && page.released
+    step = {
+      tone: 'todo',
+      title: 'Handover',
+      text: ready
+        ? 'The people with access see this pay read only. Hand it over once it is prepared; they edit it from then on.'
+        : page.round_status !== 'open'
+          ? 'HR prepares the pay. Once the controller opens the round and HR releases access, HR hands it over.'
+          : 'Release access control first; then hand each cost center’s pay over.',
+      action: ready ? ['Hand over', () => onHandOver(true)] : undefined,
+    }
+  } else if (!page.review_required) {
+    step = {
+      tone: 'done',
+      title: 'Handed over',
+      text: `${by(page.handover)}. The people with access edit the pay; approval doesn’t wait for HR in this round.`,
+      action: ['Take back', () => onHandOver(false), true],
+    }
+  } else if (page.review) {
+    step = {
+      tone: 'done',
+      title: 'Confirmed',
+      text: `${by(page.review)}. The cost center can be approved.`,
+      action: ['Take confirmation back', () => onReview(false), true],
+    }
+  } else if (page.status === 'submitted') {
+    step = {
+      tone: 'todo',
+      title: 'Review',
+      text: 'Submitted by its planners. Approval waits for HR to confirm the pay.',
+      action: ['Confirm pay', () => onReview(true)],
+    }
+  } else {
+    step = {
+      tone: 'wait',
+      title: 'With the planners',
+      text: `Handed over (${by(page.handover)}). HR reviews the pay once the cost center is submitted.`,
+      action: page.status === 'approved' ? undefined : ['Take back', () => onHandOver(false), true],
+    }
+  }
+  return (
+    <section className={`su-card pc-review ${step.tone}`}>
+      <div>
+        <strong>{step.title}</strong>
+        <span className="su-hint">{step.text}</span>
+      </div>
+      {hr && step.action && (
+        <button
+          type="button"
+          className={`su-btn${step.action[2] ? ' ghost' : ' primary'}`}
+          disabled={busy}
+          onClick={step.action[1]}
+        >
+          {step.action[0]}
+        </button>
+      )}
+    </section>
   )
 }
 

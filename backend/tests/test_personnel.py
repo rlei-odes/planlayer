@@ -222,17 +222,22 @@ def test_approval_waits_for_hrs_review(engine: Engine, client: TestClient) -> No
     assert client.put(f"{PAY}/CC1/review", json={"confirmed": True}).status_code == 403
 
 
-def test_owners_change_withdraws_the_review(engine: Engine, client: TestClient) -> None:
-    page = start(client)
+def test_review_follows_the_submission(engine: Engine, client: TestClient) -> None:
+    start(client)
+    login(client, HR)
+    # HR reviews what is submitted, not before.
+    assert client.put(f"{PAY}/CC1/review", json={"confirmed": True}).status_code == 422
+    login(client, OWNER)
+    act = {"action": "submit", "cost_centers": ["CC1"]}
+    assert client.post(f"/api/versions/{R}/workflow", json=act).status_code == 200
     login(client, HR)
     assert client.put(f"{PAY}/CC1/review", json={"confirmed": True}).status_code == 200
-    # HR's own change keeps it; the owner's withdraws it.
-    p001 = by_code(page)["P001"]
-    page = client.put(f"{PAY}/CC1/positions/{p001['position_id']}", json={"bonus": "10"}).json()
-    assert page["review"] is not None
-    login(client, OWNER)
-    page = client.put(f"{PAY}/CC1/positions/{p001['position_id']}", json={"bonus": "20"}).json()
-    assert page["review"] is None
+    # Sent back to the planner, the confirmation goes with it.
+    login(client, CONTROLLER)
+    act = {"action": "reject", "cost_centers": ["CC1"], "comment": "check the bonus"}
+    assert client.post(f"/api/versions/{R}/workflow", json=act).status_code == 200
+    login(client, HR)
+    assert client.get(f"{PAY}/CC1").json()["review"] is None
 
 
 def test_rules_for_hr_and_controllers_only(engine: Engine, client: TestClient) -> None:
