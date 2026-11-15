@@ -31,6 +31,8 @@ class RoundWorkOut(BaseModel):
     # HR (ADR 0022): cost centers with small groups, and submitted ones waiting for the review.
     small_groups: list[str]
     to_review: list[str]
+    # Personnel costs in the round: whether HR released pay to its readers; null without them.
+    pay_released: bool | None
 
 
 class HomeOut(BaseModel):
@@ -71,6 +73,7 @@ def start(request: Request, user: CurrentUser) -> HomeOut:
                 counts=w.counts,
                 small_groups=w.small_groups,
                 to_review=w.to_review,
+                pay_released=w.pay_released,
             )
             for w in work
         ],

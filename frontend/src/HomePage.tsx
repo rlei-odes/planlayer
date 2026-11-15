@@ -360,11 +360,22 @@ function RoundCard({
                   {c.overdue ? 'Overdue' : STATUS_LABEL[c.status]}
                 </span>
                 <span className="hm-sheets">
-                  {c.sheets.map((s) => (
-                    <button key={s} type="button" className="su-btn ghost sm" onClick={() => onOpenSheet(r.code, c.code, s)}>
-                      {SHEET_LABEL[s]}
-                    </button>
-                  ))}
+                  {c.sheets.map((s) => {
+                    // Pay waits for HR to release the round to its readers (ADR 0023).
+                    const waiting = s === 'personnel' && work.pay_released === false
+                    return (
+                      <button
+                        key={s}
+                        type="button"
+                        className="su-btn ghost sm"
+                        disabled={waiting}
+                        title={waiting ? 'HR hasn’t released pay for this round yet' : undefined}
+                        onClick={() => onOpenSheet(r.code, c.code, s)}
+                      >
+                        {SHEET_LABEL[s]}
+                      </button>
+                    )
+                  })}
                 </span>
               </li>
             ))}

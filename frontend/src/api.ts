@@ -57,6 +57,9 @@ export type MyCostCenter = S.MyCostCenterOut
 export type PayPage = S.PayPageOut
 export type PayPosition = S.PayPositionOut
 export type PayUnit = S.PayUnitOut
+export type PayUnits = S.PayUnitsOut
+export type PayRights = S.PayRightsOut
+export type PayRightsRow = S.PayRightsRowOut
 export type PayRules = S.PayRulesIO
 export type PayRule = S.PayRuleIO
 export type PayRulesPage = S.PayRulesPageOut
@@ -236,7 +239,14 @@ export const api = {
     send('DELETE', `${wf(version, code)}/positions/${id}`).then((r) => json<WorkforceSheet>(r)),
   staffFromHr: (version: string, code: string) => post(`${wf(version, code)}/hr`, {}).then((r) => json<WorkforceSheet>(r)),
   workforceFromHr: (version: string) => post(`${v(version)}/workforce/hr`, {}).then((r) => json<S.HrTakenOut>(r)),
-  payUnits: (version: string) => fetch(`${v(version)}/personnel`).then((r) => json<PayUnit[]>(r)),
+  payUnits: (version: string) => fetch(`${v(version)}/personnel`).then((r) => json<PayUnits>(r)),
+  payRights: (version: string) => fetch(`${v(version)}/personnel/access`).then((r) => json<PayRights>(r)),
+  setPayReaders: (version: string, code: string, readers: string[], ownerDecided = false) =>
+    send('PUT', `${v(version)}/personnel/access/${encodeURIComponent(code)}`, { readers, owner_decided: ownerDecided }).then((r) =>
+      json<PayRights>(r),
+    ),
+  releasePay: (version: string, released: boolean) =>
+    send('PUT', `${v(version)}/personnel/access/release`, { released }).then((r) => json<PayRights>(r)),
   payPage: (version: string, code: string) =>
     fetch(`${v(version)}/personnel/${encodeURIComponent(code)}`).then((r) => json<PayPage>(r)),
   savePay: (version: string, code: string, id: number, pay: S.PayIn) =>

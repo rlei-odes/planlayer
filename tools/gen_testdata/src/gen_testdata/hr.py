@@ -95,7 +95,6 @@ class Person:
     percent: int | None  # None: a freelancer without one
     salary: int = 0  # monthly, EUR
 
-
     def counts(self, period: date) -> bool:
         """Active on the month's last day (ADR 0020)."""
         end = month_end(period)

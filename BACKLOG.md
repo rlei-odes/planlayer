@@ -343,8 +343,8 @@ FTE and headcount per cost center, staff type and category, as month-end levels,
   - [ ] E-mail the receiving side when a transfer is proposed, and the sender when it is decided.
 - [x] **W-18 Confidential personnel data** ([ADR 0022](docs/adr/0022-personnel-costs.md)): the HR role; pay read by HR and by the owner the source names (not deputies, approvers, viewers, controllers or an owner set by override), enforced by row-level security through `pay_access`, logs included; small groups (fewer positions on a cost center and personnel account than the round's minimum, default 3, set by HR) hidden from other readers, listed for HR on *Home*, and blocking closing and publishing until HR charges the positions elsewhere; HR's review before approval; totals only in `planlayer_out`.
   - [ ] Encryption at rest of pay columns (`pgcrypto`, key outside the database) against DBAs, backups and dumps; the key is set up in the guided installation (E-11), and the docs tell HR to keep it in a password manager.
-  - [ ] HR grants or withholds pay rights on a cost center (e.g. HR alone plans a sensitive one, or delegates it).
-  - [ ] A log of role changes (who gave whom the HR role), shown to HR.
+  - [x] HR controls who reads pay per round and cost center, proposed from the source's owners, with suggestions (deputies, approvers above) and any user on request; nobody but HR reads pay until HR releases the round; every change of these rights and of the HR role in a log every HR user reads ([ADR 0023](docs/adr/0023-pay-rights-by-hr.md)).
+  - [ ] Notify HR (Home task, later e-mail) when a source owner changes after the release.
   - [ ] Actuals on the personnel accounts of a small cost center come from the ledger as they are; decide whether to mask them like plan values.
   - [ ] The admin's source preview of the `staff` dataset shows `monthly_salary`; hide pay columns in the preview.
   - [ ] Free text (descriptions, notes, item lists) can still carry pay whatever the rules say: say so in the user docs.
@@ -436,6 +436,15 @@ What the user docs (controllers, planners, admins) must say. Collected here as i
 
 - [ ] **Pasting columns in Firefox.** A column copied from a spreadsheet fills down the cells it is pasted into (receivers' quantities on the forwarding page; the planning grid). Firefox with `dom.event.clipboardevents.enabled = false` in `about:config`, as privacy-hardened profiles set it (arkenfox, LibreWolf), gives pages no paste events: the forwarding table still fills down by splitting what lands in the cell, but a paste can't be told apart from other input elsewhere. Chromium-based browsers paste as expected. Say which browsers are tested and that this setting must stay at its default for full paste support.
 - [ ] **Cost forwarding for controllers:** the three methods; a receiver by shares passes nothing on; the `ALOC-` accounts and putting the ERP's actual forwarding account in the same group, marked not planned; what planners see. Based on [docs/scenarios/cost-forwarding-2026.md](docs/scenarios/cost-forwarding-2026.md).
+
+### Distribution (after v1)
+
+How potential users find and try Planlayer.
+
+- [ ] **G-1 Who it is for and where they look:** controllers and finance IT of mid-size companies with a Postgres warehouse; list the channels they use (communities, conferences, the dbt and Postgres ecosystems, FP&A forums) and what each needs from us.
+- [ ] **G-2 Cloud marketplaces:** assess listing the container in the AWS, Azure and Google Cloud marketplaces (and DigitalOcean, Hetzner app catalogues): a one-click deployment next to a managed Postgres, what each requires (images, templates, billing for a free listing, support terms), and the effort to keep listings current.
+- [ ] **G-3 Try it in minutes:** a public demo with the Nordwerk test data, and `docker compose up` with demo data as the first page of the docs.
+- [ ] **G-4 Integrations as a door:** a dbt package that reads `planlayer_out`, and examples for common BI tools.
 
 ### Various
 

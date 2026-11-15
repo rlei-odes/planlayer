@@ -26,6 +26,7 @@ from planlayer.access import (
 from planlayer.capacity import productive
 from planlayer.domain.workflow import STATUSES, Status, is_overdue
 from planlayer.personnel import module_on, needs_review, small_groups
+from planlayer.personnel.rights import listed, released
 from planlayer.rounds import RoundRef, rounds
 from planlayer.store.schema import member, workflow_status
 from planlayer.store.uow import unit_of_work
@@ -54,6 +55,8 @@ class RoundWork:
     # HR: cost centers with small groups, and submitted ones waiting for HR's review.
     small_groups: list[str] = field(default_factory=list)
     to_review: list[str] = field(default_factory=list)
+    # Personnel costs in the round: whether HR has released pay to its readers (ADR 0023).
+    pay_released: bool | None = None
 
 
 def my_work(engine: Engine, user: User, today: date) -> list[RoundWork]:
@@ -84,7 +87,11 @@ def my_work(engine: Engine, user: User, today: date) -> list[RoundWork]:
                 & set(enabled)
             )
             workforce = mode_of(conn, r.version_id) is not None
-            pay = pay_cost_centers(conn, user) if module_on(conn, r.version_id) else set()
+            personnel = module_on(conn, r.version_id)
+            pay = pay_cost_centers(conn, user, r.version_id) if personnel else set()
+            # Listed by HR but not released yet: the sheet shows, inactive (ADR 0023).
+            pay_listed = listed(conn, user, r.version_id) if personnel else set()
+            pay_released = released(conn, r.version_id) if personnel else None
             shown = sorted(mine | (set() if user.is_controller else capacity))
             names = {
                 m.member_id: m
@@ -110,7 +117,7 @@ def my_work(engine: Engine, user: User, today: date) -> list[RoundWork]:
                 small = sorted(codes[m] for m in small_groups(conn, r.version_id) if m in codes)
                 review = sorted(codes[m] for m in needs_review(conn, r.version_id, waiting))
 
-        work = RoundWork(r, small_groups=small, to_review=review)
+        work = RoundWork(r, small_groups=small, to_review=review, pay_released=pay_released)
         for cc in sorted(shown, key=lambda m: names[m].code):
             status = statuses.get(cc, "not_started")
             sheets: list[Sheet] = []
@@ -119,7 +126,7 @@ def my_work(engine: Engine, user: User, today: date) -> list[RoundWork]:
             if cc in mine:
                 if workforce:
                     sheets.append("workforce")
-                if cc in pay:
+                if cc in pay or cc in pay_listed:
                     sheets.append("personnel")
                 sheets.append("planning")
             work.cost_centers.append(

@@ -143,7 +143,7 @@ def pay_context(conn: Connection, user: User, version_code: str, cc_code: str) -
             member.c.dim_id == COST_CENTER, member.c.code == cc_code, member.c.is_group.is_(False)
         )
     ).first()
-    if cc is None or cc.member_id not in pay_cost_centers(conn, user):
+    if cc is None or cc.member_id not in pay_cost_centers(conn, user, r.version_id):
         raise NotFoundError(f"cost center {cc_code} not found")
     status = status_of(conn, r.version_id, cc.member_id)
     if r.status != "open" and not (r.status == "setup" and (user.is_hr or user.is_controller)):

@@ -1098,9 +1098,59 @@ pay_review = Table(
     PrimaryKeyConstraint("version_id", "cost_center_id"),
 )
 
-# Views (migration 0019).
+# Pay rights per round (ADR 0023): who reads a cost center's pay once HR has released the round.
+pay_reader = Table(
+    "pay_reader",
+    metadata,
+    Column("version_id", SmallInteger, nullable=False),
+    *_personnel(),
+    Column("cost_center_id", Integer, ForeignKey("member.member_id"), nullable=False),
+    Column("user_id", Integer, ForeignKey("app_user.user_id"), nullable=False),
+    Column("added_by", Text),
+    Column("added_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    PrimaryKeyConstraint("version_id", "cost_center_id", "user_id"),
+)
+
+# The source owner HR last decided on per cost center; another one now is a proposal.
+pay_owner_seen = Table(
+    "pay_owner_seen",
+    metadata,
+    Column("version_id", SmallInteger, nullable=False),
+    *_personnel(),
+    Column("cost_center_id", Integer, ForeignKey("member.member_id"), nullable=False),
+    Column("owner_id", Integer, ForeignKey("app_user.user_id")),
+    PrimaryKeyConstraint("version_id", "cost_center_id"),
+)
+
+pay_release = Table(
+    "pay_release",
+    metadata,
+    Column("version_id", SmallInteger, primary_key=True),
+    *_personnel(),
+    Column("released_by", Text, nullable=False),
+    Column("released_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)
+
+# Every change of pay rights and of the HR role, written by triggers; read by HR.
+pay_access_log = Table(
+    "pay_access_log",
+    metadata,
+    Column("id", BigInteger, primary_key=True),
+    Column("at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("actor", Text),
+    Column("action", Text, nullable=False),
+    Column("version_id", SmallInteger),
+    Column("cost_center_id", Integer),
+    Column("user_id", Integer),
+)
+
+# Views (migrations 0019, 0020).
 pay_access = Table(
-    "pay_access", metadata, Column("user_id", Integer), Column("cost_center_id", Integer)
+    "pay_access",
+    metadata,
+    Column("user_id", Integer),
+    Column("version_id", SmallInteger),
+    Column("cost_center_id", Integer),
 )
 pay_account = Table(
     "pay_account", metadata, Column("version_id", SmallInteger), Column("account_id", Integer)

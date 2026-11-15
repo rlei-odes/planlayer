@@ -11,6 +11,7 @@ from sqlalchemy import Connection, Engine, delete, func, insert, literal, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from planlayer.access import AccessError, User
+from planlayer.personnel import rights
 from planlayer.personnel.common import (
     DEFAULT_MIN_GROUP,
     module_on,
@@ -31,6 +32,9 @@ from planlayer.store.schema import (
     forwarding_account,
     hr_pay,
     member,
+    pay_owner_seen,
+    pay_reader,
+    pay_release,
     pay_review,
     pay_rule,
     pay_rule_step,
@@ -420,6 +424,7 @@ def switch(conn: Connection, r: RoundRef, user: User, *, on: bool) -> None:
                 version_id=vid, module=MODULE_PERSONNEL, changed_by=user.login
             )
         )
+        rights.seed(conn, r, user.login)
         return
     if r.status != "setup" and has_values(conn, r):
         raise RoundError(
@@ -429,6 +434,8 @@ def switch(conn: Connection, r: RoundRef, user: User, *, on: bool) -> None:
     clear(conn, r, pay_accounts(conn, vid))
     with system_rights(conn, actor=user.login):
         conn.execute(delete(position_pay).where(position_pay.c.version_id == vid))
+        for rights_table in (pay_reader, pay_owner_seen, pay_release):
+            conn.execute(delete(rights_table).where(rights_table.c.version_id == vid))
     for table in (pay_rule, pay_staff_type, pay_setting, pay_small_group, pay_review):
         conn.execute(delete(table).where(table.c.version_id == vid))
     conn.execute(
@@ -547,4 +554,5 @@ def carry(conn: Connection, source: RoundRef, target: RoundRef, actor: str) -> N
                     for x in rows
                 ],
             )
+    rights.carry(conn, source, target, actor)
     recompute(conn, target, actor, by_hr=False)

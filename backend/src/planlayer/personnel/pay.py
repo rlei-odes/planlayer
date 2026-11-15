@@ -232,11 +232,15 @@ class PayUnit:
     confirmed: bool
 
 
-def units(engine: Engine, user: User, version_code: str) -> list[PayUnit]:
-    """The cost centers planned in the round whose pay the user reads."""
+def units(engine: Engine, user: User, version_code: str) -> tuple[bool, list[PayUnit]]:
+    """Whether HR has released the round's pay, and the cost centers planned in it whose pay the
+    user reads (none before the release, unless HR)."""
+    from planlayer.personnel.rights import released
+
     with unit_of_work(engine, user) as conn:
         r = pay_round(conn, version_code)
-        mine = pay_cost_centers(conn, user)
+        is_released = released(conn, r.version_id)
+        mine = pay_cost_centers(conn, user, r.version_id)
         planned = [m for m, on in enabled_members(conn, r.version_id).items() if on and m in mine]
         names = _code_names(conn, set(planned))
         counts: dict[int, int] = dict(
@@ -262,7 +266,7 @@ def units(engine: Engine, user: User, version_code: str) -> list[PayUnit]:
             )
             for m in planned
         ]
-    return sorted(out, key=lambda u: u.code)
+    return is_released, sorted(out, key=lambda u: u.code)
 
 
 @dataclass

@@ -1,9 +1,10 @@
 """Personnel costs (ADR 0022): each position's pay by month, the yearly extras, raises, awards,
 bonus and contributions of the round's rules, written as totals to the personnel accounts of
-the cost center charged. Pay is read by HR and the cost center's owner only (``pay_access``).
+the cost center charged. Pay is read by HR, and by the readers HR lists once HR releases the
+round (``pay_access``, ADR 0023).
 
 The package's modules build on each other in this order: ``common``, ``costs``, ``pay``,
-``rules``."""
+``rules``, ``rights``."""
 
 from planlayer.personnel.common import module_on as module_on
 from planlayer.personnel.costs import recompute as recompute
@@ -17,6 +18,11 @@ from planlayer.personnel.pay import read_page as read_page
 from planlayer.personnel.pay import save_pay as save_pay
 from planlayer.personnel.pay import take_hr_salaries as take_hr_salaries
 from planlayer.personnel.pay import units as units
+from planlayer.personnel.rights import Person as Person
+from planlayer.personnel.rights import RightsPage as RightsPage
+from planlayer.personnel.rights import read_rights as read_rights
+from planlayer.personnel.rights import release as release
+from planlayer.personnel.rights import set_readers as set_readers
 from planlayer.personnel.rules import RuleIO as RuleIO
 from planlayer.personnel.rules import RulesIO as RulesIO
 from planlayer.personnel.rules import RulesPage as RulesPage

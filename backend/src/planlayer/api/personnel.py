@@ -81,6 +81,53 @@ class PayUnitOut(BaseModel):
     confirmed: bool
 
 
+class PayUnitsOut(BaseModel):
+    released: bool  # HR has released the round's pay to its readers (ADR 0023)
+    units: list[PayUnitOut]
+
+
+class PayPersonOut(BaseModel):
+    login: str
+    name: str
+
+
+class PayRightsRowOut(BaseModel):
+    code: str
+    name: str
+    readers: list[PayPersonOut]
+    suggested: list[str]  # logins: the source owner, deputies, approvers above
+    source_owner: PayPersonOut | None
+    proposal: bool  # the source owner isn't the one HR decided on
+
+
+class PayLogOut(BaseModel):
+    at: datetime
+    actor: str | None
+    action: str
+    round_code: str | None
+    cost_center: str | None
+    user: str | None
+
+
+class PayRightsOut(BaseModel):
+    round_code: str
+    round_status: RoundStatus
+    released_by: str | None
+    released_at: datetime | None
+    rows: list[PayRightsRowOut]
+    users: list[PayPersonOut]
+    log: list[PayLogOut]
+
+
+class PayReadersIn(BaseModel):
+    readers: list[str]  # logins
+    owner_decided: bool = False  # the source's current owner counts as decided on
+
+
+class PayReleaseIn(BaseModel):
+    released: bool
+
+
 class PayIn(BaseModel):
     salary: str | None = None  # null or blank: HR's
     bonus: str | None = None
@@ -276,23 +323,88 @@ V = "/versions/{version_code}/personnel"
 
 
 @router.get(V, responses={404: {}})
-def units(request: Request, user: CurrentUser, version_code: str) -> list[PayUnitOut]:
+def units(request: Request, user: CurrentUser, version_code: str) -> PayUnitsOut:
     """The cost centers planned in the round whose pay the user reads."""
     try:
-        found = personnel.units(engine_of(request), user, version_code)
+        released, found = personnel.units(engine_of(request), user, version_code)
     except HANDLED as e:
         raise _errors(e) from None
-    return [
-        PayUnitOut(
-            code=u.code,
-            name=u.name,
-            status=u.status,  # type: ignore[arg-type]
-            positions=u.positions,
-            small_groups=u.small_groups,
-            confirmed=u.confirmed,
+    return PayUnitsOut(
+        released=released,
+        units=[
+            PayUnitOut(
+                code=u.code,
+                name=u.name,
+                status=u.status,  # type: ignore[arg-type]
+                positions=u.positions,
+                small_groups=u.small_groups,
+                confirmed=u.confirmed,
+            )
+            for u in found
+        ],
+    )
+
+
+def _rights_out(p: personnel.RightsPage) -> PayRightsOut:
+    def person(x: personnel.Person) -> PayPersonOut:
+        return PayPersonOut(login=x.login, name=x.name)
+
+    return PayRightsOut(
+        round_code=p.round_code,
+        round_status=p.round_status,  # type: ignore[arg-type]
+        released_by=p.released_by,
+        released_at=p.released_at,
+        rows=[
+            PayRightsRowOut(
+                code=r.code,
+                name=r.name,
+                readers=[person(x) for x in r.readers],
+                suggested=r.suggested,
+                source_owner=person(r.source_owner) if r.source_owner else None,
+                proposal=r.proposal,
+            )
+            for r in p.rows
+        ],
+        users=[person(x) for x in p.users],
+        log=[PayLogOut.model_validate(e, from_attributes=True) for e in p.log],
+    )
+
+
+@router.get(V + "/access", responses={403: {}, 404: {}})
+def rights(request: Request, user: CurrentUser, version_code: str) -> PayRightsOut:
+    """Who reads pay in the round, the release and the log (HR)."""
+    try:
+        return _rights_out(personnel.read_rights(engine_of(request), user, version_code))
+    except HANDLED as e:
+        raise _errors(e) from None
+
+
+@router.put(V + "/access/release", responses={403: {}, 404: {}})
+def release(
+    request: Request, user: CurrentUser, version_code: str, body: PayReleaseIn
+) -> PayRightsOut:
+    """Release the round's pay to its readers, or take the release back (HR)."""
+    engine = engine_of(request)
+    try:
+        personnel.release(engine, user, version_code, body.released)
+        return _rights_out(personnel.read_rights(engine, user, version_code))
+    except HANDLED as e:
+        raise _errors(e) from None
+
+
+@router.put(V + "/access/{cc_code}", responses={403: {}, 404: {}, 422: {}})
+def set_readers(
+    request: Request, user: CurrentUser, version_code: str, cc_code: str, body: PayReadersIn
+) -> PayRightsOut:
+    """Replace a cost center's readers in the round (HR)."""
+    engine = engine_of(request)
+    try:
+        personnel.set_readers(
+            engine, user, version_code, cc_code, body.readers, owner_decided=body.owner_decided
         )
-        for u in found
-    ]
+        return _rights_out(personnel.read_rights(engine, user, version_code))
+    except HANDLED as e:
+        raise _errors(e) from None
 
 
 @router.get(V + "/rules", responses={403: {}, 404: {}})

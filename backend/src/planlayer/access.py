@@ -36,6 +36,7 @@ from planlayer.store.schema import (
     member,
     owner_override,
     pay_access,
+    pay_reader,
     planner_grant,
     user_session,
 )
@@ -277,19 +278,25 @@ def reads_cost_centers(engine: Engine, user: User) -> bool:
     return bool(found)
 
 
-def pay_cost_centers(conn: Connection, user: User) -> set[int]:
-    """The cost centers whose pay the user reads and writes (ADR 0022): every one for HR, their
-    own for the owner the source names."""
+def pay_cost_centers(conn: Connection, user: User, version_id: int) -> set[int]:
+    """The cost centers whose pay the user reads in a round (ADR 0023): every one for HR, those
+    HR lists them for once HR has released the round."""
     return set(
         conn.execute(
-            select(pay_access.c.cost_center_id).where(pay_access.c.user_id == user.user_id)
+            select(pay_access.c.cost_center_id).where(
+                pay_access.c.user_id == user.user_id, pay_access.c.version_id == version_id
+            )
         ).scalars()
     )
 
 
 def reads_pay(engine: Engine, user: User) -> bool:
+    """HR, or listed as a reader of pay in any round, released or not: the personnel costs page
+    is offered to them."""
+    if user.is_hr:
+        return True
     with unit_of_work(engine, user) as conn:
-        found = conn.execute(select(exists().where(pay_access.c.user_id == user.user_id))).scalar()
+        found = conn.execute(select(exists().where(pay_reader.c.user_id == user.user_id))).scalar()
     return bool(found)
 
 

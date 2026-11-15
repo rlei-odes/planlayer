@@ -626,6 +626,15 @@ export type PayIn = {
   charged_to?: string | null
 }
 
+export type PayLogOut = {
+  at: string
+  actor: string | null
+  action: string
+  round_code: string | null
+  cost_center: string | null
+  user: string | null
+}
+
 export type PayPageOut = {
   round_code: string
   round_name: string
@@ -645,6 +654,11 @@ export type PayPageOut = {
   may_charge: boolean
   charge_targets: CodeName[]
   batch_id?: string | null
+}
+
+export type PayPersonOut = {
+  login: string
+  name: string
 }
 
 export type PayPositionOut = {
@@ -667,6 +681,15 @@ export type PayPositionOut = {
   transferred_to: string | null
 }
 
+export type PayReadersIn = {
+  readers: string[]
+  owner_decided?: boolean
+}
+
+export type PayReleaseIn = {
+  released: boolean
+}
+
 export type PayReviewIn = {
   confirmed: boolean
 }
@@ -674,6 +697,25 @@ export type PayReviewIn = {
 export type PayReviewOut = {
   confirmed_by: string
   confirmed_at: string
+}
+
+export type PayRightsOut = {
+  round_code: string
+  round_status: "setup" | "open" | "closed"
+  released_by: string | null
+  released_at: string | null
+  rows: PayRightsRowOut[]
+  users: PayPersonOut[]
+  log: PayLogOut[]
+}
+
+export type PayRightsRowOut = {
+  code: string
+  name: string
+  readers: PayPersonOut[]
+  suggested: string[]
+  source_owner: PayPersonOut | null
+  proposal: boolean
 }
 
 export type PayRuleIO = {
@@ -729,6 +771,11 @@ export type PayUnitOut = {
   positions: number
   small_groups: number
   confirmed: boolean
+}
+
+export type PayUnitsOut = {
+  released: boolean
+  units: PayUnitOut[]
 }
 
 export type PersonOut = {
@@ -902,6 +949,7 @@ export type RoundWorkOut = {
   counts: Record<string, number> | null
   small_groups: string[]
   to_review: string[]
+  pay_released: boolean | null
 }
 
 export type RowOut = {

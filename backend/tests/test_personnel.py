@@ -63,6 +63,7 @@ def start(client: TestClient, **changes: object) -> dict:  # type: ignore[type-a
     login(client, HR)
     response = client.put(f"{PAY}/rules", json=rules(**changes))
     assert response.status_code == 200, response.text
+    assert client.put(f"{PAY}/access/release", json={"released": True}).status_code == 200
     page = client.get(f"{PAY}/CC1").json()
     login(client, CONTROLLER)
     return page  # type: ignore[no-any-return]
@@ -101,13 +102,13 @@ def test_who_reads_pay(engine: Engine, client: TestClient) -> None:
     for user in (CONTROLLER, VIEWER, DEPUTY):
         login(client, user)
         assert client.get(f"{PAY}/CC1").status_code == 404, user
-        assert client.get(PAY).json() == []
+        assert client.get(PAY).json()["units"] == []
     # The owner the source names reads their own cost center's; HR reads every one.
     login(client, OWNER)
-    assert [u["code"] for u in client.get(PAY).json()] == ["CC1"]
+    assert [u["code"] for u in client.get(PAY).json()["units"]] == ["CC1"]
     assert client.get(f"{PAY}/CC2").status_code == 404
     login(client, HR)
-    assert [u["code"] for u in client.get(PAY).json()] == ["CC1", "CC2"]
+    assert [u["code"] for u in client.get(PAY).json()["units"]] == ["CC1", "CC2"]
     # Row-level security: the controller's own reads of the tables find nothing.
     with engine.connect() as c:
         controller = access.user_by_login(c, CONTROLLER)
@@ -284,9 +285,64 @@ def test_a_new_round_carries_rules_and_pay(engine: Engine, client: TestClient) -
     login(client, HR)
     rules_2027 = client.get("/api/versions/B2027/personnel/rules").json()["rules"]
     assert rules_2027["rules"][0]["starts"] == "2027-04-01"
+    # Readers come along; the new round waits for HR's release.
+    rights_2027 = client.get("/api/versions/B2027/personnel/access").json()
+    assert rights_2027["released_by"] is None
+    assert [p["login"] for p in rights_2027["rows"][0]["readers"]] == [OWNER]
     page = client.get("/api/versions/B2027/personnel/CC1").json()
     p = by_code(page)
     # The planner left in 2026; the others keep their planned salary and HR's.
     assert "P003" not in p
     assert p["P002"]["salary"] == "2500.00" and p["P002"]["hr_salary"] == "2000.00"
     assert account(page, "6000")[0] == "6500.00"
+
+
+def test_hr_releases_and_controls_who_reads_pay(engine: Engine, client: TestClient) -> None:
+    start(client)
+    login(client, HR)
+    access = client.get(f"{PAY}/access").json()
+    cc1 = next(r for r in access["rows"] if r["code"] == "CC1")
+    # The source owner is proposed and decided on; the deputy is suggested, not a reader.
+    assert [p["login"] for p in cc1["readers"]] == [OWNER]
+    assert not cc1["proposal"] and DEPUTY in cc1["suggested"]
+    # Before the release (taken back here), only HR reads pay.
+    client.put(f"{PAY}/access/release", json={"released": False})
+    login(client, OWNER)
+    assert client.get(f"{PAY}/CC1").status_code == 404
+    assert client.get(PAY).json() == {"released": False, "units": []}
+    # HR adds the deputy and takes the owner off, then releases again.
+    login(client, HR)
+    body = {"readers": [DEPUTY]}
+    assert client.put(f"{PAY}/access/CC1", json=body).status_code == 200
+    client.put(f"{PAY}/access/release", json={"released": True})
+    login(client, DEPUTY)
+    assert client.get(f"{PAY}/CC1").status_code == 200
+    login(client, OWNER)
+    assert client.get(f"{PAY}/CC1").status_code == 404
+    # Only HR changes the lists; every change is in the log HR reads.
+    assert client.put(f"{PAY}/access/CC1", json={"readers": [OWNER]}).status_code == 403
+    login(client, HR)
+    log = client.get(f"{PAY}/access").json()["log"]
+    actions = [(e["action"], e["user"]) for e in log]
+    assert ("reader_added", DEPUTY) in actions and ("reader_removed", OWNER) in actions
+    assert ("released", None) in actions and ("release_withdrawn", None) in actions
+    assert ("hr_granted", HR) in actions
+
+
+def test_a_new_source_owner_is_a_proposal(engine: Engine, client: TestClient) -> None:
+    start(client)
+    # The source owner of CC2 is none; a controller's override isn't a source owner either,
+    # so the source's owner of CC1 changing is what HR is asked about.
+    with engine.begin() as conn:
+        from planlayer.store.schema import member
+
+        conn.execute(update(member).where(member.c.code == "CC1").values(owner=DEPUTY))
+    login(client, HR)
+    cc1 = next(r for r in client.get(f"{PAY}/access").json()["rows"] if r["code"] == "CC1")
+    assert cc1["proposal"] and cc1["source_owner"]["login"] == DEPUTY
+    # Keeping the list as it is decides on the new owner too.
+    body = {"readers": [OWNER], "owner_decided": True}
+    cc1 = next(
+        r for r in client.put(f"{PAY}/access/CC1", json=body).json()["rows"] if r["code"] == "CC1"
+    )
+    assert not cc1["proposal"] and [p["login"] for p in cc1["readers"]] == [OWNER]

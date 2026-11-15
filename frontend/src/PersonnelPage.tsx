@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { format, parse, sum } from './amounts'
 import { api, STATUS_LABEL, type Me, type PayPage, type PayPosition, type PayUnit } from './api'
+import PayAccess from './PayAccess'
 import PayRules from './PayRules'
 import Select from './Select'
 
@@ -12,7 +13,7 @@ import Select from './Select'
 const MONTH = new Intl.DateTimeFormat('en', { month: 'short', timeZone: 'UTC' })
 const DAY = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })
 
-type Tab = 'pay' | 'rules'
+type Tab = 'pay' | 'access' | 'rules'
 type Message = { kind: 'error' | 'ok'; text: string }
 
 function errorText(e: unknown): string {
@@ -34,6 +35,7 @@ export default function PersonnelPage({
 }) {
   const [tab, setTab] = useState<Tab>(me.reads_pay ? 'pay' : 'rules')
   const [units, setUnits] = useState<PayUnit[] | null>(null)
+  const [released, setReleased] = useState(true)
   const [page, setPage] = useState<PayPage | null>(null)
   const [missing, setMissing] = useState(false)
   const [message, setMessage] = useState<Message | null>(null)
@@ -46,7 +48,8 @@ export default function PersonnelPage({
     if (!me.reads_pay) return
     api.payUnits(version).then(
       (u) => {
-        setUnits(u)
+        setUnits(u.units)
+        setReleased(u.released)
         setMissing(false)
       },
       (e: unknown) => {
@@ -81,19 +84,39 @@ export default function PersonnelPage({
     }
   }
 
-  // Two views: pay (HR, owners) and the rules (HR, controllers). The switch shows only to those
-  // who have both; everyone else sees their one view without it.
-  const both = me.reads_pay && (me.is_hr || me.is_controller)
-  const tabs = both ? (
-    <div className="seg pc-tabs" role="tablist" aria-label="Personnel costs">
-      <button type="button" role="tab" aria-selected={tab === 'pay'} aria-pressed={tab === 'pay'} onClick={() => setTab('pay')}>
-        Pay by cost center
-      </button>
-      <button type="button" role="tab" aria-selected={tab === 'rules'} aria-pressed={tab === 'rules'} onClick={() => setTab('rules')}>
-        Rules of the round
-      </button>
-    </div>
-  ) : null
+  // Views: pay (HR, readers), who reads it (HR), the rules (HR, controllers). The switch shows
+  // only to those who have more than one; everyone else sees their one view without it.
+  const views: [Tab, string][] = [
+    ...(me.reads_pay ? ([['pay', 'Pay by cost center']] as [Tab, string][]) : []),
+    ...(me.is_hr ? ([['access', 'Who reads pay']] as [Tab, string][]) : []),
+    ...(me.is_hr || me.is_controller ? ([['rules', 'Rules of the round']] as [Tab, string][]) : []),
+  ]
+  const tabs =
+    views.length > 1 ? (
+      <div className="seg pc-tabs" role="tablist" aria-label="Personnel costs">
+        {views.map(([value, label]) => (
+          <button key={value} type="button" role="tab" aria-selected={tab === value} aria-pressed={tab === value} onClick={() => setTab(value)}>
+            {label}
+          </button>
+        ))}
+      </div>
+    ) : null
+
+  if (tab === 'access') {
+    return (
+      <div className="su pc">
+        <div className="pl-head">
+          <div className="pl-title">
+            <div className="su-eyebrow">Personnel costs</div>
+            <h1 className="pc-h1">Who reads pay</h1>
+            <div className="pl-sub">Per cost center and round, set by HR. Nobody but HR reads pay until HR releases the round.</div>
+          </div>
+          <div className="pl-actions">{tabs}</div>
+        </div>
+        <PayAccess version={version} onChanged={loadUnits} />
+      </div>
+    )
+  }
 
   if (tab === 'rules') {
     return (
@@ -131,8 +154,20 @@ export default function PersonnelPage({
       <div className="su pc">
         {tabs}
         <div className="su-card empty-state">
-          <h3>No pay to show</h3>
-          <p className="su-hint">Pay is read by HR, and by each cost center’s owner as the source names them.</p>
+          {released ? (
+            <>
+              <h3>No pay to show</h3>
+              <p className="su-hint">HR decides who reads the pay of each cost center in this round.</p>
+            </>
+          ) : (
+            <>
+              <h3>Pay isn’t released yet</h3>
+              <p className="su-hint">
+                HR checks who reads pay in this round before anyone but HR sees it. Your cost centers appear here once HR
+                releases the round.
+              </p>
+            </>
+          )}
         </div>
       </div>
     )
@@ -183,6 +218,11 @@ export default function PersonnelPage({
       </div>
 
       {message && <div className={`su-note ${message.kind === 'error' ? 'error' : 'ok'}`}>{message.text}</div>}
+      {me.is_hr && !released && (
+        <div className="su-note warn">
+          Pay isn’t released in this round: only HR reads it. Release it under <em>Who reads pay</em> once the readers are right.
+        </div>
+      )}
       {page?.lock_reason && <div className="su-note">{lockText(page)}</div>}
 
       {page && (
