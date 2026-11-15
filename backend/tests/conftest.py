@@ -49,6 +49,8 @@ def db_settings() -> Iterator[Settings]:
                 IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '{APP_ROLE}') THEN
                     CREATE ROLE {APP_ROLE} LOGIN PASSWORD '{APP_ROLE}' NOSUPERUSER;
                 END IF;
+            -- Test workers run in parallel (pytest-xdist): another one may create it first.
+            EXCEPTION WHEN duplicate_object OR unique_violation THEN NULL;
             END $$
         """)
         )
