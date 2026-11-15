@@ -14,8 +14,8 @@ from planlayer import access, rounds
 from planlayer.store.schema import position_pay
 from planlayer.store.uow import unit_of_work
 
-from .conftest import OWNER, login
-from .test_personnel import HR, PAY, R, account, by_code, engine, start
+from .conftest import APPROVER, CONTROLLER, NOBODY, OWNER, VIEWER, login
+from .test_personnel import DEPUTY, HR, PAY, R, account, by_code, engine, start
 
 __all__ = ["engine"]
 
@@ -96,3 +96,31 @@ def test_exclusions_carry_into_a_new_round(engine: Engine, client: TestClient) -
     assert carried["name"] == "13th salary" and carried["id"] != extra
     assert by_code(page)["P001"]["excluded_rules"] == [carried["id"]]
     assert carried["id"] not in parts(by_code(page)["P001"])
+
+
+def test_preview_only_for_readers_of_the_pay(engine: Engine, client: TestClient) -> None:
+    page = start(client, rules=RULES)
+    p001 = by_code(page)["P001"]["position_id"]
+    assert client.post(f"/api/versions/{R}/workforce/CC2/hr").status_code == 200
+    login(client, HR)
+    p009 = by_code(client.get(f"{PAY}/CC2").json())["P009"]["position_id"]
+    url = f"{PAY}/CC1/positions/{p001}/preview"
+    body = {"salary": "5000"}
+    # Controllers, viewers, approvers, deputies and users without rights read no pay: the
+    # cost center isn't found for them.
+    for user in (CONTROLLER, VIEWER, APPROVER, DEPUTY, NOBODY):
+        login(client, user)
+        assert client.post(url, json=body).status_code == 404, user
+    # The owner reads CC1's pay, but not another cost center's position through CC1.
+    login(client, OWNER)
+    assert client.post(url, json=body).status_code == 200
+    assert client.post(f"{PAY}/CC1/positions/{p009}/preview", json=body).status_code == 404
+    assert client.post(f"{PAY}/CC2/positions/{p001}/preview", json=body).status_code == 404
+    # Before HR releases the round, only HR reads pay.
+    login(client, HR)
+    assert client.put(f"{PAY}/access/release", json={"released": False}).status_code == 200
+    login(client, OWNER)
+    assert client.post(url, json=body).status_code == 404
+    # Without a session, nothing.
+    client.post("/api/auth/logout", json={})
+    assert client.post(url, json=body).status_code == 401
