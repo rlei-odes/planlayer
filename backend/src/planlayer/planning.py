@@ -43,6 +43,7 @@ from planlayer.rounds import (
     account_scopes,
     fiscal_periods,
     get_round,
+    not_open,
 )
 from planlayer.sheet import (
     MONTHS,
@@ -222,7 +223,7 @@ def _context(conn: Connection, user: User, version_code: str, cc_code: str) -> S
     status = status_of(conn, r.version_id, cc.member_id)
     enabled = enabled_members(conn, r.version_id).get(cc.member_id, False)
     if r.status != "open" and not (r.status == "setup" and user.is_controller):
-        reason: str | None = f"the planning round is {r.status}"
+        reason: str | None = not_open(r.status)
     elif not enabled:
         reason = "the cost center is not enabled in this round"
     elif status not in EDITABLE:

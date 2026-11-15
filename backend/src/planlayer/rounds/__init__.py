@@ -19,6 +19,7 @@ from planlayer.rounds.core import closed_periods as closed_periods
 from planlayer.rounds.core import fiscal_periods as fiscal_periods
 from planlayer.rounds.core import get_round as get_round
 from planlayer.rounds.core import latest_actuals as latest_actuals
+from planlayer.rounds.core import not_open as not_open
 from planlayer.rounds.core import rounds as rounds
 from planlayer.rounds.core import set_deadline as set_deadline
 from planlayer.rounds.core import set_member_enabled as set_member_enabled

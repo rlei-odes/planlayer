@@ -2,14 +2,14 @@ import { useCallback, useEffect, useState } from 'react'
 import { api, type PayRights, type PayRightsRow } from './api'
 import Select from './Select'
 
-// Who reads pay in a round (ADR 0023), for HR: per cost center the readers HR lists, proposed
+// Access control of pay in a round (ADR 0023), for HR: per cost center the people HR lists, proposed
 // from the owners the source names; the release, before which nobody but HR reads pay; and the
 // log of every change of these rights and of the HR role, read by every HR user.
 
 const WHEN = new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeStyle: 'short' })
 const ACTION: Record<string, string> = {
-  reader_added: 'gave pay rights to',
-  reader_removed: 'took pay rights from',
+  reader_added: 'gave access to',
+  reader_removed: 'removed access of',
   released: 'released pay',
   release_withdrawn: 'took the release back',
   hr_granted: 'gave the HR role to',
@@ -64,11 +64,11 @@ export default function PayAccess({ version, onChanged }: { version: string; onC
 
       <section className={`su-card pc-module${released ? ' on' : ''}`}>
         <div>
-          <strong>{released ? `Released to its readers` : 'Not released: only HR reads pay in this round'}</strong>
+          <strong>{released ? 'Released' : 'Not released'}</strong>
           <span className="su-hint">
             {released
               ? `By ${rights.released_by}, ${WHEN.format(new Date(rights.released_at!))}. Changes to the lists below apply at once.`
-              : 'Check the readers below, then release. Owners see their cost centers’ pay from then on; the Pay buttons on their Home stay inactive until then.'}
+              : 'Only HR reads pay in this round. Check the access list below, then release: from then on the people listed see their cost centers’ pay; their Pay buttons on Home stay inactive until then.'}
           </span>
         </div>
         <button
@@ -78,7 +78,7 @@ export default function PayAccess({ version, onChanged }: { version: string; onC
           onClick={() =>
             void change(
               () => api.releasePay(version, !released),
-              released ? 'Release taken back: only HR reads pay in this round.' : 'Pay released to its readers.',
+              released ? 'Release taken back: only HR reads pay in this round.' : 'Pay released.',
             )
           }
         >
@@ -91,14 +91,14 @@ export default function PayAccess({ version, onChanged }: { version: string; onC
           <strong>
             {proposals.length} cost center{proposals.length === 1 ? '' : 's'} with an owner to decide on:
           </strong>{' '}
-          the source names an owner you haven’t confirmed or declined yet. They read nothing until you add them.
+          the source names an owner you haven’t confirmed or declined yet. They have no access until you give it.
         </div>
       )}
 
       <section className="su-card">
         <div className="fw-card-head">
-          <h3>Readers per cost center</h3>
-          <span className="su-hint">A cost center without readers is HR only.</span>
+          <h3>Access</h3>
+          <span className="su-hint">Read and change the pay of a cost center’s positions. Without anyone listed, it is HR only.</span>
           <span className="cp-grow" />
           <input
             className="su-input pc-filter"
@@ -113,7 +113,7 @@ export default function PayAccess({ version, onChanged }: { version: string; onC
               <tr>
                 <th>Cost center</th>
                 <th>Source owner</th>
-                <th>Readers</th>
+                <th>Access</th>
                 <th />
               </tr>
             </thead>
@@ -148,11 +148,11 @@ export default function PayAccess({ version, onChanged }: { version: string; onC
                             onClick={() =>
                               void change(
                                 () => api.setPayReaders(version, r.code, [...readers(r), r.source_owner!.login], true),
-                                `${r.source_owner!.name} reads ${r.code}’s pay.`,
+                                `${r.source_owner!.name} has access to ${r.code}.`,
                               )
                             }
                           >
-                            Add as reader
+                            Give access
                           </button>
                         )}
                         <button
@@ -176,13 +176,13 @@ export default function PayAccess({ version, onChanged }: { version: string; onC
                             {p.name}
                             <button
                               type="button"
-                              aria-label={`Take pay rights from ${p.name}`}
-                              title="Take pay rights away"
+                              aria-label={`Remove access of ${p.name}`}
+                              title="Remove access"
                               disabled={busy}
                               onClick={() =>
                                 void change(
                                   () => api.setPayReaders(version, r.code, readers(r).filter((x) => x !== p.login)),
-                                  `${p.name} no longer reads ${r.code}’s pay.`,
+                                  `${p.name} no longer has access to ${r.code}.`,
                                 )
                               }
                             >
@@ -195,7 +195,7 @@ export default function PayAccess({ version, onChanged }: { version: string; onC
                   </td>
                   <td className="right">
                     <button type="button" className="su-btn ghost sm" onClick={() => setAdding(r)}>
-                      <span className="pl-plus">+</span> Reader
+                      <span className="pl-plus">+</span> Access
                     </button>
                   </td>
                 </tr>
@@ -208,7 +208,7 @@ export default function PayAccess({ version, onChanged }: { version: string; onC
       <section className="su-card">
         <div className="fw-card-head">
           <h3>Log</h3>
-          <span className="su-hint">Every change of pay rights and of the HR role, in every round. Every HR user sees it.</span>
+          <span className="su-hint">Every change of access and of the HR role, in every round. Every HR user sees it.</span>
         </div>
         {rights.log.length === 0 ? (
           <p className="su-hint wf-empty">Nothing yet.</p>
@@ -243,7 +243,7 @@ export default function PayAccess({ version, onChanged }: { version: string; onC
           onAdd={async (login) => {
             const ok = await change(
               () => api.setPayReaders(version, adding.code, [...readers(adding), login]),
-              `${name[login] ?? login} reads ${adding.code}’s pay.`,
+              `${name[login] ?? login} has access to ${adding.code}.`,
             )
             if (ok) setAdding(null)
           }}
@@ -303,7 +303,7 @@ function AddReaderDialog({
       >
         <header className="il-head">
           <div>
-            <div className="su-eyebrow">Give pay rights</div>
+            <div className="su-eyebrow">Access</div>
             <h3 id="pc-add-title">
               <span className="pl-code">{row.code}</span> {row.name}
             </h3>
@@ -332,7 +332,7 @@ function AddReaderDialog({
               More… every user
             </button>
           )}
-          {all && <span className="su-hint">Anyone can be given pay rights; the log shows every HR user who did.</span>}
+          {all && <span className="su-hint">Anyone can be given access; the log shows every HR user who did.</span>}
         </div>
         <footer className="il-foot">
           <span className="su-hint">Saved at once, and written to the log.</span>
@@ -340,7 +340,7 @@ function AddReaderDialog({
             Cancel
           </button>
           <button type="submit" className="su-btn primary" disabled={!login || busy}>
-            Give pay rights
+            Give access
           </button>
         </footer>
       </form>

@@ -31,7 +31,7 @@ from planlayer.domain.workflow import (
     refusal,
     transition,
 )
-from planlayer.rounds import NotFoundError, RoundRef, get_round, valid_cost_centers
+from planlayer.rounds import NotFoundError, RoundRef, get_round, not_open, valid_cost_centers
 from planlayer.store.schema import (
     COST_CENTER,
     H_COST_CENTER,
@@ -218,7 +218,7 @@ def act(
     with unit_of_work(engine, actor) as conn:
         r = get_round(conn, code, lock="share")
         if r.status != "open":
-            raise WorkflowError(f"the planning round is {r.status}")
+            raise WorkflowError(not_open(r.status))
         state = enabled_members(conn, r.version_id)
         if node is not None:
             node_id = conn.execute(

@@ -25,7 +25,7 @@ from planlayer.access import AccessError, User
 from planlayer.domain import forwarding as rules
 from planlayer.domain.periods import closed_months
 from planlayer.domain.workflow import RoundStatus, Status
-from planlayer.rounds import NotFoundError, RoundRef, fiscal_periods, get_round
+from planlayer.rounds import NotFoundError, RoundRef, fiscal_periods, get_round, not_open
 from planlayer.sheet import EditError, LockedError, locked_error
 from planlayer.store.schema import (
     ACCOUNT,
@@ -502,7 +502,7 @@ def read_page(engine: Engine, user: User, version_code: str) -> ForwardingPage:
         tree = _cost_center_tree(conn, enabled)
 
     if r.status not in ("setup", "open"):
-        reason: str | None = f"the planning round is {r.status}"
+        reason: str | None = not_open(r.status)
     elif not user.is_controller:
         reason = "only controllers change cost forwarding"
     else:
@@ -650,7 +650,7 @@ def _run(engine: Engine, actor: User, work: Callable[[Connection], None]) -> str
 def _writable(conn: Connection, version_code: str) -> RoundRef:
     r = get_round(conn, version_code)
     if r.status not in ("setup", "open"):
-        raise LockedError(f"the planning round is {r.status}")
+        raise LockedError(not_open(r.status))
     return r
 
 

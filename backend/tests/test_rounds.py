@@ -119,7 +119,7 @@ def test_a_round_in_setup_is_prepared_by_controllers(engine: Engine, client: Tes
     assert client.get(f"{url}/grid").json()["status"] == "not_started"
     log_in(client, OWNER)
     grid = client.get(f"{url}/grid").json()
-    assert grid["lock_reason"] == "the planning round is setup"
+    assert grid["lock_reason"].startswith("the round is still being set up")
     assert not rows(grid)["6000"]["total_editable"]
     edit = month("6000", 1, "1")
     assert client.post(f"{url}/edits", json={"edits": [edit]}).status_code == 423

@@ -38,12 +38,12 @@ Pay is confidential in a way the rest of a plan is not. Today everyone who reads
 
 | Field | Who writes | Notes |
 |---|---|---|
-| HR's salary | nobody | the monthly salary from HR's staff list, taken with the position; read only |
-| Planned salary | owner, HR | monthly; blank means HR's salary. A plan position starts at 0 |
+| HR salary | HR | the monthly salary from HR's staff list, taken with the position, or typed by HR |
+| Planned salary | owner, HR | monthly; blank means the HR salary. A plan position starts at 0 |
 | Bonus | owner, HR | a yearly amount |
 | Charged to | HR | another cost center that carries this position's costs (for small groups, below) |
 
-- **HR's figure and the plan stay apart.** HR's salary is kept as taken and can't be edited. The planned salary is a field of its own, so anyone reading pay sees what came from HR and what the plan changed.
+- **HR's figure and the plan stay apart.** Only HR changes HR's salary: it comes from the staff list, and HR corrects or fills it in where the list has none. The planned salary is a field of its own, so anyone reading pay sees what HR's figure is and what the plan changed.
 - A position taken from HR (*Add staff from HR*) takes HR's salary from the staff list. The dataset `staff` gets an optional field `monthly_salary`. Synced salaries go to `hr_pay`, a table of their own under the pay rules, not to `hr_staff`, which everyone who reads the cost center reads.
 - Salaries are what the person is paid per month at their contract percentage. Planlayer doesn't scale them by the contract percentage.
 - Pay is audited: a trigger writes every change, with old and new values, into `position_pay_log`. Like `position_pay`, the log rows are guarded by `pay_access`.

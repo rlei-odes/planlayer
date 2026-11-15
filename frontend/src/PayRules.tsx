@@ -91,7 +91,7 @@ export default function PayRules({ version, me, onSaved }: { version: string; me
 
       <section className={`su-card pc-module${page.on ? ' on' : ''}`}>
         <div>
-          <strong>Personnel costs in {page.round_code}: {page.on ? 'on' : 'off'}</strong>
+          <strong>{page.on ? 'On' : 'Off'}</strong>
           <span className="su-hint">
             {page.workforce_positions
               ? page.on

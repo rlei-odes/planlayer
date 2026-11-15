@@ -222,6 +222,19 @@ def account_scopes(
     return {cc: (leaves[nearest[cc][1]] if cc in nearest else None) for cc in ids}
 
 
+def not_open(status: str) -> str:
+    """Why a round that isn't open takes no plan values, in the planner's terms."""
+    match status:
+        case "setup":
+            return (
+                "the round is still being set up; planners plan once the controller opens it "
+                "on the Status page"
+            )
+        case "closed":
+            return "the round is closed"
+    return f"the planning round is {status}"
+
+
 def set_round_status(engine: Engine, actor: User, code: str, status: RoundStatus) -> None:
     actor.require_controller()
     with unit_of_work(engine, actor) as conn:

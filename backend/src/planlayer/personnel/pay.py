@@ -20,7 +20,7 @@ from planlayer.personnel.common import (
     run,
 )
 from planlayer.personnel.costs import recompute, small_groups
-from planlayer.rounds import NotFoundError, RoundRef
+from planlayer.rounds import NotFoundError, RoundRef, not_open
 from planlayer.sheet import EditError
 from planlayer.store.schema import (
     AMOUNT,
@@ -274,6 +274,8 @@ class PayIn:
     salary: Decimal | None  # None: HR's
     bonus: Decimal | None
     charged_to: str | None = None  # a cost center's code; HR only
+    hr_salary: Decimal | None = None  # HR only, and only with ``hr_salary_given``
+    hr_salary_given: bool = False
 
 
 def _amount(value: Decimal | None, what: str) -> Decimal | None:
@@ -296,7 +298,11 @@ def save_pay(
         ctx = pay_context(conn, user, version_code, cc_code)
         editable(ctx)
         found = conn.execute(
-            select(workforce_position.c.position_id, position_pay.c.charged_to_id)
+            select(
+                workforce_position.c.position_id,
+                position_pay.c.charged_to_id,
+                position_pay.c.hr_salary,
+            )
             .outerjoin(position_pay, position_pay.c.position_id == workforce_position.c.position_id)
             .where(
                 workforce_position.c.position_id == position_id,
@@ -313,7 +319,14 @@ def save_pay(
             conn, ctx.round, ctx.cost_center_id, given.charged_to
         ):
             raise AccessError("only HR charges a position to another cost center")
+        hr_salary = found.hr_salary
+        if given.hr_salary_given:
+            # HR corrects HR's salary (ADR 0023); nobody else changes it.
+            if not user.is_hr:
+                raise AccessError("only HR changes HR's salary")
+            hr_salary = _amount(given.hr_salary, "salary")
         values = {
+            "hr_salary": hr_salary,
             "salary": _amount(given.salary, "salary"),
             "bonus": _amount(given.bonus, "bonus"),
             "charged_to_id": charged,
@@ -355,7 +368,7 @@ def confirm(engine: Engine, user: User, version_code: str, cc_code: str, on: boo
     with unit_of_work(engine, user) as conn:
         ctx = pay_context(conn, user, version_code, cc_code)
         if ctx.round.status not in ("setup", "open"):
-            raise EditError(f"the planning round is {ctx.round.status}")
+            raise EditError(not_open(ctx.round.status))
         where = (
             pay_review.c.version_id == ctx.version_id,
             pay_review.c.cost_center_id == ctx.cost_center_id,

@@ -250,66 +250,7 @@ def upgrade() -> None:
     )
     op.execute(f"CREATE POLICY add ON {s}.position_pay_log FOR INSERT WITH CHECK (true)")
 
-    # Pay follows its position's locks (ADR 0020); HR prepares it in setup like controllers.
-    closed = (
-        f"NOT (r.status = 'open' OR r.status = 'setup' "
-        f"AND ({s}.writes_as_controller() OR {s}.writes_as_hr()))"
-    )
-    op.execute(f"""
-        CREATE FUNCTION {s}.lock_position_pay() RETURNS trigger LANGUAGE plpgsql AS $$
-        DECLARE
-            k {s}.position_pay;
-            cc int;
-            problem text;
-            was_hr numeric;
-            was_charged int;
-            system boolean := EXISTS (SELECT 1 FROM {s}.app_user u
-                                      WHERE u.user_id = {USER} AND u.is_system);
-        BEGIN
-            IF TG_OP = 'DELETE' THEN k := OLD; ELSE k := NEW; END IF;
-            SELECT p.cost_center_id INTO cc FROM {s}.workforce_position p
-                WHERE p.position_id = k.position_id;
-            IF cc IS NULL THEN  -- deleted with its position
-                RETURN NULL;
-            END IF;
-            PERFORM 1 FROM {s}.planning_round WHERE version_id = k.version_id FOR SHARE;
-            SELECT CASE
-                       WHEN {closed} THEN 'the planning round is ' || r.status
-                       WHEN NOT coalesce(m.enabled, false)
-                           THEN 'the cost center is not enabled in the round'
-                       ELSE 'the cost center is ' || w.status
-                   END
-            INTO problem
-            FROM {s}.planning_round r
-            LEFT JOIN {s}.round_member m
-                ON m.version_id = r.version_id AND m.module = 'cost_center' AND m.member_id = cc
-            LEFT JOIN {s}.workflow_status w
-                ON w.version_id = r.version_id AND w.cost_center_id = cc
-            WHERE r.version_id = k.version_id
-              AND ({closed} OR NOT coalesce(m.enabled, false)
-                   OR coalesce(w.status, 'not_started') NOT IN {EDITABLE});
-            IF problem IS NOT NULL THEN
-                RAISE EXCEPTION 'plan values are locked: %', problem USING ERRCODE = 'PL001';
-            END IF;
-            IF TG_OP = 'DELETE' OR system THEN
-                RETURN NULL;
-            END IF;
-            IF TG_OP = 'UPDATE' THEN
-                was_hr := OLD.hr_salary;
-                was_charged := OLD.charged_to_id;
-            END IF;
-            -- HR's salary comes with the position, taken by the system user's rights.
-            IF NEW.hr_salary IS DISTINCT FROM was_hr THEN
-                RAISE EXCEPTION 'plan values are locked: HR''s salary stays as it was taken'
-                    USING ERRCODE = 'PL001';
-            END IF;
-            IF NEW.charged_to_id IS DISTINCT FROM was_charged AND NOT {s}.writes_as_hr() THEN
-                RAISE EXCEPTION 'plan values are locked: only HR charges a position to another '
-                    'cost center' USING ERRCODE = 'PL001';
-            END IF;
-            RETURN NULL;
-        END $$
-    """)
+    _lock_position_pay(s, hr_edits_hr_salary=False)
     op.execute(f"""
         CREATE TRIGGER lock AFTER INSERT OR UPDATE OR DELETE ON {s}.position_pay
         FOR EACH ROW EXECUTE FUNCTION {s}.lock_position_pay()
@@ -591,6 +532,77 @@ def _lock_fact_cost_center(s: str) -> None:
                        nullif(current_setting('app.actor', true), ''),
                        'not_started', 'in_progress'
                 FROM started;
+            END IF;
+            RETURN NULL;
+        END $$
+    """)
+
+
+def _lock_position_pay(s: str, *, hr_edits_hr_salary: bool) -> None:
+    """The lock on pay; HR's salary changes only by the system user, or also by HR (ADR 0023)."""
+    hr_note = "; HR corrects it" if hr_edits_hr_salary else ""
+    hr_may = f" AND NOT {s}.writes_as_hr()" if hr_edits_hr_salary else ""
+    hr_message = (
+        "only HR changes HR''s salary"
+        if hr_edits_hr_salary
+        else "HR''s salary stays as it was taken"
+    )
+    # Pay follows its position's locks (ADR 0020); HR prepares it in setup like controllers.
+    closed = (
+        f"NOT (r.status = 'open' OR r.status = 'setup' "
+        f"AND ({s}.writes_as_controller() OR {s}.writes_as_hr()))"
+    )
+    op.execute(f"""
+        CREATE OR REPLACE FUNCTION {s}.lock_position_pay() RETURNS trigger LANGUAGE plpgsql AS $$
+        DECLARE
+            k {s}.position_pay;
+            cc int;
+            problem text;
+            was_hr numeric;
+            was_charged int;
+            system boolean := EXISTS (SELECT 1 FROM {s}.app_user u
+                                      WHERE u.user_id = {USER} AND u.is_system);
+        BEGIN
+            IF TG_OP = 'DELETE' THEN k := OLD; ELSE k := NEW; END IF;
+            SELECT p.cost_center_id INTO cc FROM {s}.workforce_position p
+                WHERE p.position_id = k.position_id;
+            IF cc IS NULL THEN  -- deleted with its position
+                RETURN NULL;
+            END IF;
+            PERFORM 1 FROM {s}.planning_round WHERE version_id = k.version_id FOR SHARE;
+            SELECT CASE
+                       WHEN {closed} THEN 'the planning round is ' || r.status
+                       WHEN NOT coalesce(m.enabled, false)
+                           THEN 'the cost center is not enabled in the round'
+                       ELSE 'the cost center is ' || w.status
+                   END
+            INTO problem
+            FROM {s}.planning_round r
+            LEFT JOIN {s}.round_member m
+                ON m.version_id = r.version_id AND m.module = 'cost_center' AND m.member_id = cc
+            LEFT JOIN {s}.workflow_status w
+                ON w.version_id = r.version_id AND w.cost_center_id = cc
+            WHERE r.version_id = k.version_id
+              AND ({closed} OR NOT coalesce(m.enabled, false)
+                   OR coalesce(w.status, 'not_started') NOT IN {EDITABLE});
+            IF problem IS NOT NULL THEN
+                RAISE EXCEPTION 'plan values are locked: %', problem USING ERRCODE = 'PL001';
+            END IF;
+            IF TG_OP = 'DELETE' OR system THEN
+                RETURN NULL;
+            END IF;
+            IF TG_OP = 'UPDATE' THEN
+                was_hr := OLD.hr_salary;
+                was_charged := OLD.charged_to_id;
+            END IF;
+            -- HR's salary comes with the position, taken by the system user's rights{hr_note}.
+            IF NEW.hr_salary IS DISTINCT FROM was_hr{hr_may} THEN
+                RAISE EXCEPTION 'plan values are locked: {hr_message}'
+                    USING ERRCODE = 'PL001';
+            END IF;
+            IF NEW.charged_to_id IS DISTINCT FROM was_charged AND NOT {s}.writes_as_hr() THEN
+                RAISE EXCEPTION 'plan values are locked: only HR charges a position to another '
+                    'cost center' USING ERRCODE = 'PL001';
             END IF;
             RETURN NULL;
         END $$

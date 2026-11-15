@@ -624,6 +624,7 @@ export type PayIn = {
   salary?: string | null
   bonus?: string | null
   charged_to?: string | null
+  hr_salary?: string | null
 }
 
 export type PayLogOut = {

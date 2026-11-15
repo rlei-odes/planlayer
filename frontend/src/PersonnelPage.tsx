@@ -87,9 +87,9 @@ export default function PersonnelPage({
   // Views: pay (HR, readers), who reads it (HR), the rules (HR, controllers). The switch shows
   // only to those who have more than one; everyone else sees their one view without it.
   const views: [Tab, string][] = [
-    ...(me.reads_pay ? ([['pay', 'Pay by cost center']] as [Tab, string][]) : []),
-    ...(me.is_hr ? ([['access', 'Who reads pay']] as [Tab, string][]) : []),
-    ...(me.is_hr || me.is_controller ? ([['rules', 'Rules of the round']] as [Tab, string][]) : []),
+    ...(me.reads_pay ? ([['pay', 'Pay']] as [Tab, string][]) : []),
+    ...(me.is_hr ? ([['access', 'Access control']] as [Tab, string][]) : []),
+    ...(me.is_hr || me.is_controller ? ([['rules', 'Rules']] as [Tab, string][]) : []),
   ]
   const tabs =
     views.length > 1 ? (
@@ -108,7 +108,7 @@ export default function PersonnelPage({
         <div className="pl-head">
           <div className="pl-title">
             <div className="su-eyebrow">Personnel costs</div>
-            <h1 className="pc-h1">Who reads pay</h1>
+            <h1 className="pc-h1">Access control</h1>
             <div className="pl-sub">Per cost center and round, set by HR. Nobody but HR reads pay until HR releases the round.</div>
           </div>
           <div className="pl-actions">{tabs}</div>
@@ -124,7 +124,7 @@ export default function PersonnelPage({
         <div className="pl-head">
           <div className="pl-title">
             <div className="su-eyebrow">Personnel costs</div>
-            <h1 className="pc-h1">Rules of the round</h1>
+            <h1 className="pc-h1">Rules</h1>
             <div className="pl-sub">Accounts, yearly extras, raises, awards and contributions. They hold no one’s pay.</div>
           </div>
           <div className="pl-actions">{tabs}</div>
@@ -220,7 +220,7 @@ export default function PersonnelPage({
       {message && <div className={`su-note ${message.kind === 'error' ? 'error' : 'ok'}`}>{message.text}</div>}
       {me.is_hr && !released && (
         <div className="su-note warn">
-          Pay isn’t released in this round: only HR reads it. Release it under <em>Who reads pay</em> once the readers are right.
+          Pay isn’t released in this round: only HR reads it. Release it under <em>Access control</em> once the access list is right.
         </div>
       )}
       {page?.lock_reason && <div className="su-note">{lockText(page)}</div>}
@@ -263,7 +263,7 @@ export default function PersonnelPage({
         <section className="su-card">
           <div className="fw-card-head">
             <h3>Positions</h3>
-            <span className="su-hint">HR’s salary as taken from the staff list; the planned salary replaces it where typed.</span>
+            <span className="su-hint">Both per month. The planned salary is what the plan uses; blank, it uses the HR salary.</span>
           </div>
           {page.positions.length === 0 ? (
             <p className="su-hint wf-empty">No positions on this cost center yet. They are listed on the Workforce page.</p>
@@ -276,8 +276,8 @@ export default function PersonnelPage({
                     <th>Name</th>
                     <th>Type · category</th>
                     <th>Dates</th>
-                    <th className="num">HR’s salary</th>
-                    <th className="num">Planned salary</th>
+                    <th className="num">HR salary / month</th>
+                    <th className="num">Planned salary / month</th>
                     <th className="num">Bonus / year</th>
                     <th>Charged to</th>
                     <th className="num">Cost {page.fiscal_year}</th>
@@ -339,7 +339,7 @@ export default function PersonnelPage({
       {page && (
         <section className="su-card">
           <div className="fw-card-head">
-            <h3>Totals on the cost center</h3>
+            <h3>Totals</h3>
             <span className="su-hint">
               Written to the cost center’s sheet, read only, by the round’s rules · {format(total) || '0.00'} for the year
             </span>
@@ -393,14 +393,17 @@ export default function PersonnelPage({
           page={page}
           position={editing}
           canCharge={page.may_charge}
+          isHr={me.is_hr}
           onClose={() => setEditing(null)}
-          onSave={async (salary, bonus, charged) => {
+          onSave={async (salary, bonus, charged, hrSalary) => {
             setBusy(true)
             try {
               const updated = await api.savePay(version, page.cost_center_code, editing.position_id, {
                 salary,
                 bonus,
                 charged_to: charged,
+                // Only HR sends HR's salary; left out, it stays as it is.
+                ...(hrSalary !== undefined ? { hr_salary: hrSalary } : {}),
               })
               setPage(updated)
               setEditing(null)
@@ -433,29 +436,38 @@ function PayDialog({
   page,
   position: p,
   canCharge,
+  isHr,
   onClose,
   onSave,
 }: {
   page: PayPage
   position: PayPosition
   canCharge: boolean
+  isHr: boolean
   onClose: () => void
-  onSave: (salary: string | null, bonus: string | null, charged: string | null) => Promise<string | null>
+  onSave: (
+    salary: string | null,
+    bonus: string | null,
+    charged: string | null,
+    hrSalary?: string | null,
+  ) => Promise<string | null>
 }) {
   const [salary, setSalary] = useState(p.salary ? format(p.salary) : '')
   const [bonus, setBonus] = useState(p.bonus ? format(p.bonus) : '')
   const [charged, setCharged] = useState(p.charged_to ?? '')
+  const [hrSalary, setHrSalary] = useState(p.hr_salary ? format(p.hr_salary) : '')
+  const hrValue = parse(hrSalary)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const salaryValue = parse(salary)
   const bonusValue = parse(bonus)
-  const valid = salaryValue !== undefined && bonusValue !== undefined
+  const valid = salaryValue !== undefined && bonusValue !== undefined && (!isHr || hrValue !== undefined)
   const typed = p.typed === true
 
   async function submit() {
     if (!valid) return
     setBusy(true)
-    setError(await onSave(salaryValue, bonusValue, charged || null))
+    setError(await onSave(salaryValue, bonusValue, charged || null, isHr ? (hrValue as string | null) : undefined))
     setBusy(false)
   }
 
@@ -477,7 +489,7 @@ function PayDialog({
       >
         <header className="il-head">
           <div>
-            <div className="su-eyebrow">Pay of a position</div>
+            <div className="su-eyebrow">Pay</div>
             <h3 id="pc-title">
               <span className="pl-code">{p.code}</span> {p.title}
               {p.person_name && <span className="ink-3"> · {p.person_name}</span>}
@@ -494,23 +506,38 @@ function PayDialog({
         {error && <div className="su-note error">{error}</div>}
         <div className="il-body pc-dialog-body">
           <div className="pc-compare">
-            <div>
-              <span className="su-eyebrow">From HR</span>
-              <strong>{p.hr_salary ? format(p.hr_salary) : '–'}</strong>
-              <small>{p.hr_salary ? 'as taken from the staff list; stays as it is' : 'not in HR’s list'}</small>
-            </div>
+            {isHr ? (
+              <label className="su-field">
+                HR salary / month
+                <input
+                  className={`su-input num${hrValue === undefined ? ' invalid' : ''}`}
+                  inputMode="decimal"
+                  value={hrSalary}
+                  placeholder="none"
+                  autoFocus
+                  onChange={(e) => setHrSalary(e.target.value)}
+                />
+                <span className="su-hint">What the person earns today: from the staff list, or typed here. Only HR changes it.</span>
+              </label>
+            ) : (
+              <div>
+                <span className="su-eyebrow">HR salary / month</span>
+                <strong>{p.hr_salary ? format(p.hr_salary) : '–'}</strong>
+                <small>{p.hr_salary ? 'what the person earns today; only HR changes it' : 'none from HR'}</small>
+              </div>
+            )}
             <label className="su-field">
-              {typed ? 'Monthly amount' : 'Planned monthly salary'}
+              {typed ? 'Amount / month' : 'Planned salary / month'}
               <input
                 className={`su-input num${salaryValue === undefined ? ' invalid' : ''}`}
                 inputMode="decimal"
                 value={salary}
-                placeholder={p.hr_salary ? `${format(p.hr_salary)} (HR’s)` : '0.00'}
-                autoFocus
+                placeholder={p.hr_salary ? `${format(p.hr_salary)} (HR salary)` : '0.00'}
+                autoFocus={!isHr}
                 onChange={(e) => setSalary(e.target.value)}
               />
               <span className="su-hint">
-                Blank: {p.hr_salary ? 'HR’s salary' : '0'}. What the person is paid a month, at their contract percentage.
+                What the plan uses for the fiscal year, at the contract percentage. Blank: {p.hr_salary ? 'the HR salary' : '0'}.
               </span>
             </label>
           </div>

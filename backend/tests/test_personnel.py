@@ -346,3 +346,18 @@ def test_a_new_source_owner_is_a_proposal(engine: Engine, client: TestClient) ->
         r for r in client.put(f"{PAY}/access/CC1", json=body).json()["rows"] if r["code"] == "CC1"
     )
     assert not cc1["proposal"] and [p["login"] for p in cc1["readers"]] == [OWNER]
+
+
+def test_hr_corrects_hrs_salary(engine: Engine, client: TestClient) -> None:
+    page = start(client)
+    p001 = by_code(page)["P001"]
+    url = f"{PAY}/CC1/positions/{p001['position_id']}"
+    login(client, OWNER)
+    assert client.put(url, json={"hr_salary": "4100"}).status_code == 403
+    # Left out, HR's salary stays; the owner's planned salary is theirs.
+    page = client.put(url, json={"salary": "4200"}).json()
+    assert by_code(page)["P001"]["hr_salary"] == "4000.00"
+    login(client, HR)
+    page = client.put(url, json={"salary": "4200", "hr_salary": "4100"}).json()
+    assert by_code(page)["P001"]["hr_salary"] == "4100.00"
+    assert by_code(page)["P001"]["salary"] == "4200.00"

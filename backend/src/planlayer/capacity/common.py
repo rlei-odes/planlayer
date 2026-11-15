@@ -17,7 +17,7 @@ from planlayer.domain.entry_forms import Basis
 from planlayer.domain.periods import closed_months
 from planlayer.domain.spreading import Profile
 from planlayer.domain.workflow import EDITABLE, Status
-from planlayer.rounds import NotFoundError, RoundRef, fiscal_periods, get_round
+from planlayer.rounds import NotFoundError, RoundRef, fiscal_periods, get_round, not_open
 from planlayer.sheet import (
     MONTHS,
     Cell,
@@ -129,7 +129,7 @@ def _context(conn: Connection, user: User, version_code: str, cc_code: str) -> _
     status = status_of(conn, r.version_id, cc.member_id)
     # Controllers prepare a round in setup (ADR 0014, ADR 0016).
     if r.status != "open" and not (r.status == "setup" and user.is_controller):
-        reason: str | None = f"the planning round is {r.status}"
+        reason: str | None = not_open(r.status)
     elif not enabled_members(conn, r.version_id).get(cc.member_id, False):
         reason = "the cost center is not enabled in this round"
     elif status not in EDITABLE:

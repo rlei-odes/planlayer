@@ -132,6 +132,8 @@ class PayIn(BaseModel):
     salary: str | None = None  # null or blank: HR's
     bonus: str | None = None
     charged_to: str | None = None
+    # HR only (ADR 0023); left out, HR's salary stays as it is.
+    hr_salary: str | None = None
 
 
 class PayReviewIn(BaseModel):
@@ -451,7 +453,11 @@ def save_pay(
     engine = engine_of(request)
     try:
         given = personnel.PayIn(
-            parse_amount(body.salary), parse_amount(body.bonus), body.charged_to or None
+            parse_amount(body.salary),
+            parse_amount(body.bonus),
+            body.charged_to or None,
+            parse_amount(body.hr_salary),
+            "hr_salary" in body.model_fields_set,
         )
         batch = personnel.save_pay(engine, user, version_code, cc_code, position_id, given)
         return _page_out(personnel.read_page(engine, user, version_code, cc_code), batch)
