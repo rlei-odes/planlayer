@@ -81,20 +81,19 @@ export default function PersonnelPage({
     }
   }
 
-  const tabs = (
+  // Two views: pay (HR, owners) and the rules (HR, controllers). The switch shows only to those
+  // who have both; everyone else sees their one view without it.
+  const both = me.reads_pay && (me.is_hr || me.is_controller)
+  const tabs = both ? (
     <div className="seg pc-tabs" role="tablist" aria-label="Personnel costs">
-      {me.reads_pay && (
-        <button type="button" role="tab" aria-selected={tab === 'pay'} aria-pressed={tab === 'pay'} onClick={() => setTab('pay')}>
-          Pay by cost center
-        </button>
-      )}
-      {(me.is_hr || me.is_controller) && (
-        <button type="button" role="tab" aria-selected={tab === 'rules'} aria-pressed={tab === 'rules'} onClick={() => setTab('rules')}>
-          Rules of the round
-        </button>
-      )}
+      <button type="button" role="tab" aria-selected={tab === 'pay'} aria-pressed={tab === 'pay'} onClick={() => setTab('pay')}>
+        Pay by cost center
+      </button>
+      <button type="button" role="tab" aria-selected={tab === 'rules'} aria-pressed={tab === 'rules'} onClick={() => setTab('rules')}>
+        Rules of the round
+      </button>
     </div>
-  )
+  ) : null
 
   if (tab === 'rules') {
     return (
@@ -119,7 +118,8 @@ export default function PersonnelPage({
         <div className="su-card empty-state">
           <h3>No personnel costs in this round</h3>
           <p className="su-hint">
-            They need workforce planning by positions. The controller turns them on under <em>Rules of the round</em>.
+            They come from positions: the controller turns them on in the round’s Setup, step 6, together with workforce
+            planning by positions.
           </p>
         </div>
       </div>
@@ -183,7 +183,7 @@ export default function PersonnelPage({
       </div>
 
       {message && <div className={`su-note ${message.kind === 'error' ? 'error' : 'ok'}`}>{message.text}</div>}
-      {page?.lock_reason && <div className="su-note pl-note">Read only: {page.lock_reason}.</div>}
+      {page?.lock_reason && <div className="su-note">{lockText(page)}</div>}
 
       {page && (
         <section className={`su-card pc-review${page.review ? ' done' : ''}`}>
@@ -377,6 +377,16 @@ export default function PersonnelPage({
       )}
     </div>
   )
+}
+
+/** Why the page is read only, in the reader's terms. */
+function lockText(page: PayPage): string {
+  if (page.round_status === 'setup')
+    return 'This round is still being set up. HR prepares pay meanwhile; you can change it once the controller opens the round.'
+  if (page.round_status !== 'open') return `This round is ${page.round_status}: pay is shown as it was planned and can’t change.`
+  if (page.status === 'submitted' || page.status === 'approved')
+    return `${page.cost_center_code} is ${STATUS_LABEL[page.status].toLowerCase()}: pay can change again once the cost center is reopened.`
+  return `Read only: ${page.lock_reason}.`
 }
 
 function PayDialog({

@@ -626,10 +626,6 @@ export type PayIn = {
   charged_to?: string | null
 }
 
-export type PayModuleIn = {
-  on: boolean
-}
-
 export type PayPageOut = {
   round_code: string
   round_name: string
@@ -977,6 +973,7 @@ export type SetupIO = {
   grain?: "month" | "quarter"
   actuals_through?: string | null
   workforce_mode?: "fte" | "headcount" | "both" | "positions" | null
+  personnel_costs?: boolean
 }
 
 export type SetupOut = {

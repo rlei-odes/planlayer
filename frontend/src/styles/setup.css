@@ -433,7 +433,6 @@
 /* --- Setup tabs and the round's scope (ADR 0014) ------------------------------------------- */
 
 .su-tabs {
-  margin-bottom: 14px;
   align-self: flex-start;
 }
 

@@ -246,7 +246,6 @@ export const api = {
   payRules: (version: string) => fetch(`${v(version)}/personnel/rules`).then((r) => json<PayRulesPage>(r)),
   savePayRules: (version: string, rules: PayRules) =>
     send('PUT', `${v(version)}/personnel/rules`, rules).then((r) => json<PayRulesPage>(r)),
-  payModule: (version: string, on: boolean) => send('PUT', `${v(version)}/personnel/module`, { on }).then((r) => json<null>(r)),
   costCenters: (version: string) => fetch(`${v(version)}/cost-centers`).then((r) => json<PlanningUnit[]>(r)),
   setEnabled: (version: string, code: string, enabled: boolean) =>
     post(`${cc(version, code)}/enabled`, { enabled }).then((r) => json<null>(r)),

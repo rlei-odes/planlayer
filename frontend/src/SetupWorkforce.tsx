@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { api, type Version } from './api'
 import { type SetupDraft, type WorkforceMode } from './setupTypes'
 
-// Workforce planning on the setup page (ADR 0020): the round's mode, staff from HR.
+// Workforce planning on the setup page (ADR 0020): the round's mode, staff from HR, and personnel
+// costs from the positions (ADR 0022).
 
 const WORKFORCE_MODES: { value: WorkforceMode | ''; label: string; text: string }[] = [
   { value: '', label: 'Off', text: 'No workforce sheet in this round.' },
@@ -21,12 +22,14 @@ export function Workforce({
   draft,
   setDraft,
   saved,
+  savedPersonnel,
   round,
   onNote,
 }: {
   draft: SetupDraft
   setDraft: (d: SetupDraft) => void
   saved: WorkforceMode | null
+  savedPersonnel: boolean
   round: Version
   onNote: (n: { kind: 'ok' | 'error' | 'warn'; text: string }) => void
 }) {
@@ -68,7 +71,14 @@ export function Workforce({
               type="radio"
               name="workforce-mode"
               checked={mode === m.value}
-              onChange={() => setDraft({ ...draft, workforce_mode: m.value === '' ? null : m.value })}
+              onChange={() =>
+                setDraft({
+                  ...draft,
+                  workforce_mode: m.value === '' ? null : m.value,
+                  // Personnel costs come from positions: another mode turns them off.
+                  personnel_costs: m.value === 'positions' && !!draft.personnel_costs,
+                })
+              }
             />
             <span>
               <strong>{m.label}</strong>
@@ -82,6 +92,29 @@ export function Workforce({
           {round.status === 'setup'
             ? 'Saving clears the workforce values, lines and positions this round has so far.'
             : 'An open round with workforce values or positions keeps its mode; the save is refused while there are any.'}
+        </div>
+      )}
+      {mode === 'positions' && (
+        <div className="su-body">
+        <label className={`wf-mode wf-personnel${draft.personnel_costs ? ' on' : ''}`}>
+          <input
+            type="checkbox"
+            checked={!!draft.personnel_costs}
+            onChange={(e) => setDraft({ ...draft, personnel_costs: e.target.checked })}
+          />
+          <span>
+            <strong>Personnel costs from the positions</strong>
+            <span className="su-hint">
+              Pay per position, with the round’s rules for extras, raises and contributions, written to the personnel
+              accounts. Pay is read by HR and the cost center’s owner only; HR sets up the rules on the Personnel costs
+              page.
+              {savedPersonnel && !draft.personnel_costs &&
+                (round.status === 'setup'
+                  ? ' Saving clears the rules, the pay and the values they wrote.'
+                  : ' An open round with personnel cost values keeps them; the save is refused.')}
+            </span>
+          </span>
+        </label>
         </div>
       )}
       {saved === 'positions' && !changing && (

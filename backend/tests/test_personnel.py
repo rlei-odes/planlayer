@@ -57,13 +57,8 @@ def rules(**changes: object) -> dict[str, object]:
 def start(client: TestClient, **changes: object) -> dict:  # type: ignore[type-arg]
     """Positions with HR's staff on CC1, personnel costs on, the rules saved by HR."""
     setup = client.get(f"/api/rounds/{R}/setup").json()["setup"]
-    assert (
-        client.put(
-            f"/api/rounds/{R}/setup", json={**setup, "workforce_mode": "positions"}
-        ).status_code
-        == 200
-    )
-    assert client.put(f"{PAY}/module", json={"on": True}).status_code == 200
+    body = {**setup, "workforce_mode": "positions", "personnel_costs": True}
+    assert client.put(f"/api/rounds/{R}/setup", json=body).status_code == 200
     assert client.post(f"/api/versions/{R}/workforce/CC1/hr").status_code == 200
     login(client, HR)
     response = client.put(f"{PAY}/rules", json=rules(**changes))
@@ -262,9 +257,12 @@ def test_module_off_in_an_open_round_with_values_is_refused(
     engine: Engine, client: TestClient
 ) -> None:
     start(client)
-    assert client.put(f"{PAY}/module", json={"on": False}).status_code == 422
-    # Workforce can't leave positions while personnel costs are on.
     setup = client.get(f"/api/rounds/{R}/setup").json()["setup"]
+    assert setup["personnel_costs"] is True
+    off = {**setup, "personnel_costs": False}
+    response = client.put(f"/api/rounds/{R}/setup", json=off)
+    assert response.status_code == 422 and "only in setup" in response.text
+    # Workforce can't leave positions while personnel costs are on.
     response = client.put(f"/api/rounds/{R}/setup", json={**setup, "workforce_mode": "fte"})
     assert response.status_code == 422
 

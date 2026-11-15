@@ -297,7 +297,7 @@ export function NewRoundCard({
   }
   const uplift = Number(carry.uplift ?? 0)
   return (
-    <section className="su-card" style={{ marginBottom: 14 }}>
+    <section className="su-card">
       <h3>
         <span className="su-step">1</span> Create the round
       </h3>

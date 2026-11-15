@@ -15,7 +15,7 @@ Pay is confidential in a way the rest of a plan is not. Today everyone who reads
 
 ### A module of the round, on top of positions
 
-- *Personnel costs* is the round module `personnel_costs`. The controller turns it on on the personnel costs page, under *Rules of the round*, while the round is in setup or open. It needs workforce planning in mode `positions`, because costs come from positions. While it is on, the workforce mode can't leave `positions`.
+- *Personnel costs* is the round module `personnel_costs`. The controller turns it on in the round's setup, next to the workforce mode, while the round is in setup or open. It needs workforce planning in mode `positions`, because costs come from positions. While it is on, the workforce mode can't leave `positions`.
 - It can be turned off in setup. Turning it off removes the round's rules, the pay of its positions and the values they wrote. In an open round, turning it off is refused once values exist.
 - The module is copied with a new round's setup, rules included (ADR 0014).
 
@@ -119,7 +119,7 @@ Publishing writes the personnel accounts with the cost center's other plan value
 
 - New tables: `hr_pay`, `position_pay`, `position_pay_log`, `pay_staff_type`, `pay_rule`, `pay_rule_step`, `pay_setting`, `pay_small_group`, `pay_review`. New view `pay_access`; the view `pay_account` lists the round's personnel accounts. `app_user.is_hr`. The module check of `round_module` allows `personnel_costs`.
 - The lock on `fact_cost_center` treats personnel accounts like forwarding accounts. Its read policy hides small groups.
-- New page *Personnel costs* (Plan, after Workforce): *Pay by cost center* for HR and owners, *Rules of the round* (with the module switch) for HR and controllers. The users page gets the HR role. *Home* lists, for HR, small groups and submitted cost centers to review, and gives owners a *Pay* button next to their sheets. The cost center sheet marks the personnel accounts.
+- New page *Personnel costs* (Plan, after Workforce): *Pay by cost center* for HR and owners, *Rules of the round* for HR and controllers. The setup's workforce step gets the module switch. The users page gets the HR role. *Home* lists, for HR, small groups and submitted cost centers to review, and gives owners a *Pay* button next to their sheets. The cost center sheet marks the personnel accounts.
 - A transfer during the year (ADR 0021) gives the receiving half the person's salary; the yearly bonus stays with the sending half.
 - Not in this decision, and on the backlog:
   - encryption at rest of pay columns, with a key set up in a guided installation step;

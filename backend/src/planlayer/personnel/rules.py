@@ -399,47 +399,43 @@ def has_values(conn: Connection, r: RoundRef) -> bool:
     return bool(found)
 
 
-def set_module(engine: Engine, user: User, version_code: str, on: bool) -> None:
-    """Turn personnel costs on (needs positions) or off. Off removes the rules, the positions'
-    pay and the values they wrote; in an open round that is refused once values exist."""
+def switch(conn: Connection, r: RoundRef, user: User, *, on: bool) -> None:
+    """Turn personnel costs on (needs positions) or off, as part of the round's setup (ADR 0022).
+    Off removes the rules, the positions' pay and the values they wrote; in an open round that
+    is refused once values exist."""
+    if module_on(conn, r.version_id) == on:
+        return
     user.require_controller()
-
-    def work(conn: Connection) -> None:
-        r = get_round(conn, version_code, lock="update")
+    if r.status not in ("setup", "open"):
+        raise RoundError(f"the planning round is {r.status}")
+    vid = r.version_id
+    if on:
         from planlayer.workforce import mode_of
 
-        if module_on(conn, r.version_id) == on:
-            return
-        if r.status not in ("setup", "open"):
-            raise RoundError(f"the planning round is {r.status}")
-        vid = r.version_id
-        if on:
-            if mode_of(conn, vid) != "positions":
-                raise RoundError("personnel costs need workforce planning by positions")
-            conn.execute(insert(round_module).values(version_id=vid, module=MODULE_PERSONNEL))
-            conn.execute(
-                insert(pay_setting).values(
-                    version_id=vid, module=MODULE_PERSONNEL, changed_by=user.login
-                )
-            )
-            return
-        if r.status != "setup" and has_values(conn, r):
-            raise RoundError(
-                "the round has personnel cost values; personnel costs can be turned off only "
-                "in setup, where they are cleared"
-            )
-        clear(conn, r, pay_accounts(conn, vid))
-        with system_rights(conn, actor=user.login):
-            conn.execute(delete(position_pay).where(position_pay.c.version_id == vid))
-        for table in (pay_rule, pay_staff_type, pay_setting, pay_small_group, pay_review):
-            conn.execute(delete(table).where(table.c.version_id == vid))
+        if mode_of(conn, vid) != "positions":
+            raise RoundError("personnel costs need workforce planning by positions")
+        conn.execute(insert(round_module).values(version_id=vid, module=MODULE_PERSONNEL))
         conn.execute(
-            delete(round_module).where(
-                round_module.c.version_id == vid, round_module.c.module == MODULE_PERSONNEL
+            insert(pay_setting).values(
+                version_id=vid, module=MODULE_PERSONNEL, changed_by=user.login
             )
         )
-
-    run(engine, user, work)
+        return
+    if r.status != "setup" and has_values(conn, r):
+        raise RoundError(
+            "the round has personnel cost values; personnel costs can be turned off only "
+            "in setup, where they are cleared"
+        )
+    clear(conn, r, pay_accounts(conn, vid))
+    with system_rights(conn, actor=user.login):
+        conn.execute(delete(position_pay).where(position_pay.c.version_id == vid))
+    for table in (pay_rule, pay_staff_type, pay_setting, pay_small_group, pay_review):
+        conn.execute(delete(table).where(table.c.version_id == vid))
+    conn.execute(
+        delete(round_module).where(
+            round_module.c.version_id == vid, round_module.c.module == MODULE_PERSONNEL
+        )
+    )
 
 
 def carry(conn: Connection, source: RoundRef, target: RoundRef, actor: str) -> None:

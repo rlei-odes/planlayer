@@ -71,6 +71,7 @@ class SetupIO(BaseModel):
     actuals_through: date | None = None  # forecasts: the last closed month
     # Workforce planning's mode (ADR 0020); null: the round doesn't plan its workforce.
     workforce_mode: Mode | None = None
+    personnel_costs: bool = False  # costs from positions (ADR 0022)
 
 
 class CarryOverIn(BaseModel):
@@ -238,6 +239,7 @@ def setup(request: Request, user: CurrentUser, code: str) -> SetupOut:
             grain=s.grain,
             actuals_through=s.actuals_through,
             workforce_mode=s.workforce_mode,
+            personnel_costs=s.personnel_costs,
         ),
         latest_actuals=v.latest_actuals,
         actuals_available=v.actuals_available,
@@ -276,6 +278,7 @@ def save_setup(request: Request, user: CurrentUser, code: str, body: SetupIO) ->
                 grain=body.grain,
                 actuals_through=body.actuals_through,
                 workforce_mode=body.workforce_mode,
+                personnel_costs=body.personnel_costs,
             ),
         )
     except HANDLED as e:

@@ -9,6 +9,21 @@
   padding-bottom: 72px;
 }
 
+/* Page rhythm: a page's blocks (its head, notes, cards, tables) stack with one gap, so a callout
+   never touches the card below it and no page sets its own. The selector outweighs a block's own
+   one-class margin rules (a hint's, a note's); an exception needs a deliberate two-class rule. A
+   larger bottom margin of a block collapses with the gap instead of adding to it. */
+.su > :not(:first-child) {
+  margin-top: var(--stack);
+}
+
+/* Inline boxes don't collapse margins: a segmented control standing as a block of its own is a
+   block-level flex box of its own width. */
+.su > .seg {
+  display: flex;
+  width: fit-content;
+}
+
 /* --- Header ------------------------------------------------------------------------------- */
 
 .su-head {

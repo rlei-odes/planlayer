@@ -4,6 +4,7 @@
    Colours are tokens only, so a dark palette can later redefine them in one place. */
 
 :root {
+  --stack: 14px; /* the gap between a page's blocks: head, notes, cards (components.css) */
   --ink: #18202c;
   --ink-2: #4a5566;
   --ink-3: #8691a1;

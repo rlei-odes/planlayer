@@ -25,4 +25,4 @@ from planlayer.personnel.rules import StepIO as StepIO
 from planlayer.personnel.rules import carry as carry
 from planlayer.personnel.rules import read_rules as read_rules
 from planlayer.personnel.rules import save_rules as save_rules
-from planlayer.personnel.rules import set_module as set_module
+from planlayer.personnel.rules import switch as switch

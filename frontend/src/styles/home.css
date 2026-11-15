@@ -75,13 +75,9 @@
 /* --- Home ------------------------------------------------------------------------------------- */
 
 .hm {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
   max-width: 1100px;
 }
 
-.hm > .su-card,
 .hm-section > .su-card {
   margin: 0;
 }

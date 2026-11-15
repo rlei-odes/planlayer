@@ -150,12 +150,12 @@ export default function SetupPage({
         />
       )}
       {!creating && justCreated === code && (
-        <div className="su-note ok" style={{ marginBottom: 14 }}>
+        <div className="su-note ok">
           Round created, in status setup: planners don’t see it yet. Set up its forms, cost centers and accounts on the
           tabs below; all of it stays changeable until you open the round on the status page.
         </div>
       )}
-      {!creating && note && <div className={`su-note ${note.kind}`} style={{ marginBottom: 14 }}>{note.text}</div>}
+      {!creating && note && <div className={`su-note ${note.kind}`}>{note.text}</div>}
 
       {!creating && view && draft && round && (
         <div className="seg su-tabs" role="tablist" aria-label="Setup">
@@ -280,6 +280,7 @@ export default function SetupPage({
               draft={draft}
               setDraft={setDraft}
               saved={view.setup.workforce_mode ?? null}
+              savedPersonnel={!!view.setup.personnel_costs}
               round={round}
               onNote={setNote}
             />

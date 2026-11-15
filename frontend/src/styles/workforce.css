@@ -61,6 +61,10 @@ revo-grid.pl-revo .rgCell.wf-total {
   margin-top: 3px;
 }
 
+.wf-personnel {
+  margin-top: 10px;
+}
+
 .wf-buildup,
 .wf-positions {
   margin-top: 16px;

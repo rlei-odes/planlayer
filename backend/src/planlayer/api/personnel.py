@@ -137,10 +137,6 @@ class PayRulesPageOut(BaseModel):
     entities: list[CodeName]
 
 
-class PayModuleIn(BaseModel):
-    on: bool
-
-
 def _page_out(p: personnel.PayPage, batch_id: str | None = None) -> PayPageOut:
     return PayPageOut(
         round_code=p.round_code,
@@ -316,15 +312,6 @@ def save_rules(
     try:
         personnel.save_rules(engine, user, version_code, _rules_in(body))
         return _rules_out(personnel.read_rules(engine, user, version_code))
-    except HANDLED as e:
-        raise _errors(e) from None
-
-
-@router.put(V + "/module", responses={403: {}, 404: {}, 422: {}})
-def set_module(request: Request, user: CurrentUser, version_code: str, body: PayModuleIn) -> None:
-    """Turn personnel costs on or off for the round (controllers)."""
-    try:
-        personnel.set_module(engine_of(request), user, version_code, body.on)
     except HANDLED as e:
         raise _errors(e) from None
 

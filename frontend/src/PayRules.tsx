@@ -83,20 +83,6 @@ export default function PayRules({ version, me, onSaved }: { version: string; me
     }
   }
 
-  async function module(on: boolean) {
-    setBusy(true)
-    try {
-      await api.payModule(version, on)
-      setMessage({ kind: 'ok', text: on ? 'Personnel costs are on for this round.' : 'Personnel costs are off for this round.' })
-      load()
-      onSaved()
-    } catch (e) {
-      setMessage({ kind: 'error', text: errorText(e) })
-    } finally {
-      setBusy(false)
-    }
-  }
-
   const minLow = draft.min_group < SAFE_MIN
 
   return (
@@ -110,15 +96,10 @@ export default function PayRules({ version, me, onSaved }: { version: string; me
             {page.workforce_positions
               ? page.on
                 ? 'Positions carry pay; their costs go to the accounts below, on the cost center charged.'
-                : 'Turn them on to cost the round’s positions. Accounts that become personnel accounts are written by the rules only.'
-              : 'They need workforce planning by positions (Setup, step 6).'}
+                : 'The controller turns them on in the round’s Setup, step 6, under Workforce planning. Accounts that become personnel accounts are then written by the rules only.'
+              : 'They need workforce planning by positions: the controller sets both in the round’s Setup, step 6.'}
           </span>
         </div>
-        {me.is_controller && page.may_edit && (page.on || page.workforce_positions) && (
-          <button type="button" className={`su-btn${page.on ? ' ghost' : ' primary'}`} disabled={busy} onClick={() => void module(!page.on)}>
-            {page.on ? 'Turn off' : 'Turn on'}
-          </button>
-        )}
       </section>
 
       {page.on && (

@@ -327,6 +327,7 @@ FTE and headcount per cost center, staff type and category, as month-end levels,
   - [ ] A transfer during the year splits the yearly bonus by months (today it stays with the sending half), and the receiving half's long-service award counts from the person's first entry, not the transfer.
   - [ ] Undo on the pay of positions (the changes are in `position_pay_log` with the change batch).
   - [ ] Paste of salaries from Excel into the pay table.
+  - [ ] **HR's own salary upload,** next to the admin's `staff` dataset: HR downloads a template (number, name, cost center, monthly salary; CSV, Excel or Parquet), fills it, and uploads it on the Personnel costs page, without an admin. The upload is matched to the positions by number; a preview shows rows matched, salaries changed, and rows that match no position or whose cost center differs, before anything is written. Decide whether an upload sets HR's salary or the planned one, and how it relates to a synced `monthly_salary`.
 - [ ] **W-8 Modes per cost center:** a round default with exceptions on the *Cost centers* tab (e.g. positions for the larger departments only).
 - [ ] **W-9 A replacement names the leaver** it replaces (today a free description), so the build-up can show open gaps: leavers without a replacement.
 - [ ] **W-10 Contract changes during the year** (e.g. 100 % to 80 % from September) and long absences (counted in headcount, not in FTE).
@@ -374,6 +375,7 @@ An MCP (Model Context Protocol) server, so a user can connect the LLM client of 
   - The change log records that a batch came through MCP.
   - The admin sees which tokens exist and can revoke them.
   - To decide: whether workflow actions (submit, approve, reject) are offered as tools at all.
+  - **No pay through MCP:** personnel costs (ADR 0022) are left out entirely, as a precaution against data leaks: no tools read or write pay per position, HR's salaries, reviews or rules, whatever the token's user may read in the UI. Totals on personnel accounts reach a sheet tool like any other plan value, with small groups hidden as in the UI.
 - [ ] **M-7 Docs:** connecting common MCP clients, the tools and what each may do, and the data-protection note that the plan data a user reads goes to the LLM provider they connected.
 - [ ] **M-8 Tests:** tools against the test database as the unprivileged role, plus a check with the MCP Inspector.
 

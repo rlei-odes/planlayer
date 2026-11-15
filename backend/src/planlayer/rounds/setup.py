@@ -106,6 +106,8 @@ class Setup:
     actuals_through: date | None = None  # forecasts: the last closed month (ADR 0015)
     # Workforce planning's mode (ADR 0020); None: the round doesn't plan its workforce.
     workforce_mode: Mode | None = None
+    # Personnel costs from positions (ADR 0022).
+    personnel_costs: bool = False
 
 
 @dataclass
@@ -240,6 +242,10 @@ def setup_of(engine: Engine, user: User, code: str) -> SetupView:
                 round_module.c.module == MODULE_WORKFORCE,
             )
         ).scalar()
+        # Imported here: personnel costs build on this module.
+        from planlayer.personnel import module_on
+
+        personnel = module_on(conn, r.version_id)
     return SetupView(
         r,
         copied,
@@ -255,6 +261,7 @@ def setup_of(engine: Engine, user: User, code: str) -> SetupView:
             r.grain,
             r.actuals_through,
             workforce,
+            personnel,
         ),
         actuals,
         len(enabled),
@@ -347,10 +354,16 @@ def save_setup(engine: Engine, actor: User, code: str, setup: Setup) -> None:
         _clear_outside_sets(conn, r)
         _set_productive(conn, r, setup.productive_cost_centers)
         _set_periods(conn, r, setup.grain, setup.actuals_through)
-        # Imported here: workforce planning builds on this module.
+        # Imported here: workforce planning and personnel costs build on this module. Personnel
+        # costs go off before positions do, and come on once the round plans them.
+        from planlayer.personnel import switch
         from planlayer.workforce import set_mode
 
+        if not setup.personnel_costs:
+            switch(conn, r, actor, on=False)
         set_mode(conn, r, setup.workforce_mode)
+        if setup.personnel_costs:
+            switch(conn, r, actor, on=True)
         conn.execute(
             update(planning_round)
             .where(planning_round.c.version_id == r.version_id)
