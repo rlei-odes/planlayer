@@ -22,6 +22,7 @@ from planlayer.store.schema import (
     MODULE_PERSONNEL,
     member,
     pay_account,
+    pay_handover,
     pay_rule,
     pay_rule_step,
     pay_setting,
@@ -65,6 +66,7 @@ class RoundRules:
     rules: Rules
     staff_types: dict[int, StaffTypePay]
     min_group: int
+    review_required: bool = True
 
 
 def load_rules(conn: Connection, version_id: int) -> RoundRules:
@@ -106,6 +108,7 @@ def load_rules(conn: Connection, version_id: int) -> RoundRules:
         ),
         staff_types,
         setting.min_group if setting else DEFAULT_MIN_GROUP,
+        setting.review_required if setting else True,
     )
 
 
@@ -152,10 +155,23 @@ def pay_context(conn: Connection, user: User, version_code: str, cc_code: str) -
         reason = "the cost center is not enabled in this round"
     elif status not in EDITABLE:
         reason = f"the cost center is {status}"
+    elif not user.is_hr and not _handed_over(conn, r.version_id, cc.member_id):
+        reason = "HR hasn't handed this cost center's pay over yet"
     else:
         reason = None
     return PayContext(
         r, cc.member_id, cc.code, cc.name, status, reason, fiscal_periods(conn, r.fiscal_year)
+    )
+
+
+def _handed_over(conn: Connection, version_id: int, cc_id: int) -> bool:
+    return (
+        conn.execute(
+            select(pay_handover.c.version_id).where(
+                pay_handover.c.version_id == version_id, pay_handover.c.cost_center_id == cc_id
+            )
+        ).first()
+        is not None
     )
 
 

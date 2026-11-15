@@ -32,6 +32,7 @@ from planlayer.store.schema import (
     forwarding_account,
     hr_pay,
     member,
+    pay_handover,
     pay_owner_seen,
     pay_reader,
     pay_release,
@@ -87,6 +88,7 @@ class RulesIO:
     bonus_account: str | None
     staff_types: list[StaffTypeIO]
     rules: list[RuleIO]
+    review_required: bool = True  # HR's review before approval (ADR 0024)
 
 
 @dataclass
@@ -159,10 +161,13 @@ def _current(conn: Connection, version_id: int) -> RulesIO:
     ):
         steps.setdefault(s.rule_id, []).append(StepIO(s.years, s.salaries, s.amount))
     return RulesIO(
-        setting.min_group if setting else DEFAULT_MIN_GROUP,
-        names[setting.bonus_account_id].code if setting and setting.bonus_account_id else None,
-        staff_types,
-        [
+        min_group=setting.min_group if setting else DEFAULT_MIN_GROUP,
+        review_required=setting.review_required if setting else True,
+        bonus_account=(
+            names[setting.bonus_account_id].code if setting and setting.bonus_account_id else None
+        ),
+        staff_types=staff_types,
+        rules=[
             RuleIO(
                 cast(Kind, r.kind),
                 r.name,
@@ -264,6 +269,7 @@ def _rows(
         raise EditError("the minimum group size is at least 1")
     setting: dict[str, object] = {
         "min_group": given.min_group,
+        "review_required": given.review_required,
         "bonus_account_id": account(given.bonus_account, "bonus") if given.bonus_account else None,
     }
     staff: list[dict[str, object]] = []
@@ -336,6 +342,8 @@ def save_rules(engine: Engine, user: User, version_code: str, given: RulesIO) ->
         if r.status not in ("setup", "open"):
             raise RoundError(f"the planning round is {r.status}")
         before = _current(conn, r.version_id)
+        if given.review_required != before.review_required and not user.is_hr:
+            raise AccessError("only HR switches HR's review on or off")
         setting, staff, rules = _rows(conn, r, given)
         old = pay_accounts(conn, r.version_id)
         new = (
@@ -434,9 +442,9 @@ def switch(conn: Connection, r: RoundRef, user: User, *, on: bool) -> None:
     clear(conn, r, pay_accounts(conn, vid))
     with system_rights(conn, actor=user.login):
         conn.execute(delete(position_pay).where(position_pay.c.version_id == vid))
-        for rights_table in (pay_reader, pay_owner_seen, pay_release):
+        for rights_table in (pay_reader, pay_owner_seen, pay_release, pay_handover, pay_review):
             conn.execute(delete(rights_table).where(rights_table.c.version_id == vid))
-    for table in (pay_rule, pay_staff_type, pay_setting, pay_small_group, pay_review):
+    for table in (pay_rule, pay_staff_type, pay_setting, pay_small_group):
         conn.execute(delete(table).where(table.c.version_id == vid))
     conn.execute(
         delete(round_module).where(
@@ -461,6 +469,7 @@ def carry(conn: Connection, source: RoundRef, target: RoundRef, actor: str) -> N
             version_id=t,
             module=MODULE_PERSONNEL,
             min_group=setting.min_group if setting else DEFAULT_MIN_GROUP,
+            review_required=setting.review_required if setting else True,
             bonus_account_id=setting.bonus_account_id if setting else None,
             changed_by=actor,
         )

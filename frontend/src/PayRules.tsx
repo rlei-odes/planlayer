@@ -273,6 +273,32 @@ export default function PayRules({ version, me, onSaved }: { version: string; me
               />
               <span className="su-hint">Bonuses are yearly amounts per position, spread over the months worked.</span>
             </label>
+            <div className="su-field">
+              Review
+              <div className="seg" role="group" aria-label="Review">
+                {(
+                  [
+                    [true, 'Before approval'],
+                    [false, 'Off'],
+                  ] as const
+                ).map(([on, label]) => (
+                  <button
+                    key={label}
+                    type="button"
+                    aria-pressed={draft.review_required === on}
+                    disabled={!editable || !me.is_hr}
+                    onClick={() => setDraft({ ...draft, review_required: on })}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <span className="su-hint">
+                {draft.review_required
+                  ? 'A cost center is approved once HR has confirmed its pay. Set by HR.'
+                  : 'Approval doesn’t wait for HR. HR still hands each cost center’s pay over. Set by HR.'}
+              </span>
+            </div>
             <label className="su-field pc-min">
               Minimum group size
               <input

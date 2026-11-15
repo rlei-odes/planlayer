@@ -352,6 +352,8 @@ def release(engine: Engine, user: User, version_code: str, on: bool) -> None:
         r = pay_round(conn, version_code)
         if released(conn, r.version_id) == on:
             return
+        if on and r.status != "open":
+            raise EditError("the controller opens the round first; then HR releases access")
         if on:
             conn.execute(
                 insert(pay_release).values(version_id=r.version_id, released_by=user.login)

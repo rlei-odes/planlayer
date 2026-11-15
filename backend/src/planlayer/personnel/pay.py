@@ -30,6 +30,7 @@ from planlayer.store.schema import (
     fact_cost_center,
     hr_pay,
     member,
+    pay_handover,
     pay_review,
     position_pay,
     workforce_position,
@@ -94,6 +95,10 @@ class PayPage:
     may_review: bool
     may_charge: bool
     charge_targets: list[tuple[str, str]] = field(default_factory=list)  # code, name
+    # The order of the round (ADR 0024): access released, pay handed over, review switched on.
+    released: bool = False
+    handover: Review | None = None  # who handed it over, and when
+    review_required: bool = True
 
 
 def _code_names(conn: Connection, ids: set[int]) -> dict[int, tuple[str, str]]:
@@ -196,6 +201,15 @@ def read_page(engine: Engine, user: User, version_code: str, cc_code: str) -> Pa
                 pay_review.c.cost_center_id == ctx.cost_center_id,
             )
         ).first()
+        from planlayer.personnel.rights import released as round_released
+
+        is_released = round_released(conn, ctx.version_id)
+        handover = conn.execute(
+            select(pay_handover.c.handed_by, pay_handover.c.handed_at).where(
+                pay_handover.c.version_id == ctx.version_id,
+                pay_handover.c.cost_center_id == ctx.cost_center_id,
+            )
+        ).first()
         targets: list[tuple[str, str]] = []
         if user.is_hr:
             enabled = [m for m, on in enabled_members(conn, ctx.version_id).items() if on]
@@ -216,9 +230,12 @@ def read_page(engine: Engine, user: User, version_code: str, cc_code: str) -> Pa
         positions,
         totals,
         Review(review.confirmed_by, review.confirmed_at) if review else None,
-        may_review=user.is_hr and r_.status in ("setup", "open"),
+        may_review=user.is_hr and r_.status == "open",
         may_charge=user.is_hr and ctx.lock_reason is None,
         charge_targets=targets,
+        released=is_released,
+        handover=Review(handover.handed_by, handover.handed_at) if handover else None,
+        review_required=rules.review_required,
     )
 
 
@@ -230,6 +247,7 @@ class PayUnit:
     positions: int
     small_groups: int
     confirmed: bool
+    handed_over: bool = False
 
 
 def units(engine: Engine, user: User, version_code: str) -> tuple[bool, list[PayUnit]]:
@@ -251,6 +269,13 @@ def units(engine: Engine, user: User, version_code: str) -> tuple[bool, list[Pay
             ).all()
         )
         small = small_groups(conn, r.version_id)
+        handed = set(
+            conn.execute(
+                select(pay_handover.c.cost_center_id).where(
+                    pay_handover.c.version_id == r.version_id
+                )
+            ).scalars()
+        )
         confirmed = set(
             conn.execute(
                 select(pay_review.c.cost_center_id).where(pay_review.c.version_id == r.version_id)
@@ -263,6 +288,7 @@ def units(engine: Engine, user: User, version_code: str) -> tuple[bool, list[Pay
                 counts.get(m, 0),
                 len(small.get(m, [])),
                 m in confirmed,
+                m in handed,
             )
             for m in planned
         ]
@@ -367,7 +393,7 @@ def confirm(engine: Engine, user: User, version_code: str, cc_code: str, on: boo
     user.require_hr()
     with unit_of_work(engine, user) as conn:
         ctx = pay_context(conn, user, version_code, cc_code)
-        if ctx.round.status not in ("setup", "open"):
+        if ctx.round.status != "open":
             raise EditError(not_open(ctx.round.status))
         where = (
             pay_review.c.version_id == ctx.version_id,
@@ -386,11 +412,14 @@ def confirm(engine: Engine, user: User, version_code: str, cc_code: str, on: boo
 
 def needs_review(conn: Connection, version_id: int, cc_ids: list[int]) -> set[int]:
     """Of ``cc_ids``, those with positions in a personnel costs round and no confirmation by
-    HR: they can't be approved yet (ADR 0022). Read with the system user's rights, as the
-    approver may not read the positions."""
-    from planlayer.personnel.common import module_on
+    HR: they can't be approved yet (ADR 0022), unless HR switched the review off for the round
+    (ADR 0024). Read with the system user's rights, as the approver may not read the
+    positions."""
+    from planlayer.personnel.common import load_rules, module_on
 
     if not cc_ids or not module_on(conn, version_id):
+        return set()
+    if not load_rules(conn, version_id).review_required:
         return set()
     with system_rights(conn):
         with_positions = set(
@@ -460,3 +489,31 @@ def continue_pay(conn: Connection, old_id: int, new_id: int) -> None:
             changed_by=old.changed_by,
         )
     )
+
+
+def hand_over(engine: Engine, user: User, version_code: str, cc_code: str, on: bool) -> None:
+    """HR hands a cost center's pay over to its readers, who edit it from then on, or takes the
+    handover back (ADR 0024). Only in an open round whose access HR has released."""
+    from planlayer.personnel.rights import released
+
+    user.require_hr()
+    with unit_of_work(engine, user) as conn:
+        ctx = pay_context(conn, user, version_code, cc_code)
+        where = (
+            pay_handover.c.version_id == ctx.version_id,
+            pay_handover.c.cost_center_id == ctx.cost_center_id,
+        )
+        if not on:
+            conn.execute(delete(pay_handover).where(*where))
+            return
+        if ctx.round.status != "open":
+            raise EditError("the controller opens the round first; then HR hands pay over")
+        if not released(conn, ctx.version_id):
+            raise EditError("release access control first; then hand pay over")
+        conn.execute(
+            pg_insert(pay_handover)
+            .values(
+                version_id=ctx.version_id, cost_center_id=ctx.cost_center_id, handed_by=user.login
+            )
+            .on_conflict_do_nothing()
+        )

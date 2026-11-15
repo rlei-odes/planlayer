@@ -247,6 +247,15 @@ Mid-size manufacturer of industrial pumps and valves, ~400 employees.
     - [ ] Decide whether a new round copies line spreads from the round it is set up like (today it starts without them, like sheet accounts).
 - [ ] **E-06** Top-down spreading from totals (proportional / equal / profile) and spread profiles.
 - [ ] **E-07** Workflow: submit → approve → lock per version × cost center, with database-enforced locks, and the status page rolled up by department and hierarchy node (T-20). The controller's publish action (T-21).
+    - [ ] Closing a round with cost centers not approved: list them and ask for confirmation, or refuse until every planned cost center is approved.
+    - [ ] "Changed since approval": forwarding charges and personnel totals are recalculated whatever the status; mark an approved cost center whose values moved since, with the difference, on the Status page and the sheet; optionally the approver acknowledges it.
+    - [ ] *Recall*: the planner takes a submission back (submitted → in progress) while it isn't approved.
+    - [ ] "Returned": a rejected cost center shows the rejection and its comment on the sheet and on the planner's Home until the next submit.
+    - [ ] HR's review state on the Status page and next to *Approve*, so the approver sees it before trying.
+    - [ ] Transfers still proposed when a round closes: cancel them with a reason, or refuse closing while any wait.
+    - [ ] Back to setup: an open round returns to `setup` while every cost center is still *not started*.
+    - [ ] Small groups on the Status page; decide whether they also block approval.
+    - [ ] Item lists in a closed round: decide whether they become read only (notes stay writable).
 - [ ] **E-08** Change log and cell comments.
     - [ ] Mark cells with comments by a corner triangle, as spreadsheets do (a CSS class per cell through `cellProperties`); the same mark can flag cells someone else changed since the sheet was loaded.
 - [ ] **E-09** OIDC and LDAPS login (T-22), mapping an identity to a user by login or e-mail, and roles from directory groups. Users, roles, scopes, responsibilities and the development login are built (ADR 0009).
@@ -345,6 +354,8 @@ FTE and headcount per cost center, staff type and category, as month-end levels,
   - [ ] Encryption at rest of pay columns (`pgcrypto`, key outside the database) against DBAs, backups and dumps; the key is set up in the guided installation (E-11), and the docs tell HR to keep it in a password manager.
   - [x] HR controls who reads pay per round and cost center, proposed from the source's owners, with suggestions (deputies, approvers above) and any user on request; nobody but HR reads pay until HR releases the round; every change of these rights and of the HR role in a log every HR user reads ([ADR 0023](docs/adr/0023-pay-rights-by-hr.md)).
   - [ ] Notify HR (Home task, later e-mail) when a source owner changes after the release.
+  - [x] The order of a personnel costs round: the controller opens it, HR releases access, then hands pay over per cost center; HR's review before approval optional per round; HR's next step on Home ([ADR 0024](docs/adr/0024-order-of-a-personnel-costs-round.md)).
+  - [ ] Hand over several cost centers at once (all, a node, a selection) from *Access control*, with the handover state per row.
   - [ ] Actuals on the personnel accounts of a small cost center come from the ledger as they are; decide whether to mask them like plan values.
   - [ ] The admin's source preview of the `staff` dataset shows `monthly_salary`; hide pay columns in the preview.
   - [ ] Free text (descriptions, notes, item lists) can still carry pay whatever the rules say: say so in the user docs.

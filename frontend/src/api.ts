@@ -251,6 +251,10 @@ export const api = {
     fetch(`${v(version)}/personnel/${encodeURIComponent(code)}`).then((r) => json<PayPage>(r)),
   savePay: (version: string, code: string, id: number, pay: S.PayIn) =>
     send('PUT', `${v(version)}/personnel/${encodeURIComponent(code)}/positions/${id}`, pay).then((r) => json<PayPage>(r)),
+  handOverPay: (version: string, code: string, handedOver: boolean) =>
+    send('PUT', `${v(version)}/personnel/${encodeURIComponent(code)}/handover`, { handed_over: handedOver }).then((r) =>
+      json<PayPage>(r),
+    ),
   reviewPay: (version: string, code: string, confirmed: boolean) =>
     send('PUT', `${v(version)}/personnel/${encodeURIComponent(code)}/review`, { confirmed }).then((r) => json<PayPage>(r)),
   payRules: (version: string) => fetch(`${v(version)}/personnel/rules`).then((r) => json<PayRulesPage>(r)),

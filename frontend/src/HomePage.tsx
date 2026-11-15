@@ -106,7 +106,7 @@ export default function HomePage({
   const assigned = threads.filter((t) => t.reason === 'assigned')
   const approvals = (home?.rounds ?? []).filter((w) => w.to_approve > 0)
   // HR (ADR 0022): small groups to charge elsewhere, and submitted pay to review.
-  const payTasks = (home?.rounds ?? []).filter((w) => w.small_groups.length > 0 || w.to_review.length > 0)
+  const payTasks = (home?.rounds ?? []).filter((w) => w.small_groups.length > 0 || w.to_review.length > 0 || w.pay_step)
   const taskCount = toDecide.length + assigned.length + approvals.length + payTasks.length
   const loaded = home !== null && (notes !== null || !readsNotes)
 
@@ -163,6 +163,10 @@ export default function HomePage({
                 <span className="tr-line">
                   <strong>
                     {[
+                      w.pay_step === 'release' ? 'Release access control' : '',
+                      w.pay_step === 'hand_over'
+                        ? `Hand over pay of ${w.to_hand_over.length} cost center${w.to_hand_over.length === 1 ? '' : 's'}`
+                        : '',
                       w.to_review.length ? `${w.to_review.length} cost center${w.to_review.length === 1 ? '' : 's'} to review` : '',
                       w.small_groups.length
                         ? `${w.small_groups.length} with small groups to charge elsewhere`
@@ -172,13 +176,19 @@ export default function HomePage({
                       .join(' · ')}{' '}
                     in {w.round.name}
                   </strong>
-                  <span className="ink-3">{[...new Set([...w.to_review, ...w.small_groups])].slice(0, 8).join(', ')}</span>
+                  <span className="ink-3">
+                    {w.pay_step === 'release'
+                      ? 'The round is open: check who has access, then release it.'
+                      : [...new Set([...w.to_hand_over, ...w.to_review, ...w.small_groups])].slice(0, 8).join(', ')}
+                  </span>
                 </span>
                 <span className="tr-actions">
                   <button
                     type="button"
                     className="su-btn sm"
-                    onClick={() => onOpenSheet(w.round.code, w.small_groups[0] ?? w.to_review[0], 'personnel')}
+                    onClick={() =>
+                      onOpenSheet(w.round.code, w.to_hand_over[0] ?? w.small_groups[0] ?? w.to_review[0] ?? '', 'personnel')
+                    }
                   >
                     Open personnel costs
                   </button>

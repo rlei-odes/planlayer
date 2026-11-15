@@ -28,7 +28,7 @@ from planlayer.domain.workflow import STATUSES, Status, is_overdue
 from planlayer.personnel import module_on, needs_review, small_groups
 from planlayer.personnel.rights import listed, released
 from planlayer.rounds import RoundRef, rounds
-from planlayer.store.schema import member, workflow_status
+from planlayer.store.schema import member, pay_handover, workflow_status, workforce_position
 from planlayer.store.uow import unit_of_work
 from planlayer.workflow import enabled_members
 from planlayer.workforce import mode_of
@@ -57,6 +57,9 @@ class RoundWork:
     to_review: list[str] = field(default_factory=list)
     # Personnel costs in the round: whether HR has released pay to its readers (ADR 0023).
     pay_released: bool | None = None
+    # HR's next step in the round (ADR 0024): release access, then hand pay over per cost center.
+    pay_step: Literal["release", "hand_over"] | None = None
+    to_hand_over: list[str] = field(default_factory=list)
 
 
 def my_work(engine: Engine, user: User, today: date) -> list[RoundWork]:
@@ -105,6 +108,8 @@ def my_work(engine: Engine, user: User, today: date) -> list[RoundWork]:
             assigned = approvers(conn, submitted)
             small: list[str] = []
             review: list[str] = []
+            step: Literal["release", "hand_over"] | None = None
+            hand_over: list[str] = []
             if user.is_hr and pay:
                 waiting = [m for m in enabled if statuses.get(m) == "submitted"]
                 codes = dict(
@@ -116,8 +121,36 @@ def my_work(engine: Engine, user: User, today: date) -> list[RoundWork]:
                 )
                 small = sorted(codes[m] for m in small_groups(conn, r.version_id) if m in codes)
                 review = sorted(codes[m] for m in needs_review(conn, r.version_id, waiting))
+                if not pay_released:
+                    step = "release"
+                else:
+                    handed = set(
+                        conn.execute(
+                            select(pay_handover.c.cost_center_id).where(
+                                pay_handover.c.version_id == r.version_id
+                            )
+                        ).scalars()
+                    )
+                    with_positions = set(
+                        conn.execute(
+                            select(workforce_position.c.cost_center_id).where(
+                                workforce_position.c.version_id == r.version_id
+                            )
+                        ).scalars()
+                    )
+                    hand_over = sorted(
+                        codes[m] for m in enabled if m in with_positions and m not in handed
+                    )
+                    step = "hand_over" if hand_over else None
 
-        work = RoundWork(r, small_groups=small, to_review=review, pay_released=pay_released)
+        work = RoundWork(
+            r,
+            small_groups=small,
+            to_review=review,
+            pay_released=pay_released,
+            pay_step=step,
+            to_hand_over=hand_over,
+        )
         for cc in sorted(shown, key=lambda m: names[m].code):
             status = statuses.get(cc, "not_started")
             sheets: list[Sheet] = []

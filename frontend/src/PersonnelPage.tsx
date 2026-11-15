@@ -70,6 +70,23 @@ export default function PersonnelPage({
   }, [version, unit, tab, showError])
   useEffect(load, [load])
 
+  async function handOver(on: boolean) {
+    if (!page) return
+    setBusy(true)
+    try {
+      setPage(await api.handOverPay(version, page.cost_center_code, on))
+      setMessage({
+        kind: 'ok',
+        text: on ? `Pay of ${page.cost_center_code} handed over: its people can edit it now.` : 'Handover taken back.',
+      })
+      loadUnits()
+    } catch (e) {
+      showError(e)
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function review(confirmed: boolean) {
     if (!page) return
     setBusy(true)
@@ -199,6 +216,7 @@ export default function PersonnelPage({
                 STATUS_LABEL[u.status],
                 `${u.positions} position${u.positions === 1 ? '' : 's'}`,
                 u.small_groups ? `${u.small_groups} small` : '',
+                u.handed_over ? 'handed over' : '',
                 u.confirmed ? 'confirmed' : '',
               ]
                 .filter(Boolean)
@@ -226,6 +244,33 @@ export default function PersonnelPage({
       {page?.lock_reason && <div className="su-note">{lockText(page)}</div>}
 
       {page && (
+        <section className={`su-card pc-review${page.handover ? ' done' : ''}`}>
+          <div>
+            <strong>{page.handover ? 'Handed over' : 'Not handed over'}</strong>
+            <span className="su-hint">
+              {page.handover
+                ? `${page.handover.confirmed_by}, ${DAY.format(new Date(page.handover.confirmed_at))}. The people with access edit this cost center’s pay.`
+                : page.round_status !== 'open'
+                  ? 'HR prepares the pay; once the controller opens the round and HR releases access, HR hands it over.'
+                  : !page.released
+                    ? 'HR releases access control first, then hands each cost center’s pay over.'
+                    : 'The people with access see the pay read only until HR hands it over.'}
+            </span>
+          </div>
+          {me.is_hr && (
+            <button
+              type="button"
+              className={`su-btn${page.handover ? ' ghost' : ' primary'}`}
+              disabled={busy || (!page.handover && (page.round_status !== 'open' || !page.released))}
+              onClick={() => void handOver(!page.handover)}
+            >
+              {page.handover ? 'Take back' : 'Hand over'}
+            </button>
+          )}
+        </section>
+      )}
+
+      {page?.review_required && (
         <section className={`su-card pc-review${page.review ? ' done' : ''}`}>
           <div>
             <strong>{page.review ? 'Confirmed by HR' : 'Waiting for HR’s review'}</strong>
@@ -427,6 +472,8 @@ function lockText(page: PayPage): string {
   if (page.round_status === 'setup')
     return 'This round is still being set up. HR prepares pay meanwhile; you can change it once the controller opens the round.'
   if (page.round_status !== 'open') return `This round is ${page.round_status}: pay is shown as it was planned and can’t change.`
+  if (!page.handover && page.status !== 'submitted' && page.status !== 'approved')
+    return 'HR prepares this cost center’s pay; you can change it once HR hands it over.'
   if (page.status === 'submitted' || page.status === 'approved')
     return `${page.cost_center_code} is ${STATUS_LABEL[page.status].toLowerCase()}: pay can change again once the cost center is reopened.`
   return `Read only: ${page.lock_reason}.`

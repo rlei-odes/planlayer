@@ -995,6 +995,8 @@ pay_setting = Table(
     Column("version_id", SmallInteger, primary_key=True),
     *_personnel(),
     Column("min_group", SmallInteger, nullable=False, server_default="3"),
+    # HR's review before approval (ADR 0024); HR may switch it off for the round.
+    Column("review_required", Boolean, nullable=False, server_default="true"),
     Column("bonus_account_id", Integer, ForeignKey("member.member_id")),
     Column("changed_by", Text),
     Column("changed_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
@@ -1129,6 +1131,18 @@ pay_release = Table(
     *_personnel(),
     Column("released_by", Text, nullable=False),
     Column("released_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)
+
+# HR hands a cost center's pay over to its readers, who edit it from then on (ADR 0024).
+pay_handover = Table(
+    "pay_handover",
+    metadata,
+    Column("version_id", SmallInteger, nullable=False),
+    *_personnel(),
+    Column("cost_center_id", Integer, ForeignKey("member.member_id"), nullable=False),
+    Column("handed_by", Text, nullable=False),
+    Column("handed_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    PrimaryKeyConstraint("version_id", "cost_center_id"),
 )
 
 # Every change of pay rights and of the HR role, written by triggers; read by HR.

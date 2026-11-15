@@ -538,8 +538,20 @@ def _lock_fact_cost_center(s: str) -> None:
     """)
 
 
-def _lock_position_pay(s: str, *, hr_edits_hr_salary: bool) -> None:
-    """The lock on pay; HR's salary changes only by the system user, or also by HR (ADR 0023)."""
+def _lock_position_pay(s: str, *, hr_edits_hr_salary: bool, handover: bool = False) -> None:
+    """The lock on pay; HR's salary changes only by the system user, or also by HR (ADR 0023);
+    with ``handover``, others change pay only once HR has handed the cost center over."""
+    handed = (
+        f"""
+            IF NOT {s}.writes_as_hr() AND NOT EXISTS (
+                    SELECT 1 FROM {s}.pay_handover h
+                    WHERE h.version_id = k.version_id AND h.cost_center_id = cc) THEN
+                RAISE EXCEPTION 'plan values are locked: HR hasn''t handed this cost center''s '
+                    'pay over yet' USING ERRCODE = 'PL001';
+            END IF;"""
+        if handover
+        else ""
+    )
     hr_note = "; HR corrects it" if hr_edits_hr_salary else ""
     hr_may = f" AND NOT {s}.writes_as_hr()" if hr_edits_hr_salary else ""
     hr_message = (
@@ -590,7 +602,7 @@ def _lock_position_pay(s: str, *, hr_edits_hr_salary: bool) -> None:
             END IF;
             IF TG_OP = 'DELETE' OR system THEN
                 RETURN NULL;
-            END IF;
+            END IF;{handed}
             IF TG_OP = 'UPDATE' THEN
                 was_hr := OLD.hr_salary;
                 was_charged := OLD.charged_to_id;

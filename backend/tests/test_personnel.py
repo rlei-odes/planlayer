@@ -44,6 +44,7 @@ def engine(migrated: Settings, client: TestClient) -> Iterator[Engine]:
 def rules(**changes: object) -> dict[str, object]:
     return {
         "min_group": 1,
+        "review_required": True,
         "bonus_account": None,
         "staff_types": [
             {"code": "EMP", "account": "6000", "typed": False},
@@ -64,6 +65,9 @@ def start(client: TestClient, **changes: object) -> dict:  # type: ignore[type-a
     response = client.put(f"{PAY}/rules", json=rules(**changes))
     assert response.status_code == 200, response.text
     assert client.put(f"{PAY}/access/release", json={"released": True}).status_code == 200
+    for cc in ("CC1", "CC2"):
+        body = {"handed_over": True}
+        assert client.put(f"{PAY}/{cc}/handover", json=body).status_code == 200
     page = client.get(f"{PAY}/CC1").json()
     login(client, CONTROLLER)
     return page  # type: ignore[no-any-return]
@@ -361,3 +365,62 @@ def test_hr_corrects_hrs_salary(engine: Engine, client: TestClient) -> None:
     page = client.put(url, json={"salary": "4200", "hr_salary": "4100"}).json()
     assert by_code(page)["P001"]["hr_salary"] == "4100.00"
     assert by_code(page)["P001"]["salary"] == "4200.00"
+
+
+def test_the_order_of_a_personnel_costs_round(engine: Engine, client: TestClient) -> None:
+    """Prepare in setup; release once the controller opened the round; hand over per cost
+    center; then the owner edits pay (ADR 0024)."""
+    system = access.system_user(engine)
+    rounds.create_round(engine, system, "S2026", "Setup 2026", "budget", 2026)
+    url = "/api/rounds/S2026/setup"
+    body = {
+        **client.get(url).json()["setup"],
+        "workforce_mode": "positions",
+        "personnel_costs": True,
+    }
+    assert client.put(url, json=body).status_code == 200
+    assert client.post("/api/versions/S2026/workforce/CC1/hr").status_code == 200
+    pay = "/api/versions/S2026/personnel"
+    login(client, HR)
+    # In setup HR prepares: rules and salaries yes, release and confirmations no.
+    assert client.put(f"{pay}/rules", json=rules()).status_code == 200
+    page = client.get(f"{pay}/CC1").json()
+    p001 = by_code(page)["P001"]
+    url_p = f"{pay}/CC1/positions/{p001['position_id']}"
+    assert client.put(url_p, json={"hr_salary": "4100"}).status_code == 200
+    assert client.put(f"{pay}/access/release", json={"released": True}).status_code == 422
+    assert client.put(f"{pay}/CC1/review", json={"confirmed": True}).status_code == 422
+    assert client.put(f"{pay}/CC1/handover", json={"handed_over": True}).status_code == 422
+    rounds.set_round_status(engine, system, "S2026", "open")
+    # Open: hand over waits for the release.
+    assert client.put(f"{pay}/CC1/handover", json={"handed_over": True}).status_code == 422
+    assert client.get("/api/home").json()["rounds"][-1]["pay_step"] in ("release", None)
+    assert client.put(f"{pay}/access/release", json={"released": True}).status_code == 200
+    # Released: the owner reads, but edits only after the handover.
+    login(client, OWNER)
+    page = client.get(f"{pay}/CC1").json()
+    assert page["lock_reason"] == "HR hasn't handed this cost center's pay over yet"
+    assert client.put(url_p, json={"salary": "4200"}).status_code == 423
+    login(client, HR)
+    work = next(
+        w for w in client.get("/api/home").json()["rounds"] if w["round"]["code"] == "S2026"
+    )
+    assert work["pay_step"] == "hand_over" and work["to_hand_over"] == ["CC1"]
+    page = client.put(f"{pay}/CC1/handover", json={"handed_over": True}).json()
+    assert page["handover"]["confirmed_by"] == HR
+    login(client, OWNER)
+    assert client.put(url_p, json={"salary": "4200"}).status_code == 200
+
+
+def test_hr_can_switch_the_review_off(engine: Engine, client: TestClient) -> None:
+    start(client, review_required=False)
+    login(client, OWNER)
+    act = {"action": "submit", "cost_centers": ["CC1"]}
+    assert client.post(f"/api/versions/{R}/workflow", json=act).status_code == 200
+    login(client, CONTROLLER)
+    act = {"action": "approve", "cost_centers": ["CC1"]}
+    assert client.post(f"/api/versions/{R}/workflow", json=act).status_code == 200
+    # Only HR switches it.
+    rules_now = client.get(f"{PAY}/rules").json()["rules"]
+    response = client.put(f"{PAY}/rules", json={**rules_now, "review_required": True})
+    assert response.status_code == 403

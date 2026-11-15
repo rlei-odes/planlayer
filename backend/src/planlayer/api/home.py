@@ -33,6 +33,9 @@ class RoundWorkOut(BaseModel):
     to_review: list[str]
     # Personnel costs in the round: whether HR released pay to its readers; null without them.
     pay_released: bool | None
+    # HR's next step (ADR 0024): release access, then hand pay over; and what is left to hand.
+    pay_step: Literal["release", "hand_over"] | None
+    to_hand_over: list[str]
 
 
 class HomeOut(BaseModel):
@@ -54,7 +57,8 @@ def start(request: Request, user: CurrentUser) -> HomeOut:
         tasks=note_tasks
         + decide
         + sum(1 for w in work if w.to_approve)
-        + sum(1 for w in work if w.small_groups or w.to_review),
+        + sum(1 for w in work if w.small_groups or w.to_review)
+        + sum(1 for w in work if w.pay_step),
         transfers=[transfer_out(t) for t in transfers],
         rounds=[
             RoundWorkOut(
@@ -74,6 +78,8 @@ def start(request: Request, user: CurrentUser) -> HomeOut:
                 small_groups=w.small_groups,
                 to_review=w.to_review,
                 pay_released=w.pay_released,
+                pay_step=w.pay_step,
+                to_hand_over=w.to_hand_over,
             )
             for w in work
         ],

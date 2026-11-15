@@ -68,13 +68,16 @@ export default function PayAccess({ version, onChanged }: { version: string; onC
           <span className="su-hint">
             {released
               ? `By ${rights.released_by}, ${WHEN.format(new Date(rights.released_at!))}. Changes to the lists below apply at once.`
-              : 'Only HR reads pay in this round. Check the access list below, then release: from then on the people listed see their cost centers’ pay; their Pay buttons on Home stay inactive until then.'}
+              : rights.round_status !== 'open'
+                ? 'Only HR reads pay in this round. Prepare the access list now; HR releases it once the controller opens the round.'
+                : 'Only HR reads pay in this round. Check the access list below, then release: the people listed then see their cost centers’ pay, read only until HR hands each one over.'}
           </span>
         </div>
         <button
           type="button"
           className={`su-btn${released ? ' ghost' : ' primary'}`}
-          disabled={busy}
+          disabled={busy || (!released && rights.round_status !== 'open')}
+          title={!released && rights.round_status !== 'open' ? 'The controller opens the round first' : undefined}
           onClick={() =>
             void change(
               () => api.releasePay(version, !released),

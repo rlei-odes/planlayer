@@ -69,6 +69,9 @@ class PayPageOut(BaseModel):
     may_review: bool
     may_charge: bool
     charge_targets: list[CodeName]
+    released: bool  # access control released (ADR 0023)
+    handover: PayReviewOut | None  # HR handed the pay over to its readers (ADR 0024)
+    review_required: bool  # approval waits for HR's review
     batch_id: str | None = None
 
 
@@ -79,6 +82,7 @@ class PayUnitOut(BaseModel):
     positions: int
     small_groups: int
     confirmed: bool
+    handed_over: bool
 
 
 class PayUnitsOut(BaseModel):
@@ -140,6 +144,10 @@ class PayReviewIn(BaseModel):
     confirmed: bool
 
 
+class PayHandoverIn(BaseModel):
+    handed_over: bool
+
+
 class PayStepIO(BaseModel):
     years: int
     salaries: str | None = None
@@ -168,6 +176,7 @@ class PayStaffTypeIO(BaseModel):
 
 class PayRulesIO(BaseModel):
     min_group: int
+    review_required: bool  # HR's review before approval; HR switches it (ADR 0024)
     bonus_account: str | None
     staff_types: list[PayStaffTypeIO]
     rules: list[PayRuleIO]
@@ -231,6 +240,13 @@ def _page_out(p: personnel.PayPage, batch_id: str | None = None) -> PayPageOut:
         may_review=p.may_review,
         may_charge=p.may_charge,
         charge_targets=[CodeName(code=c, name=n) for c, n in p.charge_targets],
+        released=p.released,
+        handover=(
+            PayReviewOut(confirmed_by=p.handover.confirmed_by, confirmed_at=p.handover.confirmed_at)
+            if p.handover
+            else None
+        ),
+        review_required=p.review_required,
         batch_id=batch_id,
     )
 
@@ -250,10 +266,13 @@ def _number(value: str | None, what: str) -> Decimal | None:
 
 def _rules_in(body: PayRulesIO) -> personnel.RulesIO:
     return personnel.RulesIO(
-        body.min_group,
-        body.bonus_account or None,
-        [personnel.StaffTypeIO(t.code, t.account or None, t.typed) for t in body.staff_types],
-        [
+        min_group=body.min_group,
+        review_required=body.review_required,
+        bonus_account=body.bonus_account or None,
+        staff_types=[
+            personnel.StaffTypeIO(t.code, t.account or None, t.typed) for t in body.staff_types
+        ],
+        rules=[
             personnel.RuleIO(
                 r.kind,
                 r.name,
@@ -291,6 +310,7 @@ def _rules_out(p: personnel.RulesPage) -> PayRulesPageOut:
         periods=p.periods,
         rules=PayRulesIO(
             min_group=r.min_group,
+            review_required=r.review_required,
             bonus_account=r.bonus_account,
             staff_types=[
                 PayStaffTypeIO(
@@ -341,6 +361,7 @@ def units(request: Request, user: CurrentUser, version_code: str) -> PayUnitsOut
                 positions=u.positions,
                 small_groups=u.small_groups,
                 confirmed=u.confirmed,
+                handed_over=u.handed_over,
             )
             for u in found
         ],
@@ -473,6 +494,19 @@ def review(
     engine = engine_of(request)
     try:
         personnel.confirm(engine, user, version_code, cc_code, body.confirmed)
+        return _page_out(personnel.read_page(engine, user, version_code, cc_code))
+    except HANDLED as e:
+        raise _errors(e) from None
+
+
+@router.put(V + "/{cc_code}/handover", responses={403: {}, 404: {}, 422: {}})
+def handover(
+    request: Request, user: CurrentUser, version_code: str, cc_code: str, body: PayHandoverIn
+) -> PayPageOut:
+    """HR hands the cost center's pay over to its readers, or takes it back (ADR 0024)."""
+    engine = engine_of(request)
+    try:
+        personnel.hand_over(engine, user, version_code, cc_code, body.handed_over)
         return _page_out(personnel.read_page(engine, user, version_code, cc_code))
     except HANDLED as e:
         raise _errors(e) from None

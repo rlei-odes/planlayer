@@ -59,3 +59,71 @@ Approval happens per cost center, with a status page that rolls up by department
 - D-21 adds the approver role, scoped by node assignment, next to planners (owner and grants) and the controller.
 - E-07 builds the transitions, the status page and bulk approval. Email notifications on submit, reject and approve come after v1.
 - Publishing (T-21) can take a round's approved cost centers only, or the whole round. That is part of D-12.
+
+## Statuses across the app
+
+The statuses this decision set up are joined by those of later modules. This section lists all of them and how they combine; each module's ADR holds its own reasons.
+
+### The statuses
+
+| Status | Values | Kept per | Set by | Defined in |
+|---|---|---|---|---|
+| Round status | `setup`, `open`, `closed` | round | controller | ADR 0007, this ADR |
+| Cost center planned | enabled, not enabled | round × cost center | controller (setup) | ADR 0007, ADR 0014 |
+| Workflow status | `not_started`, `in_progress`, `submitted`, `approved` | round × cost center | planner, approver, controller | this ADR |
+| Closed months | months up to *actuals through* | round (forecasts) | controller (setup) | ADR 0015 |
+| Productive | yes, no | round × cost center | controller (setup) | ADR 0013 |
+| Transfer | `proposed`, `accepted`, `declined`, `cancelled` | position | sending and receiving side | ADR 0021 |
+| Personnel costs | on, off | round | controller (setup) | ADR 0022 |
+| Pay release | released, not released | round | HR, once the round is open | ADR 0023, ADR 0024 |
+| Pay handover | handed over, not handed over | round × cost center | HR, once access is released | ADR 0024 |
+| Pay access | listed, not listed | round × cost center × user | HR | ADR 0023 |
+| Proposed owner | decided, proposal | round × cost center | source sync, HR | ADR 0023 |
+| HR review | confirmed, not confirmed; optional per round | round × cost center | HR, in an open round; withdrawn by others' changes | ADR 0022, ADR 0024 |
+| Small group | small, not small | round × cost center × personnel account | recompute, from the minimum group size | ADR 0022 |
+| Note thread | open, resolved | line | anyone who reads the line | ADR 0017 |
+
+### Round status × who writes what
+
+| What | `setup` | `open` | `closed` |
+|---|---|---|---|
+| Setup (forms, columns, scope, modules, rules) | controller; personnel cost rules HR and controller | controller; personnel cost rules HR and controller | nothing (reopen first) |
+| Plan values, hours, workforce, positions | controller (preparing; no status moves) | planners and controller, while the cost center is editable | nothing |
+| Pay of positions | HR (preparing) | HR; the people with access once HR has handed the cost center over; while the cost center is editable | nothing |
+| Access lists | HR | HR | HR |
+| Release, handover | nothing | HR | nothing new; HR may take them back |
+| HR review | nothing | HR | nothing |
+| Cost forwarding definitions | controller | controller | nothing |
+| Workflow actions | none | as in the transition table above | none |
+| Notes, item lists | everyone who reads the line | everyone who reads the line | everyone who reads the line |
+| Publishing | controller | controller | controller |
+
+### Workflow status × the sheets of a cost center
+
+A cost center's sheets share one workflow status: costs, capacity (productive cost centers), workforce and the pay of its positions.
+
+| | `not_started` | `in_progress` | `submitted` | `approved` |
+|---|---|---|---|---|
+| Typed values, hours, positions, pay | write; the first write in an open round moves to `in_progress` | write | read only | read only |
+| Accept a transfer (both sides must be editable) | yes | yes | refused | refused |
+| Written by a calculation: forwarding charges and credits, personnel cost totals | written, status unchanged | written, status unchanged | written, status unchanged | written, status unchanged |
+| Approve | – | – | needs HR's review where the cost center has positions in a personnel costs round, unless HR switched the review off | – |
+| Overdue after the deadline | yes | yes | no | no |
+| Published with scope *approved* | no | no | no | yes |
+
+### Gates between statuses
+
+| Action | Refused while |
+|---|---|
+| Open a round | – (from `setup` only) |
+| Close a round | a small group exists |
+| Publish, or download the round's rows | a small group exists |
+| Approve a cost center | HR hasn't confirmed its pay (personnel costs on, positions on the cost center, review switched on) |
+| Release access control | the round isn't open |
+| Hand pay over, confirm it | the round isn't open; for a handover also: access isn't released |
+| The people with access edit pay | HR hasn't handed the cost center's pay over |
+| Turn personnel costs off | the round is open and personnel cost values exist |
+| Change the workforce mode away from positions | personnel costs are on; or the round is open and has workforce values |
+| Readers see pay | the round's pay is not released, or they aren't listed for the cost center |
+| A proposed source owner reads pay | HR hasn't added them |
+

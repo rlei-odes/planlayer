@@ -620,6 +620,10 @@ export type PayAccountOut = {
   small: number | null
 }
 
+export type PayHandoverIn = {
+  handed_over: boolean
+}
+
 export type PayIn = {
   salary?: string | null
   bonus?: string | null
@@ -654,6 +658,9 @@ export type PayPageOut = {
   may_review: boolean
   may_charge: boolean
   charge_targets: CodeName[]
+  released: boolean
+  handover: PayReviewOut | null
+  review_required: boolean
   batch_id?: string | null
 }
 
@@ -733,6 +740,7 @@ export type PayRuleIO = {
 
 export type PayRulesIO = {
   min_group: number
+  review_required: boolean
   bonus_account: string | null
   staff_types: PayStaffTypeIO[]
   rules: PayRuleIO[]
@@ -772,6 +780,7 @@ export type PayUnitOut = {
   positions: number
   small_groups: number
   confirmed: boolean
+  handed_over: boolean
 }
 
 export type PayUnitsOut = {
@@ -951,6 +960,8 @@ export type RoundWorkOut = {
   small_groups: string[]
   to_review: string[]
   pay_released: boolean | null
+  pay_step: "release" | "hand_over" | null
+  to_hand_over: string[]
 }
 
 export type RowOut = {
