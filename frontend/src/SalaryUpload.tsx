@@ -73,8 +73,8 @@ export default function SalaryUpload({ version, onApplied }: { version: string; 
       <div className="su-card empty-state">
         <h3>Salaries come from the source</h3>
         <p className="su-hint">
-          The sync reads HR’s salaries with the staff list. The admin switches that off under Master data, Sources, Staff
-          (HR); then HR uploads them here.
+          The sync reads them with the staff list. Upload is available when the admin turns this off under Master data ›
+          Sources › Staff (HR).
         </p>
       </div>
     )
@@ -96,8 +96,7 @@ export default function SalaryUpload({ version, onApplied }: { version: string; 
         <div className="fw-card-head">
           <h3>Template</h3>
           <span className="su-hint">
-            {info.people} people from HR’s staff list and the round, one per row, salary and bonus blank.{' '}
-            {info.with_salary} of the round’s positions have HR’s salary so far.
+            {info.people} people, salary and bonus blank. {info.with_salary} positions have an HR salary.
           </span>
         </div>
         <div className="su-body su-row">
@@ -117,9 +116,8 @@ export default function SalaryUpload({ version, onApplied }: { version: string; 
         <div className="fw-card-head">
           <h3>File</h3>
           <span className="su-hint">
-            Read by its column names: <code>number</code> with <code>monthly_salary</code>, <code>bonus</code> or both;{' '}
-            <code>cost_center</code> is compared, the rest is ignored. The salary per month at the person’s contract
-            percentage, the bonus per year; a blank cell leaves the value as it is.
+            Required: <code>number</code> and <code>monthly_salary</code> or <code>bonus</code>. Salary per month, bonus
+            per year. Blank cells keep the current value.
           </span>
         </div>
         <div className="su-body su-row">
@@ -151,8 +149,8 @@ export default function SalaryUpload({ version, onApplied }: { version: string; 
             <h3>Result</h3>
             <span className="su-hint">
               {result.applied
-                ? `Applied: ${result.positions} position${result.positions === 1 ? '' : 's'} and ${result.staff_list} in the staff list; the totals follow.`
-                : 'Nothing is written yet.'}
+                ? `Saved: ${result.positions} position${result.positions === 1 ? '' : 's'}, ${result.staff_list} in the staff list.`
+                : 'Not saved yet.'}
             </span>
           </div>
           <div className="pb-tiles su-upload-tiles">
@@ -172,12 +170,10 @@ export default function SalaryUpload({ version, onApplied }: { version: string; 
           <div className="su-body su-col">
             {differs > 0 && (
               <div className="su-note warn">
-                {differs} row{differs === 1 ? '' : 's'} name{differs === 1 ? 's' : ''} another cost center than the position
-                or the staff list. The number decides; check them{' '}
+                {differs} row{differs === 1 ? '' : 's'} with a different cost center; matched by number.{' '}
                 <button type="button" className="su-link" onClick={() => setFilter('differs')}>
-                  here
+                  Show
                 </button>
-                .
               </div>
             )}
             {result.ignored.length > 0 && (
@@ -248,8 +244,8 @@ export default function SalaryUpload({ version, onApplied }: { version: string; 
               </button>
               <span className="su-hint">
                 {writes === 0
-                  ? 'Nothing to change: every value in the file is as it is already.'
-                  : `Writes HR’s salary and bonus on ${result.positions} position${result.positions === 1 ? '' : 's'}, HR’s salary on ${result.staff_list} ${result.staff_list === 1 ? 'person' : 'people'} in the staff list, and recomputes the totals. Failed and unknown rows are left out.`}
+                  ? 'No changes.'
+                  : `${result.positions} position${result.positions === 1 ? '' : 's'}, ${result.staff_list} in the staff list. Failed and unknown rows are skipped.`}
               </span>
             </div>
           )}

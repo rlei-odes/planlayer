@@ -238,8 +238,8 @@ function DatasetEditor({ info, onSaved }: { info: DatasetInfo; onSaved: () => vo
       setNote({
         kind: 'ok',
         text: on
-          ? 'Salaries come from the source now: the next sync replaces HR’s salaries in the staff list.'
-          : 'Salaries are HR’s now: HR uploads them on the Personnel costs page, and the sync leaves them alone.',
+          ? 'Salaries from the source. The next sync replaces HR’s salaries.'
+          : 'Salaries by HR upload. The sync no longer reads them.',
       })
       onSaved()
     } catch (e) {
@@ -297,8 +297,8 @@ function DatasetEditor({ info, onSaved }: { info: DatasetInfo; onSaved: () => vo
                 <strong>Salaries from the source</strong>
                 <span className="su-hint">
                   {info.pay_from_source
-                    ? `The sync reads ${info.pay_fields.join(', ')} and replaces HR’s salaries in the staff list. Only HR and the owners HR names read them in the app.`
-                    : `Off: the sync doesn’t read ${info.pay_fields.join(', ')}, and HR uploads the salaries on the Personnel costs page, without an admin.`}
+                    ? `The sync reads ${info.pay_fields.join(', ')}.`
+                    : `Off: HR uploads salaries on the Personnel costs page.`}
                 </span>
               </span>
             </label>
@@ -314,7 +314,7 @@ function DatasetEditor({ info, onSaved }: { info: DatasetInfo; onSaved: () => vo
                   </span>
                   {FIELD_HINT[f.name] && <span className="md-field-hint">{FIELD_HINT[f.name]}</span>}
                   {payOff && info.pay_fields.includes(f.name) && (
-                    <span className="md-field-hint">not read: HR uploads salaries</span>
+                    <span className="md-field-hint">not read</span>
                   )}
                 </span>
                 {choose(

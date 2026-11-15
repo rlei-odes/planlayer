@@ -189,8 +189,8 @@ def _from_source(conn: Connection) -> bool:
 def _refusal(conn: Connection, r: RoundRef) -> str | None:
     if _from_source(conn):
         return (
-            "HR's salaries come from the source with the staff list; the admin switches that "
-            "off under Master data, Sources, Staff (HR)"
+            "salaries come from the source; the admin turns this off under Master data, "
+            "Sources, Staff (HR)"
         )
     if r.status not in ("setup", "open"):
         return not_open(r.status)
@@ -304,23 +304,22 @@ def _row(
         others = ", ".join(str(n) for n in lines[number] if n != row.line)
         return out("failed", f"the number is also on line {others}")
     if cc is None:
-        return out("unknown", "no one in HR's staff list or the round has this number")
+        return out("unknown", "number not found")
     if row.error is not None:
         return out("failed", row.error)
     if salary is None and bonus is None:
-        return out("blank", "no salary or bonus in the file: left as it is")
+        return out("blank", "blank: kept as is")
     if current is None:
         if salary is None:
-            return out("failed", "not in the round: a bonus belongs to a position of the round")
+            return out("failed", "not in the round: no position for the bonus")
         result = out(
             "not_in_round",
-            "kept in HR's staff list for when the person is taken"
-            + ("; the bonus isn't kept" if bonus is not None else ""),
+            "saved to the staff list only" + ("; bonus skipped" if bonus is not None else ""),
         )
     else:
         ps = people.positions[number]
         if bonus is not None and any(p.staff_type_id in typed for p in ps):
-            return out("failed", "a typed amount gets no bonus")
+            return out("failed", "typed amount: no bonus")
         moving = [
             p
             for p in ps
@@ -331,7 +330,7 @@ def _row(
         applied = [p for p in moving if p.cost_center not in locked]
         if moving and not applied:
             text = "; ".join(f"{c} {why}" for c, why in sorted(locked.items()))
-            return out("failed", f"{text}: its pay can't change now")
+            return out("failed", f"{text}: locked")
         result = out("changed" if moving else "unchanged")
         for p in applied:
             plan.positions[p.position_id] = (

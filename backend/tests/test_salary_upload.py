@@ -278,7 +278,8 @@ def test_bonuses_by_upload(engine: Engine, client: TestClient) -> None:
     ]
     rows = result["rows"]
     assert rows[0]["old_bonus"] is None and rows[0]["new_bonus"] == "1200.00"
-    assert "typed amount" in rows[2]["message"] and "belongs to a position" in rows[3]["message"]
+    assert "typed amount" in rows[2]["message"]
+    assert "no position for the bonus" in rows[3]["message"]
     p = by_code(client.get(f"{PAY}/CC1").json())
     assert p["P001"]["bonus"] == "1200.00" and p["P001"]["hr_salary"] == "4000.00"
     assert p["P002"]["bonus"] == "600.50" and p["P002"]["hr_salary"] == "2100.00"

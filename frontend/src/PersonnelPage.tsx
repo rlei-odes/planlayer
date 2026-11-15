@@ -144,7 +144,7 @@ export default function PersonnelPage({
           <div className="pl-title">
             <div className="su-eyebrow">Personnel costs</div>
             <h1 className="pc-h1">Upload</h1>
-            <div className="pl-sub">HR’s salaries for the round’s people, from a file. Nothing is written until HR applies the check.</div>
+            <div className="pl-sub">Salaries and bonuses from a file. Checked before anything is saved.</div>
           </div>
           <div className="pl-actions">{tabs}</div>
         </div>
@@ -719,10 +719,8 @@ function PayDialog({
           <div className="su-field">
             Calculation
             <span className="su-hint">
-              {readOnly
-                ? 'The position’s costs for the year, by the round’s rules.'
-                : 'As it would be saved, by the round’s rules (Rules tab).'}
-              {isHr && !readOnly && !typed && ' Untick a rule to exclude this position from it.'}
+              {readOnly ? 'Accounting result for the year.' : 'Full preview of the accounting result.'}
+              {isHr && !readOnly && !typed && ' Untick an item to exclude this position from the rule.'}
             </span>
             <PayBreakdown
               page={page}

@@ -30,7 +30,7 @@ export default function PayBreakdown({
   const amount = (v: string | null) => (v === null ? <span className="muted">–</span> : format(v))
 
   if (p.typed === null) {
-    return <p className="su-hint">Its staff type has no account in the round’s rules: it isn’t costed.</p>
+    return <p className="su-hint">Not costed: its staff type has no account in the rules.</p>
   }
   return (
     <div className={`pc-breakdown${pending ? ' pending' : ''}`}>
@@ -47,7 +47,7 @@ export default function PayBreakdown({
           <tr>
             <td>
               <strong>{p.typed ? 'Amount' : 'Salary'}</strong>
-              <small>by the days worked in each month</small>
+              <small>pro rata by days worked</small>
             </td>
             <td className="pl-code">{p.salary_account}</td>
             <td className="num">{amount(part('pay'))}</td>
@@ -88,7 +88,7 @@ export default function PayBreakdown({
             <tr>
               <td>
                 <strong>Bonus</strong>
-                <small>spread over the months worked</small>
+                <small>spread over months worked</small>
               </td>
               <td className="pl-code">{page.bonus_account}</td>
               <td className="num">{amount(part('bonus'))}</td>
@@ -109,7 +109,7 @@ export default function PayBreakdown({
           </tr>
         </tfoot>
       </table>
-      {p.typed && <p className="su-hint">A typed amount gets no extras, raises, awards, bonus or contributions.</p>}
+      {p.typed && <p className="su-hint">Typed amount: no rules or bonus apply.</p>}
     </div>
   )
 }
