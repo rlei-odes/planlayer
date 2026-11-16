@@ -28,6 +28,14 @@ export type AddAccountIn = {
   account_code: string
 }
 
+export type AreaRowOut = {
+  kind: "node" | "cost_center"
+  code: string
+  name: string
+  depth: number
+  sums: SumsOut
+}
+
 export type BuildUpOut = {
   start: number
   end: number
@@ -94,6 +102,46 @@ export type CapacityUnitOut = {
   staff_hours: boolean
 }
 
+export type CapexOut = {
+  round: Version
+  on: boolean
+  settings: CapexSettingsIO
+  lock_reason: string | null
+  periods: string[]
+  next_year: string
+  types: CapexTypeIO[]
+  cost_centers: CostCenterRefOut[]
+  items: ItemOut[]
+  confirms: boolean
+  created?: number[]
+}
+
+export type CapexOverviewOut = {
+  round: Version
+  on: boolean
+  cash_out: boolean
+  areas: AreaRowOut[]
+  types: TypeRowOut[]
+  total: SumsOut
+  schedule: CashOutRowOut[]
+  next_year: string
+  waiting: number
+}
+
+export type CapexSettingsIO = {
+  project_threshold?: string | null
+  cash_out?: boolean
+}
+
+export type CapexTypeIO = {
+  code: string
+  name: string
+  asset_account?: string | null
+  useful_life?: number | null
+  active?: boolean
+  used?: boolean
+}
+
 export type CarryOverInInput = {
   setup?: boolean
   compare_with_source?: boolean
@@ -120,6 +168,22 @@ export type CarryOverInOutput = {
   uplift?: string
 }
 
+export type CashOutIO = {
+  period: string
+  amount: string
+}
+
+export type CashOutIn = {
+  periods: CashOutIO[]
+}
+
+export type CashOutRowOut = {
+  period: string | null
+  open: string
+  confirmed: string
+  declined: string
+}
+
 export type CellOut = {
   value: string | null
   row_version: number | null
@@ -134,6 +198,11 @@ export type ChangeOut = {
   new: string | null
 }
 
+export type ChangesIn = {
+  create?: NewItemIn[]
+  update?: ItemChangeIn[]
+}
+
 export type CodeName = {
   code: string
   name: string
@@ -142,6 +211,18 @@ export type CodeName = {
 export type CodeNameOut = {
   code: string
   name: string
+}
+
+export type CommentIn = {
+  body: string
+}
+
+export type CommentOut = {
+  comment_id: number
+  author: string
+  body: string
+  created_at: string
+  mine: boolean
 }
 
 export type ComparisonIO = {
@@ -161,6 +242,12 @@ export type ComparisonOut = {
 export type ConflictOut = {
   account_code: string
   month: number
+}
+
+export type CostCenterRefOut = {
+  code: string
+  name: string
+  can_write: boolean
 }
 
 export type CountsOut = {
@@ -347,11 +434,21 @@ export type HrTakenOut = {
   added: number
 }
 
+export type IdsIn = {
+  item_ids: number[]
+}
+
 export type InactiveLineOut = {
   work_center_code: string
   work_center_name: string
   activity_type_code: string
   activity_type_name: string
+}
+
+export type ItemChangeIn = {
+  item_id: number
+  expected?: number | null
+  values: ItemValuesIn
 }
 
 export type ItemIO = {
@@ -379,6 +476,41 @@ export type ItemListOut = {
   mine: boolean
   can_edit: boolean
   entries: ItemIO[]
+}
+
+export type ItemOut = {
+  item_id: number
+  kind: "line" | "project"
+  project_id: number | null
+  cost_center_code: string
+  cost_center_name: string
+  name: string
+  type_code: string | null
+  priority: number
+  start_month: string | null
+  amount: string | null
+  status: "open" | "confirmed" | "declined"
+  status_by: string | null
+  status_at: string | null
+  row_version: number
+  can_write: boolean
+  can_confirm: boolean
+  comments: number
+  cash_out: CashOutIO[]
+  scheduled: string
+  above_threshold: boolean
+  lines: number
+  changed_by: string | null
+  changed_at: string | null
+}
+
+export type ItemValuesIn = {
+  name?: string | null
+  cost_center?: string | null
+  type?: string | null
+  priority?: number | null
+  start_month?: string | null
+  amount?: string | null
 }
 
 export type LatestActualsOut = {
@@ -520,6 +652,10 @@ export type MemberOut = {
   external?: boolean | null
 }
 
+export type MoveIn = {
+  project_id: number | null
+}
+
 export type MyCostCenterOut = {
   code: string
   name: string
@@ -547,6 +683,17 @@ export type MyThreadOut = {
   last_at: string
   assignee: string | null
   notes: number
+}
+
+export type NewItemIn = {
+  kind?: "line" | "project"
+  project_id?: number | null
+  cost_center?: string | null
+  name?: string
+  type?: string | null
+  priority?: number | null
+  start_month?: string | null
+  amount?: string | null
 }
 
 export type NewListIn = {
@@ -999,6 +1146,7 @@ export type RoundWorkOut = {
   pay_released: boolean | null
   pay_step: "release" | "hand_over" | null
   to_hand_over: string[]
+  to_confirm?: number
 }
 
 export type RowOut = {
@@ -1106,6 +1254,7 @@ export type SetupIO = {
   actuals_through?: string | null
   workforce_mode?: "fte" | "headcount" | "both" | "positions" | null
   personnel_costs?: boolean
+  capex?: CapexSettingsIO | null
 }
 
 export type SetupOut = {
@@ -1202,6 +1351,12 @@ export type StaffTypeOut = {
   external: boolean
 }
 
+export type StatusIn = {
+  item_ids: number[]
+  status: "open" | "confirmed" | "declined"
+  comment?: string | null
+}
+
 export type StatusRowOut = {
   kind: "node" | "cost_center"
   code: string
@@ -1215,6 +1370,17 @@ export type StatusRowOut = {
   changed_by: string | null
   overdue: boolean
   actions: ("submit" | "approve" | "reject" | "reopen")[]
+}
+
+export type StatusSumsOut = {
+  open: string
+  confirmed: string
+  declined: string
+}
+
+export type SumsOut = {
+  by_priority: StatusSumsOut[]
+  count: number
 }
 
 export type SyncIn = {
@@ -1304,6 +1470,12 @@ export type TreeNodeOut = {
   name: string
   depth: number
   is_group: boolean
+}
+
+export type TypeRowOut = {
+  code: string | null
+  name: string
+  sums: SumsOut
 }
 
 export type UndoIn = {

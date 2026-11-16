@@ -11,7 +11,9 @@ from pydantic import BaseModel, Field
 from planlayer import rounds
 from planlayer.access import AccessError
 from planlayer.api.auth import CurrentUser, engine_of
+from planlayer.api.capex import CapexSettingsIO
 from planlayer.api.planning import Version, version_out
+from planlayer.capex import CapexSettings
 from planlayer.domain.entry_forms import Form
 from planlayer.domain.periods import fiscal_year_of
 from planlayer.domain.spreading import Profile, SpreadError
@@ -77,6 +79,7 @@ class SetupIO(BaseModel):
     # Workforce planning's mode (ADR 0020); null: the round doesn't plan its workforce.
     workforce_mode: Mode | None = None
     personnel_costs: bool = False  # costs from positions (ADR 0022)
+    capex: CapexSettingsIO | None = None  # capex planning (ADR 0028); null: off
 
 
 class CarryOverIn(BaseModel):
@@ -247,6 +250,12 @@ def setup(request: Request, user: CurrentUser, code: str) -> SetupOut:
             actuals_through=s.actuals_through,
             workforce_mode=s.workforce_mode,
             personnel_costs=s.personnel_costs,
+            capex=None
+            if s.capex is None
+            else CapexSettingsIO(
+                project_threshold=None if s.capex.threshold is None else f"{s.capex.threshold:.2f}",
+                cash_out=s.capex.cash_out,
+            ),
         ),
         latest_actuals=v.latest_actuals,
         actuals_available=v.actuals_available,
@@ -254,6 +263,13 @@ def setup(request: Request, user: CurrentUser, code: str) -> SetupOut:
         sample_cost_center=v.sample_cost_center,
         periods=v.periods,
     )
+
+
+def _threshold(value: str | None) -> Decimal | None:
+    try:
+        return parse_amount(value.strip() or None if value is not None else None)
+    except EditError as e:
+        raise rounds.RoundError(f"threshold for large projects: {e}") from None
 
 
 def _hours(value: str | None) -> Decimal | None:
@@ -295,6 +311,9 @@ def save_setup(request: Request, user: CurrentUser, code: str, body: SetupIO) ->
                 actuals_through=body.actuals_through,
                 workforce_mode=body.workforce_mode,
                 personnel_costs=body.personnel_costs,
+                capex=None
+                if body.capex is None
+                else CapexSettings(_threshold(body.capex.project_threshold), body.capex.cash_out),
             ),
         )
     except HANDLED as e:

@@ -29,6 +29,7 @@ def test_read_defaults(client: TestClient) -> None:
         "actuals_through": None,
         "workforce_mode": None,
         "personnel_costs": False,
+        "capex": None,
     }
     assert v["actuals_available"] is True and v["enabled_cost_centers"] == 2
     assert v["sample_cost_center"] == "Machining"

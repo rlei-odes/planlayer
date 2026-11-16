@@ -81,6 +81,17 @@ export type ForwardingPage = S.ForwardingPageOut
 export type Forwarding = S.ForwardingOut
 export type ForwardingIn = S.ForwardingIn
 export type NewMember = S.MemberIn
+// Capex planning (ADR 0028).
+export type Capex = S.CapexOut
+export type CapexItem = S.ItemOut
+export type CapexType = S.CapexTypeIO
+export type CapexSettings = S.CapexSettingsIO
+export type CapexStatus = S.ItemOut['status']
+export type CapexNew = S.NewItemIn
+export type CapexChange = S.ItemChangeIn
+export type CapexComment = S.CommentOut
+export type CapexOverview = S.CapexOverviewOut
+export type CapexSums = S.SumsOut
 // Line notes and item lists (ADR 0017).
 export type NoteLine = S.NoteLineIn
 export type LineNotes = S.LineNotesOut
@@ -135,6 +146,7 @@ const cc = (version: string, code: string) => `${v(version)}/cost-centers/${enco
 const cap = (version: string, code: string) => `${v(version)}/capacity/${encodeURIComponent(code)}`
 const wf = (version: string, code: string) => `${v(version)}/workforce/${encodeURIComponent(code)}`
 const fw = (version: string) => `${v(version)}/forwarding`
+const cx = (round: string) => `/api/rounds/${encodeURIComponent(round)}/capex`
 
 /** A line as query parameters: only the fields it has. */
 function lineQuery(version: string, line: NoteLine): string {
@@ -192,6 +204,28 @@ export const api = {
     send('PUT', `${fw(version)}/${encodeURIComponent(code)}`, f).then((res) => json<ForwardingPage>(res)),
   deleteForwarding: (version: string, code: string) =>
     send('DELETE', `${fw(version)}/${encodeURIComponent(code)}`).then((res) => json<ForwardingPage>(res)),
+  capex: (round: string) => fetch(cx(round)).then((res) => json<Capex>(res)),
+  capexChanges: (round: string, create: CapexNew[], update: CapexChange[]) =>
+    post(`${cx(round)}/changes`, { create, update }).then((res) => json<Capex>(res)),
+  capexDelete: (round: string, itemIds: number[]) =>
+    post(`${cx(round)}/delete`, { item_ids: itemIds }).then((res) => json<Capex>(res)),
+  capexMakeProject: (round: string, itemId: number) =>
+    post(`${cx(round)}/items/${itemId}/project`, {}).then((res) => json<Capex>(res)),
+  capexMove: (round: string, itemId: number, projectId: number | null) =>
+    send('PUT', `${cx(round)}/items/${itemId}/project`, { project_id: projectId }).then((res) => json<Capex>(res)),
+  capexStatus: (round: string, itemIds: number[], status: CapexStatus, comment: string | null) =>
+    post(`${cx(round)}/status`, { item_ids: itemIds, status, comment }).then((res) => json<Capex>(res)),
+  capexCashOut: (round: string, itemId: number, periods: { period: string; amount: string }[]) =>
+    send('PUT', `${cx(round)}/items/${itemId}/cash-out`, { periods }).then((res) => json<Capex>(res)),
+  capexComments: (round: string, itemId: number) =>
+    fetch(`${cx(round)}/items/${itemId}/comments`).then((res) => json<CapexComment[]>(res)),
+  capexAddComment: (round: string, itemId: number, body: string) =>
+    post(`${cx(round)}/items/${itemId}/comments`, { body }).then((res) => json<CapexComment[]>(res)),
+  capexDeleteComment: (round: string, itemId: number, commentId: number) =>
+    send('DELETE', `${cx(round)}/items/${itemId}/comments/${commentId}`).then((res) => json<CapexComment[]>(res)),
+  capexOverview: (round: string) => fetch(`${cx(round)}/overview`).then((res) => json<CapexOverview>(res)),
+  capexTypes: () => fetch('/api/capex-types').then((res) => json<CapexType[]>(res)),
+  saveCapexTypes: (types: CapexType[]) => send('PUT', '/api/capex-types', types).then((res) => json<CapexType[]>(res)),
   members: (d: MemberDataset) => fetch(`/api/members/${d}`).then((res) => json<MemberRow[]>(res)),
   addMember: (d: MemberDataset, m: NewMember) => post(`/api/members/${d}`, m).then((res) => json<null>(res)),
   changeMember: (d: MemberDataset, code: string, change: Record<string, string | null>) =>

@@ -74,6 +74,14 @@ export const ForwardingIcon = () => (
   </Icon>
 )
 
+// A crate with a rising arrow: investments (capex).
+export const CapexIcon = () => (
+  <Icon>
+    <path d="M3.5 9.5h9v7h-9zM3.5 12h9" />
+    <path d="M14.5 9V3.5M12.5 5.5l2-2 2 2" />
+  </Icon>
+)
+
 // A gear: installation settings.
 export const SettingsIcon = () => (
   <Icon>

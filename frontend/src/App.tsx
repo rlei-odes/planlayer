@@ -2,9 +2,11 @@ import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } 
 import { api, type Me, type MyThread, type Version } from './api'
 import HomePage, { type HomeTarget, type Sheet } from './HomePage'
 import CapacityPage from './CapacityPage'
+import CapexPage from './CapexPage'
 import ForwardingPage from './ForwardingPage'
 import {
   CapacityIcon,
+  CapexIcon,
   ForwardingIcon,
   HomeIcon,
   CollapseIcon,
@@ -47,6 +49,7 @@ type Page =
   | 'workforce'
   | 'personnel'
   | 'planning'
+  | 'capex'
   | 'status'
   | 'lists'
   | 'setup'
@@ -63,6 +66,7 @@ const NAV: Record<Page, { label: string; icon: () => ReactNode }> = {
   workforce: { label: 'Workforce', icon: WorkforceIcon },
   personnel: { label: 'Personnel costs', icon: PersonnelIcon },
   planning: { label: 'Planning', icon: PlanningIcon },
+  capex: { label: 'Investments', icon: CapexIcon },
   status: { label: 'Status', icon: StatusIcon },
   lists: { label: 'My item lists', icon: ItemListIcon },
   setup: { label: 'Setup', icon: SetupIcon },
@@ -73,7 +77,7 @@ const NAV: Record<Page, { label: string; icon: () => ReactNode }> = {
   users: { label: 'Users', icon: UsersIcon },
   settings: { label: 'Settings', icon: SettingsIcon },
 }
-const ROUND_PAGES: Page[] = ['capacity', 'workforce', 'personnel', 'planning', 'status', 'setup', 'forwarding', 'publish']
+const ROUND_PAGES: Page[] = ['capacity', 'workforce', 'personnel', 'planning', 'capex', 'status', 'setup', 'forwarding', 'publish']
 
 function groupsFor(me: Me): { label: string; pages: Page[] }[] {
   const round: Page[] = me.is_controller ? ['setup', 'forwarding', 'publish', 'responsibilities'] : []
@@ -84,7 +88,9 @@ function groupsFor(me: Me): { label: string; pages: Page[] }[] {
   // planner grant or an approver assignment. The admin role alone gives none (ADR 0009). Capacity
   // and workforce come first, the usual order of work (ADR 0013, ADR 0020).
   const plan: Page[] =
-    me.is_controller || me.is_viewer || me.reads_cost_centers ? ['capacity', 'workforce', 'planning', 'status', 'lists'] : []
+    me.is_controller || me.is_viewer || me.reads_cost_centers
+      ? ['capacity', 'workforce', 'planning', 'capex', 'status', 'lists']
+      : []
   // Personnel costs (ADR 0022): pay for HR and owners as the source names them, the rules for HR
   // and controllers. After Workforce: costs follow the positions.
   if (me.reads_pay || me.is_hr || me.is_controller) plan.splice(Math.max(plan.indexOf('workforce') + 1, 0), 0, 'personnel')
@@ -418,6 +424,7 @@ export default function App() {
               onFocused={() => setFocus(null)}
             />
           )}
+          {version && current === 'capex' && <CapexPage key={`${me.login}/${version}`} version={version} me={me} />}
           {version && current === 'status' && (
             <StatusPage key={`${me.login}/${version}`} version={version} me={me} onRoundChanged={loadVersions} />
           )}

@@ -1254,3 +1254,117 @@ pay_access = Table(
 pay_account = Table(
     "pay_account", metadata, Column("version_id", SmallInteger), Column("account_id", Integer)
 )
+
+
+# --- Capex planning (ADR 0028) -------------------------------------------------------------------
+
+MODULE_CAPEX = "capex"
+
+# The installation's investment types, set by controllers: the balance sheet account an
+# investment of the type is capitalised on, and its default useful life for depreciation.
+capex_type = Table(
+    "capex_type",
+    metadata,
+    Column("type_id", SmallInteger, Identity(), primary_key=True),
+    Column("code", Text, nullable=False, unique=True),
+    Column("name", Text, nullable=False),
+    Column("asset_account", Text),
+    Column("useful_life", SmallInteger),  # years
+    Column("active", Boolean, nullable=False, server_default="true"),
+)
+
+# A round's capex settings: above which amount an investment is better planned as a large
+# project, and whether planners schedule cash out.
+capex_setting = Table(
+    "capex_setting",
+    metadata,
+    Column("version_id", SmallInteger, primary_key=True),
+    Column("module", Text, nullable=False, server_default=MODULE_CAPEX),
+    Column("project_threshold", AMOUNT_TYPE),
+    Column("cash_out", Boolean, nullable=False, server_default="false"),
+    Column("changed_by", Text),
+    Column("changed_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    _module_fk(),
+)
+
+# An investment (kind line) or a large project (kind project) grouping lines. A project's lines
+# share its cost center, priority and confirmation; it has no type, start or amount of its own.
+# Scoped by the cost center; confirmed by ``capex_confirmer``; locked with the round.
+capex_item = Table(
+    "capex_item",
+    metadata,
+    Column("item_id", Integer, Identity(), primary_key=True),
+    Column("version_id", SmallInteger, nullable=False),
+    Column("module", Text, nullable=False, server_default=MODULE_CAPEX),
+    Column("kind", Text, nullable=False),
+    Column("project_id", Integer),
+    Column("cost_center_id", Integer, ForeignKey("member.member_id"), nullable=False),
+    Column("name", Text, nullable=False),
+    Column("type_id", SmallInteger, ForeignKey("capex_type.type_id")),
+    Column("priority", SmallInteger),  # 1 to 3
+    Column("start_month", Date),  # first of the month it is taken into use
+    Column("amount", AMOUNT_TYPE),
+    Column("status", Text),  # open / confirmed / declined
+    Column("status_by", Text),
+    Column("status_at", DateTime(timezone=True)),
+    Column("row_version", Integer, nullable=False, server_default="1"),
+    Column("created_by", Text),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("changed_by", Text),
+    Column("changed_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    _module_fk(),
+    UniqueConstraint("item_id", "cost_center_id", name="uq_capex_item_cost_center"),
+    ForeignKeyConstraint(
+        ["project_id", "cost_center_id"],
+        ["capex_item.item_id", "capex_item.cost_center_id"],
+        name="fk_capex_item_project",
+        ondelete="CASCADE",
+        onupdate="CASCADE",
+    ),
+)
+
+# An investment's cash out by period: a month, or a quarter's first month in rounds planned by
+# quarter, or the next fiscal year's first month for what is paid after the year. Never more
+# than the investment's amount.
+capex_cash_out = Table(
+    "capex_cash_out",
+    metadata,
+    Column(
+        "item_id", Integer, ForeignKey("capex_item.item_id", ondelete="CASCADE"), nullable=False
+    ),
+    Column("period", Date, nullable=False),
+    Column("amount", AMOUNT_TYPE, nullable=False),
+    PrimaryKeyConstraint("item_id", "period"),
+)
+
+capex_comment = Table(
+    "capex_comment",
+    metadata,
+    Column("comment_id", BigInteger, Identity(), primary_key=True),
+    Column(
+        "item_id", Integer, ForeignKey("capex_item.item_id", ondelete="CASCADE"), nullable=False
+    ),
+    Column("author_id", Integer, ForeignKey("app_user.user_id"), nullable=False),
+    Column("body", Text, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)
+
+capex_log = Table(
+    "capex_log",
+    metadata,
+    Column("id", BigInteger, Identity(), primary_key=True),
+    Column("at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("actor", Text),
+    Column("batch_id", Text),
+    Column("op", Text, nullable=False),
+    Column("target", Text, nullable=False),
+    Column("version_id", SmallInteger),
+    Column("item_id", Integer, nullable=False),
+    Column("old", JSONB),
+    Column("new", JSONB),
+)
+
+# View (migration 0027): who confirms the investments of which cost center.
+capex_confirmer = Table(
+    "capex_confirmer", metadata, Column("user_id", Integer), Column("cost_center_id", Integer)
+)

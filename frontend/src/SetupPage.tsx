@@ -6,6 +6,7 @@ import type { Profile, Scope, SetupDraft, SetupView } from './setupTypes'
 import { type Level, setupApi } from './setupShared'
 import { Comparisons, EntryForms, LevelCard } from './SetupForms'
 import { Profiles } from './SetupProfiles'
+import { Capex } from './SetupCapex'
 import { Workforce } from './SetupWorkforce'
 import { CreatedFrom, ForecastActuals, NewRoundCard, PeriodFields } from './SetupRound'
 
@@ -284,6 +285,7 @@ export default function SetupPage({
               round={round}
               onNote={setNote}
             />
+            <Capex draft={draft} setDraft={setDraft} saved={view.setup.capex != null} round={round} />
           </div>
 
           <PlannerPreview

@@ -36,6 +36,7 @@ class RoundWorkOut(BaseModel):
     # HR's next step (ADR 0024): release access, then hand pay over; and what is left to hand.
     pay_step: Literal["release", "hand_over"] | None
     to_hand_over: list[str]
+    to_confirm: int = 0  # capex: open investments the user confirms (ADR 0028)
 
 
 class HomeOut(BaseModel):
@@ -58,7 +59,8 @@ def start(request: Request, user: CurrentUser) -> HomeOut:
         + decide
         + sum(1 for w in work if w.to_approve)
         + sum(1 for w in work if w.small_groups or w.to_review)
-        + sum(1 for w in work if w.pay_step),
+        + sum(1 for w in work if w.pay_step)
+        + sum(1 for w in work if w.to_confirm),
         transfers=[transfer_out(t) for t in transfers],
         rounds=[
             RoundWorkOut(
@@ -80,6 +82,7 @@ def start(request: Request, user: CurrentUser) -> HomeOut:
                 pay_released=w.pay_released,
                 pay_step=w.pay_step,
                 to_hand_over=w.to_hand_over,
+                to_confirm=w.to_confirm,
             )
             for w in work
         ],

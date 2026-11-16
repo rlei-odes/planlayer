@@ -51,7 +51,7 @@ These are excluded because each one grows the product into a different one, and 
 ## Candidates for after v1
 
 - **Planning features:** budget layers beyond `base` (challenge / management / board), rolling forecast, price × volume drivers, simple formulas. Built: workforce planning (FTE, headcount, positions) as a module of the yearly setup ([ADR 0020](adr/0020-workforce-planning.md)).
-- **Cost center accounting:** productive cost centers with activity output and coverage difference, capacity planning, cost forwarding by shares or factors, usage factors, capex planning (BACKLOG K-1 to K-5).
+- **Cost center accounting:** productive cost centers with activity output and coverage difference, capacity planning, cost forwarding by shares or factors, usage factors, capex planning (BACKLOG K-1 to K-5). Built: capex planning of investments, large projects, confirmations and cash out ([ADR 0028](adr/0028-capex-planning.md)); depreciation follows.
 - **Sources:** non-Postgres adapters (Snowflake, BigQuery, Databricks, Parquet/Delta/Iceberg).
 - **Review support:** an "attention" list of open items, and variance commentary thresholds.
 - **AI access (MCP):** an MCP server in the container, so users can connect the LLM of their choice to read their plans and to-dos and enter plan values, as themselves and under the same rights, locks and audit (BACKLOG M-1 to M-8).

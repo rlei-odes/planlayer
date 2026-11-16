@@ -3,6 +3,7 @@
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     Connection,
@@ -69,6 +70,9 @@ from planlayer.store.schema import (
 )
 from planlayer.store.uow import unit_of_work
 
+if TYPE_CHECKING:
+    from planlayer.capex import CapexSettings
+
 
 @dataclass
 class EntryFormRule:
@@ -111,6 +115,8 @@ class Setup:
     workforce_mode: Mode | None = None
     # Personnel costs from positions (ADR 0022).
     personnel_costs: bool = False
+    # Capex planning (ADR 0028): its settings; None: the round doesn't plan investments.
+    capex: "CapexSettings | None" = None
 
 
 @dataclass
@@ -249,6 +255,10 @@ def setup_of(engine: Engine, user: User, code: str) -> SetupView:
         from planlayer.personnel import module_on
 
         personnel = module_on(conn, r.version_id)
+        # Imported here: capex planning builds on this module.
+        from planlayer.capex import settings_of
+
+        capex = settings_of(conn, r.version_id)
     return SetupView(
         r,
         copied,
@@ -267,6 +277,7 @@ def setup_of(engine: Engine, user: User, code: str) -> SetupView:
             r.actuals_through,
             workforce,
             personnel,
+            capex,
         ),
         actuals,
         len(enabled),
@@ -395,6 +406,10 @@ def save_setup(engine: Engine, actor: User, code: str, setup: Setup) -> None:
             switch(conn, r, actor, on=True)
         # After the workforce: hours from positions follow them.
         set_sources(conn, r, actor.login, wanted)
+        # Imported here: capex planning builds on this module.
+        from planlayer.capex import switch as capex_switch
+
+        capex_switch(conn, r, actor, setup.capex)
         conn.execute(
             update(planning_round)
             .where(planning_round.c.version_id == r.version_id)

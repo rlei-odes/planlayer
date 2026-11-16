@@ -9,7 +9,7 @@ second, disjoint department.
 
 import random
 from dataclasses import replace
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 
 from sqlalchemy import Engine, func, select
@@ -468,3 +468,253 @@ def seed_workforce(engine: Engine, round_code: str) -> tuple[int, int, int]:
         )
         new += 1
     return taken, replaced, new
+
+
+# --- Capex (ADR 0028, TD-26) ---------------------------------------------------------------------
+
+CAPEX_TYPES: tuple[tuple[str, str, str, int], ...] = (
+    ("BLDG", "Buildings", "0200", 33),
+    ("MACH", "Machinery and equipment", "0400", 10),
+    ("LAB", "Laboratory and test equipment", "0420", 8),
+    ("TOOL", "Tools and fixtures", "0450", 5),
+    ("VEH", "Vehicles", "0500", 6),
+    ("IT", "IT hardware", "0650", 3),
+    ("OFF", "Office equipment", "0690", 8),
+    ("SW", "Software", "0135", 5),
+)
+CAPEX_THRESHOLD = Decimal(1_000_000)
+
+# Cash out as (months from the start, percent): a down payment, the rest at the start, and so on.
+# Months past the fiscal year go to the next year's period.
+AT_START = ((0, 100),)
+DOWN = ((-2, 30), (0, 70))
+RETAIN = ((0, 90), (3, 10))
+BUILD = ((-3, 20), (-1, 30), (0, 40), (4, 10))
+CashOut = tuple[tuple[int, int], ...] | None
+
+# A single investment: cost center, name, type, priority, start month, amount, cash out, how it
+# stands (open, confirmed, or declined with the approver's reason), and the planner's comment.
+CAPEX_LINES: tuple[tuple[str, str, str, int, int, int, CashOut, str, str | None], ...] = (
+    ("DE1020", "Coordinate measuring machine", "LAB", 1, 4, 185_000, DOWN, "confirmed", None),
+    ("DE1030", "Torque screwdrivers (8)", "TOOL", 2, 2, 46_000, AT_START, "confirmed", None),
+    ("DE1040", "Ergonomic assembly workstations", "MACH", 3, 7, 38_000, None, "open", None),
+    ("DE1050", "Paint booth filter system", "MACH", 1, 5, 142_000, RETAIN, "confirmed",
+     "Required by the new emission permit from 1 July."),
+    ("DE1060", "Test bench data acquisition", "IT", 2, 3, 64_000, AT_START, "open", None),
+    ("DE1070", "Electric forklift", "VEH", 2, 6, 42_000, None,
+     "declined:Lease it with the fleet contract instead.", None),
+    ("DE1080", "Pallet racking warehouse B", "MACH", 3, 9, 76_000, None, "open", None),
+    ("DE1090", "Press tool set pump housing", "TOOL", 1, 2, 128_000, DOWN, "confirmed", None),
+    ("DE1110", "CFD simulation workstations (2)", "IT", 2, 1, 28_000, AT_START, "confirmed", None),
+    ("DE1120", "CAD licences, perpetual (5)", "SW", 3, 4, 35_000, None, "open", None),
+    ("DE1130", "Metal 3D printer", "MACH", 2, 8, 310_000, DOWN, "open",
+     "Replaces external prototype orders of about 90k a year."),
+    ("DE1150", "Pressure test rig for certification", "LAB", 1, 5, 96_000, RETAIN, "open", None),
+    ("DE1160", "Trade fair stand Hannover", "OFF", 3, 3, 58_000, None,
+     "declined:Rent the stand this year.", None),
+    ("DE1190", "Service vans (3)", "VEH", 2, 4, 135_000, AT_START, "open", None),
+    ("DE1210", "Telephony system", "IT", 3, 11, 24_000, None, "open", None),
+    ("DE1230", "Meeting room equipment", "OFF", 3, 5, 18_000, None, "open", None),
+    ("DE1250", "HR software module", "SW", 2, 7, 45_000, AT_START, "open", None),
+    ("DE1260", "Laptop refresh (60)", "IT", 1, 2, 96_000, AT_START, "confirmed", None),
+    ("DE1260", "Firewall cluster", "IT", 1, 6, 54_000, AT_START, "open", None),
+    ("DE1280", "LED lighting hall 2", "BLDG", 2, 4, 88_000, RETAIN, "open", None),
+    ("CH1010", "Forging press overhaul", "MACH", 1, 8, 420_000, BUILD, "open",
+     "The press is 28 years old; the insurer asks for the overhaul."),
+    ("CH1020", "CNC lathe", "MACH", 1, 3, 365_000, DOWN, "confirmed", None),
+    ("CH1040", "Helium leak tester", "LAB", 2, 6, 112_000, AT_START, "open", None),
+    ("CH1050", "Coating line robot", "MACH", 2, 10, 260_000, DOWN, "open", None),
+    ("CH1100", "Spectrometer", "LAB", 2, 9, 84_000, None, "open", None),
+    ("CH1120", "Actuator test bench", "LAB", 3, 11, 67_000, None, "open", None),
+    ("PL1020", "Horizontal machining centre", "MACH", 1, 4, 540_000, DOWN, "confirmed", None),
+    ("PL1050", "Compressor replacement", "MACH", 1, 2, 72_000, AT_START, "confirmed", None),
+    ("PL1060", "Warehouse scanners", "IT", 3, 5, 19_000, None, "open", None),
+    ("PL1080", "Welding simulators (4)", "MACH", 3, 9, 52_000, None, "open", None),
+    ("US1010", "Assembly line automation", "MACH", 2, 7, 1_250_000, None, "open",
+     "Quotes from two integrators; details follow."),
+    ("US1020", "Hydrostatic test pump", "LAB", 2, 5, 78_000, AT_START, "open", None),
+    ("US1030", "Forklifts (2)", "VEH", 3, 3, 64_000, None, "open", None),
+    ("US1070", "CRM add-on licences", "SW", 3, 2, 22_000, AT_START, "open", None),
+    ("US1090", "Demo valve units", "MACH", 3, 6, 31_000, None, "open", None),
+)  # fmt: skip
+
+# Large projects: cost center, name, priority, how it stands, and its lines (name, type, start
+# month, amount, cash out).
+CAPEX_PROJECTS: tuple[
+    tuple[str, str, int, str, tuple[tuple[str, str, int, int, CashOut], ...]], ...
+] = (
+    ("DE1280", "Hall 4 extension", 1, "confirmed", (
+        ("Building shell", "BLDG", 6, 3_200_000, BUILD),
+        ("Roof and façade", "BLDG", 8, 900_000, BUILD),
+        ("Foundations and flooring", "BLDG", 5, 380_000, DOWN),
+        ("Heating, ventilation, air conditioning", "BLDG", 9, 650_000, BUILD),
+        ("Electrical installation", "BLDG", 9, 480_000, RETAIN),
+        ("Fire protection", "BLDG", 10, 210_000, RETAIN),
+        ("Overhead cranes (2)", "MACH", 11, 840_000, DOWN),
+    )),
+    ("DE1010", "5-axis machining cell", 1, "confirmed", (
+        ("5-axis machining centre", "MACH", 5, 1_150_000, DOWN),
+        ("Robot loading", "MACH", 6, 340_000, RETAIN),
+        ("Tooling package", "TOOL", 5, 90_000, AT_START),
+        ("Machine foundation", "BLDG", 4, 60_000, AT_START),
+    )),
+    ("DE1260", "ERP upgrade", 2, "open", (
+        ("Licences", "SW", 4, 600_000, AT_START),
+        ("Implementation partner", "SW", 10, 1_100_000, BUILD),
+        ("Database servers", "IT", 3, 180_000, AT_START),
+        ("Data migration", "SW", 10, 120_000, None),
+    )),
+    ("PL1010", "Induction furnace replacement", 1, "open", (
+        ("Induction furnace", "MACH", 9, 1_400_000, DOWN),
+        ("Cooling water system", "MACH", 8, 250_000, None),
+        ("Installation and commissioning", "MACH", 10, 150_000, None),
+    )),
+)  # fmt: skip
+
+CAPEX_REPLIES = {
+    "Metal 3D printer": "Please add the supplier quotes before we decide.",
+    "Hall 4 extension": "Confirmed with the board on 12 October; keep the cash out up to date.",
+}
+
+
+def _cash_out(
+    pattern: CashOut, start: date, amount: Decimal, periods: list[date], next_year: date
+) -> dict[date, Decimal]:
+    """A cash-out pattern as a schedule: each share in its month, clamped to the year, months
+    past it in the next year's period; the cents left over go to the last period."""
+    if not pattern:
+        return {}
+    schedule: dict[date, Decimal] = {}
+    at = periods.index(start)
+    for offset, percent in pattern:
+        i = at + offset
+        period = next_year if i >= len(periods) else periods[max(i, 0)]
+        value = (amount * percent / 100).quantize(Decimal("0.01"))
+        schedule[period] = schedule.get(period, Decimal(0)) + value
+    last = max(schedule)
+    schedule[last] += amount - sum(schedule.values())
+    return schedule
+
+
+def seed_capex(engine: Engine, round_code: str) -> tuple[int, int]:
+    """The test company's investments in a round (TD-26): its investment types, capex on with a
+    threshold of 1,000,000 and cash out, and each investment entered by its cost center's owner
+    (the controller where none), with cash out and comments; some confirmed or declined by the
+    nearest approver. A round with investments is left alone. Returns (projects, investments)."""
+    # Imported here: capex builds on planning, which this module imports.
+    from planlayer import capex
+
+    system = access.system_user(engine)
+    with engine.connect() as conn:
+        controller = (
+            access.user_by_login(conn, "controller@nordwerk.example")
+            if conn.execute(
+                select(app_user.c.login).where(app_user.c.login == "controller@nordwerk.example")
+            ).scalar()
+            else system
+        )
+    known = {t.code for t in capex.types(engine, controller)}
+    wanted = capex.types(engine, controller) + [
+        capex.CapexType(code, name, account, life)
+        for code, name, account, life in CAPEX_TYPES
+        if code not in known
+    ]
+    capex.save_types(engine, controller, wanted)
+    with unit_of_work(engine, controller) as conn:
+        r = get_round(conn, round_code)
+        settings = capex.settings_of(conn, r.version_id)
+        capex.switch(
+            conn,
+            r,
+            controller,
+            capex.CapexSettings(
+                settings.threshold if settings else CAPEX_THRESHOLD,
+                True,
+            ),
+        )
+    view = capex.view_of(engine, controller, round_code)
+    if view.items:
+        return 0, 0
+    planned = {c.code for c in view.cost_centers}
+    periods, next_year = view.periods, view.next_year
+    with engine.connect() as conn:
+        owners = {
+            code: login
+            for code, login in conn.execute(
+                select(member.c.code, app_user.c.login)
+                .join(cost_center_owner, cost_center_owner.c.cost_center_id == member.c.member_id)
+                .join(app_user, app_user.c.user_id == cost_center_owner.c.user_id)
+            )
+        }
+        ids = dict(
+            conn.execute(
+                select(member.c.code, member.c.member_id).where(member.c.dim_id == COST_CENTER)
+            ).all()
+        )
+        users: dict[str, access.User] = {}
+
+        def user(login: str | None) -> access.User:
+            if login is None:
+                return controller
+            if login not in users:
+                users[login] = access.user_by_login(conn, login)
+            return users[login]
+
+        def approver(cc: str) -> access.User:
+            nearest = access.approvers(conn, [ids[cc]]).get(ids[cc], [])
+            return user(nearest[0][1]) if nearest else controller
+
+        planner = {cc: user(owners.get(cc)) for cc in planned}
+        approvers = {cc: approver(cc) for cc in planned}
+
+    def decide(cc: str, item_id: int, how: str) -> None:
+        status, _, reason = how.partition(":")
+        if status != "open":
+            capex.set_status(
+                engine, approvers[cc], round_code, [item_id], status,  # type: ignore[arg-type]
+                reason or None,
+            )  # fmt: skip
+
+    def schedule(cc: str, item_id: int, pattern: CashOut, month: int, amount: int) -> None:
+        if pattern:
+            plan = _cash_out(pattern, periods[month - 1], Decimal(amount), periods, next_year)
+            capex.set_cash_out(engine, planner[cc], round_code, item_id, plan)
+
+    def add(who: access.User, item: "capex.NewItem") -> int:
+        return capex.apply(engine, who, round_code, [item], [])[0]
+
+    projects = lines = 0
+    for cc, name, priority, how, parts in CAPEX_PROJECTS:
+        if cc not in planned:
+            continue
+        project = add(planner[cc], capex.NewItem("project", None, cc, name, priority=priority))
+        for part, kind, month, amount, pattern in parts:
+            item_id = add(
+                planner[cc],
+                capex.NewItem(
+                    "line", project, None, part, kind, None, periods[month - 1], Decimal(amount)
+                ),
+            )
+            schedule(cc, item_id, pattern, month, amount)
+            lines += 1
+        decide(cc, project, how)
+        if name in CAPEX_REPLIES:
+            capex.add_comment(engine, approvers[cc], round_code, project, CAPEX_REPLIES[name])
+        projects += 1
+    for cc, name, kind, priority, month, amount, pattern, how, note in CAPEX_LINES:
+        if cc not in planned:
+            continue
+        item_id = add(
+            planner[cc],
+            capex.NewItem(
+                "line", None, cc, name, kind, priority, periods[month - 1], Decimal(amount)
+            ),
+        )
+        schedule(cc, item_id, pattern, month, amount)
+        if note:
+            capex.add_comment(engine, planner[cc], round_code, item_id, note)
+        if name in CAPEX_REPLIES:
+            capex.add_comment(engine, approvers[cc], round_code, item_id, CAPEX_REPLIES[name])
+        decide(cc, item_id, how)
+        lines += 1
+    return projects, lines

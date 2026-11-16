@@ -99,6 +99,11 @@ def main(argv: list[str] | None = None) -> None:
         help="positions from HR, replacements and new positions in a round (development)",
     )
     workforce_cmd.add_argument("--round", required=True, help="the planning round")
+    capex_cmd = commands.add_parser(
+        "seed-dev-capex",
+        help="investment types and the test company's investments in a round (development)",
+    )
+    capex_cmd.add_argument("--round", default="B2026", help="the planning round (default B2026)")
     types_cmd = commands.add_parser(
         "api-types", help="write the frontend's TypeScript types from the API schema"
     )
@@ -220,6 +225,16 @@ def main(argv: list[str] | None = None) -> None:
             finally:
                 engine.dispose()
             print(f"created {len(made)} forwarding(s) in {args.round}: {', '.join(made) or '-'}")
+        case "seed-dev-capex":
+            settings = Settings()  # type: ignore[call-arg]
+            if settings.environment == "production":
+                raise SystemExit("seed-dev-capex is refused in production")
+            engine = create_app_engine(settings)
+            try:
+                projects, lines = devdata.seed_capex(engine, args.round)
+            finally:
+                engine.dispose()
+            print(f"created {projects} large project(s) and {lines} investment(s) in {args.round}")
         case "seed-dev-workforce":
             settings = Settings()  # type: ignore[call-arg]
             if settings.environment == "production":

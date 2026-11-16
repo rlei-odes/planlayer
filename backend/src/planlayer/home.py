@@ -60,6 +60,8 @@ class RoundWork:
     # HR's next step in the round (ADR 0024): release access, then hand pay over per cost center.
     pay_step: Literal["release", "hand_over"] | None = None
     to_hand_over: list[str] = field(default_factory=list)
+    # Capex (ADR 0028): open investments and large projects the user confirms.
+    to_confirm: int = 0
 
 
 def my_work(engine: Engine, user: User, today: date) -> list[RoundWork]:
@@ -143,8 +145,14 @@ def my_work(engine: Engine, user: User, today: date) -> list[RoundWork]:
                     )
                     step = "hand_over" if hand_over else None
 
+            # Imported here: capex planning builds on this module's imports.
+            from planlayer.capex.items import waiting_for
+
+            confirm = waiting_for(conn, user, r.version_id)
+
         work = RoundWork(
             r,
+            to_confirm=confirm,
             small_groups=small,
             to_review=review,
             pay_released=pay_released,

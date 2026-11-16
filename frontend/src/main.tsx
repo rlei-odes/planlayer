@@ -20,6 +20,7 @@ import './styles/workforce.css'
 import './styles/personnel.css'
 import './styles/transfers.css'
 import './styles/home.css'
+import './styles/capex.css'
 import App from './App.tsx'
 
 createRoot(document.getElementById('root')!).render(

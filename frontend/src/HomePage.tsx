@@ -7,7 +7,7 @@ import { TransferDecision, TransferLine } from './Transfers'
 // transfers, and the notes that mention them or that they started.
 
 export type Sheet = RoundWork['cost_centers'][number]['sheets'][number]
-export type HomeTarget = 'status' | 'setup'
+export type HomeTarget = 'status' | 'setup' | 'capex'
 
 const WHEN = new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeStyle: 'short' })
 const TODAY = new Intl.DateTimeFormat('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })
@@ -107,7 +107,9 @@ export default function HomePage({
   const approvals = (home?.rounds ?? []).filter((w) => w.to_approve > 0)
   // HR (ADR 0022): small groups to charge elsewhere, and submitted pay to review.
   const payTasks = (home?.rounds ?? []).filter((w) => w.small_groups.length > 0 || w.to_review.length > 0 || w.pay_step)
-  const taskCount = toDecide.length + assigned.length + approvals.length + payTasks.length
+  // Capex (ADR 0028): open investments to confirm.
+  const confirms = (home?.rounds ?? []).filter((w) => (w.to_confirm ?? 0) > 0)
+  const taskCount = toDecide.length + assigned.length + approvals.length + payTasks.length + confirms.length
   const loaded = home !== null && (notes !== null || !readsNotes)
 
   return (
@@ -153,6 +155,22 @@ export default function HomePage({
                 <span className="tr-actions">
                   <button type="button" className="su-btn sm" onClick={() => onGo(w.round.code, 'status')}>
                     Open status
+                  </button>
+                </span>
+              </li>
+            ))}
+            {confirms.map((w) => (
+              <li key={`c${w.round.code}`} className="hm-task">
+                <span className="hm-kind approve">To confirm</span>
+                <span className="tr-line">
+                  <strong>
+                    {w.to_confirm} investment{w.to_confirm === 1 ? '' : 's'} open in {w.round.name}
+                  </strong>
+                  <span className="ink-3">Waiting for your confirmation</span>
+                </span>
+                <span className="tr-actions">
+                  <button type="button" className="su-btn sm" onClick={() => onGo(w.round.code, 'capex')}>
+                    Open investments
                   </button>
                 </span>
               </li>

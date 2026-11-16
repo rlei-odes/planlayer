@@ -38,6 +38,7 @@ from planlayer.store.schema import (
     account_set_account,
     account_set_assignment,
     capacity_line,
+    capex_setting,
     comparison,
     credit_account,
     entry_form,
@@ -223,6 +224,9 @@ def create_round(
             from planlayer.personnel import carry as carry_personnel
 
             carry_personnel(conn, source, get_round(conn, code), actor.login)
+            # Capex planning's settings come with the setup; its investments are the old
+            # round's (ADR 0028).
+            _copy_rows(conn, source.version_id, vid, capex_setting)
         if carry.forwarding:
             # After the values: full forwardings pass on the carried costs. Imported here:
             # forwarding builds on this module.

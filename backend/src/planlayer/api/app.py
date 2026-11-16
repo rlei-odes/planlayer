@@ -15,6 +15,7 @@ from planlayer.adapters.source import PostgresSource
 from planlayer.api.access import router as access_router
 from planlayer.api.auth import router as auth_router
 from planlayer.api.capacity import router as capacity_router
+from planlayer.api.capex import router as capex_router
 from planlayer.api.forwarding import router as forwarding_router
 from planlayer.api.home import router as home_router
 from planlayer.api.item_lists import router as item_lists_router
@@ -68,6 +69,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(transfers_router)
     app.include_router(home_router)
     app.include_router(forwarding_router)
+    app.include_router(capex_router)
     app.include_router(settings_router)
     app.include_router(setup_router)
     app.include_router(publish_router)
