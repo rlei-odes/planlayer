@@ -48,6 +48,18 @@
   font-size: 11.5px;
 }
 
+/* Between the filters and the list: always there, so a selection's bar doesn't move the list. */
+.cx-slot {
+  height: 44px;
+}
+
+.cx-slot > .cx-selection {
+  height: 100%;
+  padding-block: 0;
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+
 .cx-selection {
   display: flex;
   flex-wrap: wrap;

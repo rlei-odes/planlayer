@@ -32,6 +32,8 @@ const CONTROLS = '[data-pick], [data-menu], [data-status], [data-cash], [data-co
 export type ListActions = {
   /** Add and change investments in one request; the list is reloaded when it is refused. */
   save: (create: CapexNew[], update: CapexChange[]) => Promise<void>
+  /** Close the page's open menus: a press in the list is handled before they see it. */
+  dismiss: () => void
   openMenu: (item: CapexItem, anchor: DOMRect) => void
   openStatus: (item: CapexItem, anchor: DOMRect) => void
   openCashOut: (item: CapexItem) => void
@@ -335,7 +337,7 @@ export default function CapexList({
       ...(cashOut
         ? [
             {
-              ...column('cash', 'Cash out', 124, 'cx-center', 'cx-head-center'),
+              ...column('cash', 'Cash out', 136, 'cx-center', 'cx-head-center'),
               readonly: true,
               ...template((h, row, rowIndex) => {
                 const i = row?.item
@@ -496,6 +498,8 @@ export default function CapexList({
     if (!target && !pickable) return
     e.preventDefault()
     e.stopPropagation()
+    actions.dismiss()
+    setPick(null)
     if (pickable) {
       // A picker cell opens its picker on the first click.
       openPicker(cellProp as Field, Number(cellRow))

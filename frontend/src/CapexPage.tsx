@@ -32,7 +32,7 @@ export default function CapexPage({ version, me }: { version: string; me: Me }) 
   const [type, setType] = useState(ALL)
   const [waiting, setWaiting] = useState(false)
   const [selected, setSelected] = useState<Set<number>>(new Set())
-  const [menu, setMenu] = useState<{ item: CapexItem; anchor: DOMRect; kind: 'row' | 'status' } | null>(null)
+  const [menu, setMenu] = useState<{ item: CapexItem; anchor: DOMRect; kind: 'row' | 'status' | 'move' } | null>(null)
   const [cashFor, setCashFor] = useState<CapexItem | null>(null)
   const [commentsFor, setCommentsFor] = useState<CapexItem | null>(null)
   const [ask, setAsk] = useState<Ask | null>(null)
@@ -120,9 +120,15 @@ export default function CapexPage({ version, me }: { version: string; me: Me }) 
     )
   }
 
+  /** Large projects a line can move into: those the user plans, other than its own. */
+  const projectsFor = (item: CapexItem) =>
+    items.filter((p) => p.kind === 'project' && p.can_write && p.item_id !== item.project_id)
+
   function onRowMenu(item: CapexItem, value: string) {
+    const anchor = menu?.anchor
     setMenu(null)
-    if (value === 'cash') setCashFor(item)
+    if (value === 'move' && anchor) setMenu({ item, anchor, kind: 'move' })
+    else if (value === 'cash') setCashFor(item)
     else if (value === 'line') void run(() => api.capexChanges(version, [{ kind: 'line', project_id: item.item_id, name: 'New line' }], []), 'Line added: name it and fill it in.')
     else if (value === 'project') void run(() => api.capexMakeProject(version, item.item_id), `${item.name} is a large project now; add its lines in the row below it.`)
     else if (value === 'out') void run(() => api.capexMove(version, item.item_id, null))
@@ -136,6 +142,7 @@ export default function CapexPage({ version, me }: { version: string; me: Me }) 
     if (!write) return options
     if (item.kind === 'project') options.push({ value: 'line', label: 'Add a line' })
     if (item.kind === 'line' && item.project_id === null) options.push({ value: 'project', label: 'Make a large project', hint: 'this becomes its first line' })
+    if (item.kind === 'line' && projectsFor(item).length > 0) options.push({ value: 'move', label: 'Move into large project…' })
     if (item.project_id !== null) options.push({ value: 'out', label: 'Take out of the project' })
     options.push({ value: 'delete', label: 'Delete', hint: item.kind === 'project' ? 'with its lines' : undefined })
     return options
@@ -256,6 +263,8 @@ export default function CapexPage({ version, me }: { version: string; me: Me }) 
             )}
           </div>
 
+          {/* The selection's actions and questions have a place of their own, so the list stays put. */}
+          <div className="cx-slot">
           {chosen.length > 0 && !ask && (
             <div className="su-note info cx-selection">
               <strong>{chosen.length} selected</strong>
@@ -320,6 +329,7 @@ export default function CapexPage({ version, me }: { version: string; me: Me }) 
               </button>
             </div>
           )}
+          </div>
 
           <CapexList
             view={view}
@@ -330,6 +340,7 @@ export default function CapexPage({ version, me }: { version: string; me: Me }) 
             defaultCostCenter={defaultCostCenter}
             actions={{
               save,
+              dismiss: () => setMenu(null),
               openMenu: (item, anchor) => setMenu({ item, anchor, kind: 'row' }),
               openStatus: (item, anchor) => setMenu({ item, anchor, kind: 'status' }),
               openCashOut: setCashFor,
@@ -353,12 +364,33 @@ export default function CapexPage({ version, me }: { version: string; me: Me }) 
 
       {menu && (
         <Select
-          label={menu.kind === 'row' ? `Actions for ${menu.item.name}` : `Confirmation of ${menu.item.name}`}
+          key={menu.kind}
+          label={
+            menu.kind === 'row'
+              ? `Actions for ${menu.item.name}`
+              : menu.kind === 'move'
+                ? `Move ${menu.item.name} into a large project`
+                : `Confirmation of ${menu.item.name}`
+          }
           anchor={menu.anchor}
           value=""
-          options={menu.kind === 'row' ? rowOptions(menu.item) : statusOptions(menu.item)}
+          searchable={menu.kind === 'move' ? undefined : false}
+          options={
+            menu.kind === 'row'
+              ? rowOptions(menu.item)
+              : menu.kind === 'move'
+                ? projectsFor(menu.item).map((p) => ({ value: String(p.item_id), label: p.name }))
+                : statusOptions(menu.item)
+          }
           onClose={() => setMenu(null)}
-          onChange={(value) => (menu.kind === 'row' ? onRowMenu(menu.item, value) : onStatusMenu(menu.item, value))}
+          onChange={(value) => {
+            if (menu.kind === 'row') onRowMenu(menu.item, value)
+            else if (menu.kind === 'status') onStatusMenu(menu.item, value)
+            else {
+              setMenu(null)
+              void run(() => api.capexMove(version, menu.item.item_id, Number(value)), `${menu.item.name} moved into the large project.`)
+            }
+          }}
         />
       )}
       {cashFor && (
