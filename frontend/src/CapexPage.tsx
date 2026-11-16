@@ -122,27 +122,21 @@ export default function CapexPage({ version, me }: { version: string; me: Me }) 
 
   function onRowMenu(item: CapexItem, value: string) {
     setMenu(null)
-    if (value === 'comments') setCommentsFor(item)
-    else if (value === 'cash') setCashFor(item)
+    if (value === 'cash') setCashFor(item)
     else if (value === 'line') void run(() => api.capexChanges(version, [{ kind: 'line', project_id: item.item_id, name: 'New line' }], []), 'Line added: name it and fill it in.')
     else if (value === 'project') void run(() => api.capexMakeProject(version, item.item_id), `${item.name} is a large project now; add its lines in the row below it.`)
     else if (value === 'out') void run(() => api.capexMove(version, item.item_id, null))
-    else if (value.startsWith('move:')) void run(() => api.capexMove(version, item.item_id, Number(value.slice(5))))
     else if (value === 'delete') setAsk({ kind: 'delete', ids: [item.item_id], reason: '' })
   }
 
   function rowOptions(item: CapexItem): Option[] {
     const write = item.can_write && !locked
-    const options: Option[] = [{ value: 'comments', label: 'Comments', hint: item.comments ? String(item.comments) : undefined }]
+    const options: Option[] = []
     if (view!.settings.cash_out && item.kind === 'line') options.push({ value: 'cash', label: 'Cash out', hint: write ? undefined : 'read only' })
     if (!write) return options
     if (item.kind === 'project') options.push({ value: 'line', label: 'Add a line' })
     if (item.kind === 'line' && item.project_id === null) options.push({ value: 'project', label: 'Make a large project', hint: 'this becomes its first line' })
     if (item.project_id !== null) options.push({ value: 'out', label: 'Take out of the project' })
-    if (item.kind === 'line')
-      for (const p of items)
-        if (p.kind === 'project' && p.can_write && p.item_id !== item.project_id)
-          options.push({ value: `move:${p.item_id}`, label: `Move into ${p.name}`, hint: p.cost_center_code })
     options.push({ value: 'delete', label: 'Delete', hint: item.kind === 'project' ? 'with its lines' : undefined })
     return options
   }
