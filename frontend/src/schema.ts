@@ -1049,6 +1049,9 @@ export type PublishPreviewOut = {
   fingerprint: string
   hours_rows: number
   workforce_rows: number
+  capex_rows: number
+  cash_out_rows: number
+  capex_changed: boolean
 }
 
 export type PublishRunIn = {

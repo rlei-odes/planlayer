@@ -151,6 +151,58 @@ dim_staff_category = Table(
     Column("name", Text, nullable=False),
 )
 
+# Investments of rounds that plan capex (ADR 0028): one row per investment, a large project's
+# lines with their project; and their cash out by period.
+fact_plan_capex = Table(
+    "fact_plan_capex",
+    out_metadata,
+    Column("version_code", Text, nullable=False),
+    Column("fiscal_year", Integer, nullable=False),
+    Column("investment_id", Integer, nullable=False),
+    Column("investment_name", Text, nullable=False),
+    Column("project_id", Integer),
+    Column("project_name", Text),
+    Column("entity_code", Text, nullable=False),
+    Column("cost_center_code", Text, nullable=False),
+    Column("capex_type_code", Text),
+    Column("priority", SmallInteger, nullable=False),
+    Column("start_month", Date),
+    Column("amount", Numeric(18, 2)),
+    Column("confirmation", Text, nullable=False),  # open / confirmed / declined
+    Column("confirmed_by", Text),
+    Column("confirmed_at", DateTime(timezone=True)),
+    Column("published_at", DateTime(timezone=True), nullable=False),
+    Column("publish_run_id", BigInteger, nullable=False),
+    PrimaryKeyConstraint("version_code", "investment_id"),
+)
+
+fact_plan_cash_out = Table(
+    "fact_plan_cash_out",
+    out_metadata,
+    Column("version_code", Text, nullable=False),
+    Column("fiscal_year", Integer, nullable=False),
+    Column("investment_id", Integer, nullable=False),
+    Column("period", Date, nullable=False),
+    Column("entity_code", Text, nullable=False),
+    Column("cost_center_code", Text, nullable=False),
+    Column("capex_type_code", Text),
+    Column("amount", Numeric(18, 2), nullable=False),
+    Column("confirmation", Text, nullable=False),
+    Column("published_at", DateTime(timezone=True), nullable=False),
+    Column("publish_run_id", BigInteger, nullable=False),
+    PrimaryKeyConstraint("version_code", "investment_id", "period"),
+)
+
+dim_capex_type = Table(
+    "dim_capex_type",
+    out_metadata,
+    Column("code", Text, primary_key=True),
+    Column("name", Text, nullable=False),
+    Column("asset_account", Text),
+    Column("useful_life", SmallInteger),  # years
+    Column("active", Boolean),
+)
+
 dim_version = Table(
     "dim_version",
     out_metadata,
@@ -248,4 +300,30 @@ def ensure(conn: Connection, schema: str) -> None:
         LEFT JOIN {s}.dim_cost_center cc ON cc.code = f.cost_center_code
         LEFT JOIN {s}.dim_staff_type t ON t.code = f.staff_type_code
         LEFT JOIN {s}.dim_staff_category c ON c.code = f.staff_category_code
+    """)
+    conn.exec_driver_sql(f"""
+        CREATE OR REPLACE VIEW {s}.v_plan_capex AS
+        SELECT f.version_code, v.name AS version_name, f.fiscal_year, f.investment_id,
+               f.investment_name, f.project_id, f.project_name, f.entity_code,
+               f.cost_center_code, cc.name AS cost_center_name, f.capex_type_code,
+               t.name AS capex_type_name, t.asset_account, t.useful_life, f.priority,
+               f.start_month, f.amount, f.confirmation, f.confirmed_by, f.confirmed_at,
+               f.published_at
+        FROM {s}.fact_plan_capex f
+        LEFT JOIN {s}.dim_version v ON v.code = f.version_code
+        LEFT JOIN {s}.dim_cost_center cc ON cc.code = f.cost_center_code
+        LEFT JOIN {s}.dim_capex_type t ON t.code = f.capex_type_code
+    """)
+    conn.exec_driver_sql(f"""
+        CREATE OR REPLACE VIEW {s}.v_plan_cash_out AS
+        SELECT f.version_code, v.name AS version_name, f.fiscal_year, f.period,
+               f.investment_id, i.investment_name, i.project_name, f.entity_code,
+               f.cost_center_code, cc.name AS cost_center_name, f.capex_type_code,
+               t.name AS capex_type_name, f.amount, f.confirmation, f.published_at
+        FROM {s}.fact_plan_cash_out f
+        LEFT JOIN {s}.fact_plan_capex i
+            ON i.version_code = f.version_code AND i.investment_id = f.investment_id
+        LEFT JOIN {s}.dim_version v ON v.code = f.version_code
+        LEFT JOIN {s}.dim_cost_center cc ON cc.code = f.cost_center_code
+        LEFT JOIN {s}.dim_capex_type t ON t.code = f.capex_type_code
     """)

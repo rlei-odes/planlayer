@@ -116,7 +116,7 @@ export default function CapexPage({ version, me }: { version: string; me: Me }) 
     setLastCostCenter(defaultCostCenter)
     await run(
       () => api.capexChanges(version, [{ kind: 'project', name: 'New large project', cost_center: defaultCostCenter }], []),
-      'Large project added: name it, then add its lines from ⋯.',
+      'Large project added: name it, and add its lines in the row below it.',
     )
   }
 
@@ -125,7 +125,7 @@ export default function CapexPage({ version, me }: { version: string; me: Me }) 
     if (value === 'comments') setCommentsFor(item)
     else if (value === 'cash') setCashFor(item)
     else if (value === 'line') void run(() => api.capexChanges(version, [{ kind: 'line', project_id: item.item_id, name: 'New line' }], []), 'Line added: name it and fill it in.')
-    else if (value === 'project') void run(() => api.capexMakeProject(version, item.item_id), `${item.name} is a large project now; add its lines from ⋯.`)
+    else if (value === 'project') void run(() => api.capexMakeProject(version, item.item_id), `${item.name} is a large project now; add its lines in the row below it.`)
     else if (value === 'out') void run(() => api.capexMove(version, item.item_id, null))
     else if (value.startsWith('move:')) void run(() => api.capexMove(version, item.item_id, Number(value.slice(5))))
     else if (value === 'delete') setAsk({ kind: 'delete', ids: [item.item_id], reason: '' })

@@ -17,6 +17,12 @@ from planlayer import access, capex
 from planlayer.config import Settings
 from planlayer.domain import capex as rules
 from planlayer.store.db import create_app_engine
+from planlayer.store.output import (
+    create_output_engine,
+    dim_capex_type,
+    fact_plan_capex,
+    fact_plan_cash_out,
+)
 from planlayer.store.schema import capex_item, capex_log
 from planlayer.store.uow import unit_of_work
 
@@ -375,3 +381,50 @@ def test_home_counts_what_waits_for_the_confirmer(on: TestClient) -> None:
     home = on.get("/api/home").json()
     assert home["rounds"][0]["to_confirm"] == 1
     assert home["tasks"] >= 1
+
+
+def test_publishing_writes_investments_and_cash_out(migrated: Settings, on: TestClient) -> None:
+    login(on, OWNER)
+    lathe = _add(on, name="Lathe", cost_center="CC1", type="MACH", amount="1000", priority=1)
+    _add(on, name="Laptop", cost_center="CC1", type="IT", amount="200")
+    plan = [{"period": "2026-02-01", "amount": "600"}, {"period": "2027-01-01", "amount": "400"}]
+    on.put(f"{BASE}/items/{lathe['item_id']}/cash-out", json={"periods": plan})
+    login(on, CONTROLLER)
+    on.post(f"{BASE}/status", json={"item_ids": [lathe["item_id"]], "status": "confirmed"})
+    output = create_output_engine(migrated)
+    try:
+        for scope, investments, cash in (("approved", 1, 2), ("all", 2, 2)):
+            p = on.get(f"/api/rounds/{R}/publish/preview", params={"scope": scope}).json()
+            assert (p["capex_rows"], p["cash_out_rows"]) == (investments, cash)
+            done = on.post(
+                f"/api/rounds/{R}/publish", json={"scope": scope, "fingerprint": p["fingerprint"]}
+            )
+            assert done.status_code == 200, done.text
+        with output.connect() as conn:
+            rows = {r.investment_name: r for r in conn.execute(select(fact_plan_capex))}
+            assert rows["Lathe"].confirmation == "confirmed"
+            assert (rows["Laptop"].confirmation, rows["Laptop"].priority) == ("open", 2)
+            cash = conn.execute(
+                select(fact_plan_cash_out.c.period, fact_plan_cash_out.c.amount).order_by(
+                    fact_plan_cash_out.c.period
+                )
+            ).all()
+            assert cash == [
+                (date(2026, 2, 1), Decimal("600.00")),
+                (date(2027, 1, 1), Decimal("400.00")),
+            ]
+            assert {t.code for t in conn.execute(select(dim_capex_type))} == {"MACH", "IT"}
+            # As published: nothing to publish; a change since the preview refuses the run.
+            p = on.get(f"/api/rounds/{R}/publish/preview", params={"scope": "all"}).json()
+            assert p["capex_changed"] is False
+            login(on, OWNER)
+            _change(on, lathe["item_id"], name="CNC lathe")
+            login(on, CONTROLLER)
+            refused = on.post(
+                f"/api/rounds/{R}/publish", json={"scope": "all", "fingerprint": p["fingerprint"]}
+            )
+            assert refused.status_code == 409
+            p = on.get(f"/api/rounds/{R}/publish/preview", params={"scope": "all"}).json()
+            assert (p["capex_changed"], p["added"] + p["changed"] + p["removed"]) == (True, 0)
+    finally:
+        output.dispose()

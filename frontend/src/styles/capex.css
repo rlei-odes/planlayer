@@ -215,8 +215,10 @@ revogr-header .cx-check {
 .cx-caret {
   flex: none;
   position: relative;
-  width: 18px;
-  height: 20px;
+  /* Clear of the cell's right edge, where the grid's fill handle sits. */
+  margin-right: 8px;
+  width: 20px;
+  height: 22px;
   padding: 0;
   border: none;
   border-radius: 4px;
@@ -542,4 +544,57 @@ button.pb-tile.cx-waiting .pb-value {
 
 .cx-page .su-card > .su-hint {
   margin: 4px 0 12px;
+}
+
+revo-grid.cx-revo .rgCell.cx-new.cx-in-project .cx-new-text {
+  padding-left: 22px;
+}
+
+/* --- Month picker ------------------------------------------------------------------------- */
+
+.mp {
+  position: fixed;
+  z-index: 60;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-lift);
+  outline: none;
+}
+
+.mp-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.mp-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+}
+
+.mp-month {
+  padding: 6px 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-s);
+  background: none;
+  font-weight: 550;
+  color: var(--ink-2);
+}
+
+.mp-month.active {
+  background: var(--canvas);
+}
+
+.mp-month.on {
+  background: var(--accent);
+  color: #fff;
+}
+
+.mp-foot {
+  margin-top: 6px;
+  text-align: right;
 }

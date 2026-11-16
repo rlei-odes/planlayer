@@ -66,6 +66,9 @@ class PublishPreviewOut(BaseModel):
     fingerprint: str
     hours_rows: int  # planned hours written to fact_plan_capacity (ADR 0016)
     workforce_rows: int  # FTE and headcount written to fact_plan_workforce (ADR 0020)
+    capex_rows: int  # investments written to fact_plan_capex (ADR 0028)
+    cash_out_rows: int  # their cash out in fact_plan_cash_out
+    capex_changed: bool  # investments or cash out differ from the output
 
 
 class PublishRunIn(BaseModel):

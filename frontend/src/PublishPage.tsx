@@ -76,7 +76,8 @@ export default function PublishPage({ round }: { round: Version }) {
     }
   }
 
-  const nothing = preview && preview.added + preview.changed + preview.removed === 0
+  // Investments change apart from the plan values (ADR 0028).
+  const nothing = preview && preview.added + preview.changed + preview.removed === 0 && !preview.capex_changed
   const file = (fmt: string) => `/api/rounds/${encodeURIComponent(code)}/export.${fmt}?scope=${scope}`
   return (
     <div className="su">
@@ -145,7 +146,11 @@ export default function PublishPage({ round }: { round: Version }) {
                 disabled={busy || !preview || !!nothing}
                 onClick={() => void publish()}
               >
-                {preview && !nothing ? `Publish: +${preview.added} ~${preview.changed} −${preview.removed}` : 'Publish'}
+                {preview && !nothing
+                  ? preview.added + preview.changed + preview.removed > 0
+                    ? `Publish: +${preview.added} ~${preview.changed} −${preview.removed}`
+                    : 'Publish investments'
+                  : 'Publish'}
               </button>
             </div>
             {note && <div className={`su-note ${note.kind}`} style={{ margin: '12px 0 0 32px' }}>{note.text}</div>}
@@ -191,13 +196,16 @@ export default function PublishPage({ round }: { round: Version }) {
               </div>
               <div className="pv-notes">
                 {nothing && <div className="su-note ok">The output already holds exactly these rows. Nothing to publish.</div>}
-                {(preview.hours_rows > 0 || preview.workforce_rows > 0) && (
+                {(preview.hours_rows > 0 || preview.workforce_rows > 0 || preview.capex_rows > 0) && (
                   <div className="su-hint">
                     With them:{' '}
                     {[
                       preview.hours_rows > 0 && `${preview.hours_rows.toLocaleString('en-US')} rows of planned hours`,
                       preview.workforce_rows > 0 &&
                         `${preview.workforce_rows.toLocaleString('en-US')} rows of FTE and headcount (no names)`,
+                      preview.capex_rows > 0 &&
+                        `${preview.capex_rows.toLocaleString('en-US')} investments${preview.capex_changed ? ' (changed)' : ''}`,
+                      preview.cash_out_rows > 0 && `${preview.cash_out_rows.toLocaleString('en-US')} rows of cash out`,
                     ]
                       .filter(Boolean)
                       .join(' · ')}

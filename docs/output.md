@@ -92,6 +92,49 @@ Work centers with their `cost_center_code`, and activity types with the `account
 
 Staff types with `external` (external staff, e.g. freelancers), and staff categories, as Planlayer holds them at the last publish.
 
+## `fact_plan_capex`
+
+Investments of rounds that plan capex ([ADR 0028](adr/0028-capex-planning.md)): one row per investment. A large project has no row of its own; its lines carry its id and name.
+
+| Column | Type | Meaning |
+|---|---|---|
+| `version_code`, `fiscal_year` | | as in `fact_plan_cost_center` |
+| `investment_id` | integer | Planlayer's number of the investment, as on the *Investments* page |
+| `investment_name` | text | |
+| `project_id`, `project_name` | integer, text | the large project it is a line of; empty for a single investment |
+| `entity_code`, `cost_center_code` | text | the cost center, and its entity (`-` without one) |
+| `capex_type_code` | text | investment type; empty when not set |
+| `priority` | smallint | 1 to 3; a line's is its project's |
+| `start_month` | date | first day of the month it is taken into use; empty when not set |
+| `amount` | numeric(18,2) | natural-positive; empty when not set |
+| `confirmation` | text | `open`, `confirmed` or `declined`; a line's is its project's |
+| `confirmed_by`, `confirmed_at` | text, timestamptz | who confirmed or declined, and when |
+| `published_at`, `publish_run_id` | | as in `fact_plan_cost_center` |
+
+Key: `version_code, investment_id`. With the scope "approved cost centers", a run publishes the confirmed investments only; with "whole round", every investment, declined ones included: filter on `confirmation`.
+
+## `fact_plan_cash_out`
+
+The cash-out schedule of the published investments: one row per investment and period with an amount. Periods are months, or a quarter's first month in rounds planned by quarter; the first month of the next fiscal year holds what is paid in that year as a whole. The rows of an investment sum to at most its amount; what is missing isn't scheduled yet.
+
+| Column | Type | Meaning |
+|---|---|---|
+| `version_code`, `fiscal_year`, `investment_id` | | as in `fact_plan_capex` |
+| `period` | date | first day of the period |
+| `entity_code`, `cost_center_code`, `capex_type_code`, `confirmation` | | the investment's, repeated for grouping |
+| `amount` | numeric(18,2) | cash out in the period |
+| `published_at`, `publish_run_id` | | as in `fact_plan_cost_center` |
+
+Key: `version_code, investment_id, period`.
+
+## `dim_capex_type`
+
+Investment types with `asset_account` (the balance sheet account an investment of the type is capitalised on), `useful_life` in years and `active`, as Planlayer holds them at the last publish.
+
+## `v_plan_capex`, `v_plan_cash_out`
+
+`fact_plan_capex` joined with the names of round, cost center and investment type (with asset account and useful life); `fact_plan_cash_out` joined with the same and the investment's and project's names.
+
 ## `v_plan_workforce`
 
 `fact_plan_workforce` joined with the names of round, cost center, staff type (and `external`) and staff category.

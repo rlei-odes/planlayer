@@ -326,7 +326,9 @@ German terms in parentheses, as controllers know them.
   - [x] Investments per round as one list over the user's cost centers: name, type, cost center, priority 1–3, start month, amount; large projects grouping lines with their own dates, flagged above the controller's threshold; confirmation (open, confirmed, declined with a reason) by approvers above the cost center and controllers, reopened when what was confirmed changes; an optional cash-out schedule over the round's periods and the next year, never above the amount; comments; an overview by area, type and period; investment types with asset account and useful life; open confirmations on *Home* ([ADR 0028](docs/adr/0028-capex-planning.md)).
   - [ ] Depreciation from investments into the cost center plans: by type's useful life from the start month, with a per-investment override, onto a depreciation account per type.
   - [ ] Existing assets and their remaining depreciation (a source dataset from the asset register, or entered by finance), so the depreciation plan is complete.
-  - [ ] Publishing investments and their cash out to `planlayer_out` (`fact_plan_capex`, `fact_plan_cash_out`), for BI and treasury.
+  - [x] Publishing investments and their cash out to `planlayer_out` (`fact_plan_capex`, `fact_plan_cash_out`, `dim_capex_type`): confirmed ones with the scope "approved", all with "whole round"; compared in the preview ([docs/output.md](docs/output.md)).
+  - [ ] Investments and cash out in the file downloads of the Publish page.
+  - [ ] Who confirms: today controllers and any approver above the cost center, except one who plans it. Decide between the nearest approver only, steps (the manager, then the CFO above an amount), and how a confirmation by one approver shows to the others.
   - [ ] Carrying investments into a new round: multi-year projects and what wasn't started, with the checklist (ADR 0014).
   - [ ] Capex budgets per area: an envelope per hierarchy node, set by the controller, and plan against envelope in the overview.
   - [ ] Undo on the investments list (changes are in `capex_log` with the change batch).

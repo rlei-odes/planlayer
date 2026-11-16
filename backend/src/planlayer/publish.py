@@ -20,7 +20,7 @@ import io
 from collections import Counter, defaultdict
 from collections.abc import Iterator
 from dataclasses import dataclass, field, replace
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Literal
 
@@ -30,6 +30,7 @@ from sqlalchemy import Connection, Engine, delete, func, insert, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from planlayer.access import User
+from planlayer.capex.published import CashOutRow, InvestmentRow, capex_types, published_rows
 from planlayer.domain.signs import signed
 from planlayer.rounds import RoundRef, closed_periods, get_round
 from planlayer.signs import account_roles, convention
@@ -37,6 +38,7 @@ from planlayer.store.output import (
     LEVELS,
     dim_account,
     dim_activity_type,
+    dim_capex_type,
     dim_cost_center,
     dim_staff_category,
     dim_staff_type,
@@ -44,6 +46,8 @@ from planlayer.store.output import (
     dim_work_center,
     ensure,
     fact_plan_capacity,
+    fact_plan_capex,
+    fact_plan_cash_out,
     fact_plan_cost_center,
     fact_plan_workforce,
 )
@@ -267,6 +271,9 @@ class Preview:
     fingerprint: str = ""
     hours_rows: int = 0  # planned hours in fact_plan_capacity (ADR 0016)
     workforce_rows: int = 0  # FTE and headcount in fact_plan_workforce (ADR 0020)
+    capex_rows: int = 0  # investments in fact_plan_capex (ADR 0028)
+    cash_out_rows: int = 0  # their cash out in fact_plan_cash_out
+    capex_changed: bool = False  # investments or cash out differ from the output
 
 
 def preview(
@@ -277,7 +284,9 @@ def preview(
     hours = hour_rows(engine, user, r, scope)
     done = _with_hours(_compare(r, scope, rows, current), hours, _published_hours(output, r.code))
     staff = workforce_rows(engine, user, r, scope)
-    return _with_workforce(done, staff, _published_workforce(output, r.code))
+    done = _with_workforce(done, staff, _published_workforce(output, r.code))
+    investments, cash = capex_rows(engine, user, r, scope)
+    return _with_capex(done, r, investments, cash, _published_capex(output, r.code))
 
 
 # --- Planned hours (ADR 0016) ---------------------------------------------------------------------
@@ -490,6 +499,107 @@ def _with_workforce(done: Preview, rows: list[StaffRow], current: PublishedStaff
     return done
 
 
+# --- Investments and cash out (ADR 0028) ----------------------------------------------------------
+
+
+def capex_rows(
+    engine: Engine, user: User, r: RoundRef, scope: Scope
+) -> tuple[list[InvestmentRow], list[CashOutRow]]:
+    with unit_of_work(engine, user) as conn:
+        return published_rows(conn, r, scope)
+
+
+def _capex_records(
+    r: RoundRef, investments: list[InvestmentRow], cash: list[CashOutRow]
+) -> dict[str, list[dict[str, object]]]:
+    """The rows of ``fact_plan_capex`` and ``fact_plan_cash_out`` for the round, without the
+    run's time and id."""
+    head = {"version_code": r.code, "fiscal_year": r.fiscal_year}
+    return {
+        fact_plan_capex.name: [
+            {
+                **head,
+                "investment_id": i.investment_id,
+                "investment_name": i.name,
+                "project_id": i.project_id,
+                "project_name": i.project_name,
+                "entity_code": i.entity_code,
+                "cost_center_code": i.cost_center_code,
+                "capex_type_code": i.capex_type_code,
+                "priority": i.priority,
+                "start_month": i.start_month,
+                "amount": i.amount,
+                "confirmation": i.confirmation,
+                "confirmed_by": i.confirmed_by,
+                "confirmed_at": i.confirmed_at,
+            }
+            for i in investments
+        ],
+        fact_plan_cash_out.name: [
+            {
+                **head,
+                "investment_id": c.investment_id,
+                "period": c.period,
+                "entity_code": c.entity_code,
+                "cost_center_code": c.cost_center_code,
+                "capex_type_code": c.capex_type_code,
+                "amount": c.amount,
+                "confirmation": c.confirmation,
+            }
+            for c in cash
+        ],
+    }
+
+
+def _line(table: str, record: dict[str, object]) -> str:
+    """A record as one comparable line; times in UTC, whatever the connection's time zone."""
+    values = [
+        v.astimezone(UTC).isoformat() if isinstance(v, datetime) else str(v)
+        for _, v in sorted(record.items())
+    ]
+    return f"{table}|{'|'.join(values)}"
+
+
+def _published_capex(output: Engine, version_code: str) -> list[str]:
+    """What the output holds of the round's investments and cash out, as comparable lines."""
+    lines: list[str] = []
+    with output.connect() as conn:
+        for t in (fact_plan_capex, fact_plan_cash_out):
+            if not output.dialect.has_table(conn, t.name, schema=conn.schema_for_object(t)):
+                continue
+            columns = [c for c in t.c if c.name not in ("published_at", "publish_run_id")]
+            lines += [
+                _line(t.name, dict(row._mapping))
+                for row in conn.execute(select(*columns).where(t.c.version_code == version_code))
+            ]
+    return sorted(lines)
+
+
+def _with_capex(
+    done: Preview,
+    r: RoundRef,
+    investments: list[InvestmentRow],
+    cash: list[CashOutRow],
+    current: list[str],
+) -> Preview:
+    """The preview with investments and cash out counted, compared and in its fingerprint."""
+    wanted = sorted(
+        _line(table, record)
+        for table, records in _capex_records(r, investments, cash).items()
+        for record in records
+    )
+    h = hashlib.sha256(done.fingerprint.encode())
+    for line in wanted:
+        h.update(f"+{line}\n".encode())
+    for line in current:
+        h.update(f"={line}\n".encode())
+    done.capex_rows = len(investments)
+    done.cash_out_rows = len(cash)
+    done.capex_changed = wanted != current
+    done.fingerprint = h.hexdigest()
+    return done
+
+
 def _compare(r: RoundRef, scope: Scope, rows: list[OutRow], current: Published) -> Preview:
     counts: dict[str, CostCenterCounts] = {}
     total: Counter[str] = Counter()
@@ -545,6 +655,8 @@ def run(
     done = _with_hours(_compare(r, scope, rows, current), hours, _published_hours(output, r.code))
     staff = workforce_rows(engine, user, r, scope)
     done = _with_workforce(done, staff, _published_workforce(output, r.code))
+    investments, cash = capex_rows(engine, user, r, scope)
+    done = _with_capex(done, r, investments, cash, _published_capex(output, r.code))
     if fingerprint is not None and fingerprint != done.fingerprint:
         raise PublishError("the plan values or the output changed since the preview; preview again")
 
@@ -587,6 +699,7 @@ def run(
                 )
             )
         ]
+        types = capex_types(conn)
         staff_categories = [
             {"code": c, "name": n}
             for c, n in conn.execute(
@@ -595,6 +708,7 @@ def run(
                 )
             )
         ]
+    capex_records = _capex_records(r, investments, cash)
     now = datetime.now().astimezone()
     with output.begin() as conn:
         ensure(conn, schema)
@@ -670,7 +784,16 @@ def run(
                     for row in staff
                 ],
             )
+        stamp = {"published_at": now, "publish_run_id": run_id}
+        for table, records in (
+            (fact_plan_capex, capex_records[fact_plan_capex.name]),
+            (fact_plan_cash_out, capex_records[fact_plan_cash_out.name]),
+        ):
+            conn.execute(delete(table).where(table.c.version_code == r.code))
+            if records:
+                conn.execute(insert(table), [{**record, **stamp} for record in records])
         for table, members in (
+            (dim_capex_type, types),
             (dim_cost_center, cost_centers),
             (dim_account, accounts),
             (dim_work_center, work_centers),

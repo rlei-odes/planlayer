@@ -54,13 +54,17 @@ Forced row-level security over `cost_center_access` filters reads and writes; co
 
 *Investments* (Plan in the sidebar, after Planning) has three tabs:
 
-- **List:** every investment the user reads, in the planning grid (ADR 0006). Large projects are group rows, collapsible. Cells are typed or pasted as in a spreadsheet: a block pasted from Excel fills the columns from the focused cell, and rows past the end add investments, in one request. Cost center, type and priority also open a picker. A last row adds an investment once its name is typed; its cost center is the filter's, or the last one used. Filters by text, cost center, priority, confirmation and type, and *To confirm* for confirmers; several investments are confirmed or declined at once. Each row has its comments and, with the schedule on, its cash out.
+- **List:** every investment the user reads, in the planning grid (ADR 0006). Large projects are group rows, collapsible, with a row of their own that adds a line. Cells are typed or pasted as in a spreadsheet: a block pasted from Excel fills the columns from the focused cell, and rows onto an add row or past the end add investments, in one request. Cost center, type, priority and start also open a picker (a list, or a month picker for start): with Enter or a double-click, a click on the cell already selected, or the arrow in the cell. Typing into them stays typing. The grid lays its focus box and fill handle over the selected cell, so the page finds the controls in a cell by the pointer's position. A last row adds an investment once its name is typed; its cost center is the filter's, or the last one used. Filters by text, cost center, priority, confirmation and type, and *To confirm* for confirmers; several investments are confirmed or declined at once. Each row has its comments and, with the schedule on, its cash out.
 - **Overview:** amounts by priority and confirmation, rolled up the cost center hierarchy (or by type), over what the user reads: an approver sees their area, the CFO and controllers the whole round. Declined investments are shown apart and left out of the totals. With the schedule on, cash out per period, cumulated, and what isn't scheduled.
 - **Types:** the investment types (controllers).
 
 Confirmers find open investments as a task on *Home* (ADR 0021), per round.
 
 Writes are all or nothing; a change of an investment someone else changed since it was read saves nothing and reloads the list (ADR 0010).
+
+### Publishing
+
+A publish run (ADR 0011) writes the round's investments to `fact_plan_capex` and their cash out to `fact_plan_cash_out`, with the types in `dim_capex_type` (`docs/output.md`). Capex has no workflow status, so the scope "approved cost centers" publishes the **confirmed** investments, and "whole round" every one, with its confirmation in a column. The preview compares them with the output too: a round whose investments changed is publishable even when its plan values didn't, and the run refuses when they changed since the preview.
 
 ## Reasons
 
@@ -77,4 +81,5 @@ Writes are all or nothing; a change of an investment someone else changed since 
 - Migration 0027: tables `capex_type`, `capex_setting`, `capex_item` (investments and projects, with a composite foreign key keeping lines on their project's cost center), `capex_cash_out`, `capex_comment`, `capex_log`; view `capex_confirmer`; module `capex` in `round_module`.
 - Package `planlayer.capex` (`common`, `items`, `overview`), rules in `planlayer.domain.capex`, endpoints under `/api/rounds/{code}/capex` and `/api/capex-types`.
 - `planlayer seed-dev-capex --round CODE` (development, TD-26).
-- Not in this decision, on the backlog under K-5: depreciation from investments into the cost center plans, with existing assets; publishing investments to `planlayer_out`; carrying open investments into a new round; undo on the list.
+- Output tables `fact_plan_capex`, `fact_plan_cash_out`, `dim_capex_type` and views `v_plan_capex`, `v_plan_cash_out` in `planlayer_out`.
+- Not in this decision, on the backlog under K-5: depreciation from investments into the cost center plans, with existing assets; who confirms (the rule above is a first cut); carrying open investments into a new round; undo on the list; investments in the file downloads.
