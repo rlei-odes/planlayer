@@ -12,10 +12,10 @@ import Select, { type Option } from './Select'
 // group rows summing their lines (collapsible) with a row of their own to add a line, and a last
 // row that adds an investment as soon as its name is typed.
 //
-// Cells are typed or pasted like a spreadsheet. Cost center, type, priority and start also open a
-// picker: with Enter or a double-click, a click on the cell already selected, or its arrow. The
-// grid lays its focus and fill handle over the selected cell, so the controls in a cell are found
-// by the pointer's position, not by the element pressed.
+// Cells are typed or pasted like a spreadsheet. Cost center, type, priority and start open a picker
+// on a click, or with Enter or a double-click. The grid runs without range selection, so a cell has
+// no fill handle at its edge; it lays its focus box over the selected cell, so the controls in a
+// cell are found by the pointer's position, not by the element pressed.
 
 type Field = 'name' | 'cost_center' | 'type' | 'priority' | 'start_month' | 'amount'
 type GridRow = Record<string, string>
@@ -136,8 +136,6 @@ export default function CapexList({
   const [pick, setPick] = useState<Pick | null>(null)
   // What is typed or picked on an add row before its name: the investment is added with it.
   const [drafts, setDrafts] = useState<Record<string, CapexNew>>({})
-  // The selected cell, as "prop:row": a click on it opens its picker.
-  const focus = useRef('')
   const sheet = useRef<HTMLDivElement>(null)
   const cashOut = view.settings.cash_out
   const canAdd = !locked && view.cost_centers.some((c) => c.can_write)
@@ -492,13 +490,15 @@ export default function CapexList({
     const top = document.elementFromPoint(e.clientX, e.clientY)
     if (top?.closest('.autofill-handle')) return
     const target = under(e.clientX, e.clientY, CONTROLS)
-    const cellUnder = target ? null : under(e.clientX, e.clientY, '[data-cell]')
-    if (!target && !(cellUnder && cellUnder.dataset.cell === focus.current)) return
+    const cellUnder = target ? null : (under(e.clientX, e.clientY, '.rgCell')?.querySelector<HTMLElement>('[data-cell]') ?? null)
+    const [cellProp, cellRow] = cellUnder?.dataset.cell?.split(':') ?? []
+    const pickable = !!cellUnder && editable(rows[Number(cellRow)], cellProp, locked, canAdd)
+    if (!target && !pickable) return
     e.preventDefault()
     e.stopPropagation()
-    if (cellUnder) {
-      const [prop, row] = cellUnder.dataset.cell!.split(':')
-      openPicker(prop as Field, Number(row))
+    if (pickable) {
+      // A picker cell opens its picker on the first click.
+      openPicker(cellProp as Field, Number(cellRow))
       return
     }
     const d = target!.dataset
@@ -564,16 +564,11 @@ export default function CapexList({
         className="pl-revo cx-revo"
         columns={columns}
         source={source}
-        range
         resize
         applyOnClose
         theme="default"
         rowSize={34}
         hideAttribution
-        useClipboard={{ rangeFill: true }}
-        onAfterfocus={(e) => {
-          focus.current = e.detail.column ? `${String(e.detail.column.prop)}:${e.detail.rowIndex}` : ''
-        }}
         onBeforeeditstart={(e) => {
           // Enter and a double-click start editing with nothing typed: a picker column opens its
           // picker. Typing goes to the cell as text.
@@ -603,7 +598,7 @@ export default function CapexList({
         <span className="pv-key">
           <i className="k-calc" /> large project: sum of its lines
         </span>
-        {!locked && <span className="pl-help">Type or paste from Excel. Enter or a click on the selected cell opens its list.</span>}
+        {!locked && <span className="pl-help">Type or paste from Excel. A click on cost center, type, priority or start opens its list.</span>}
       </div>
       {pick && pick.prop === 'start_month' && (
         <MonthPicker
