@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { api, type Version } from './api'
 import { type SetupDraft, type WorkforceMode } from './setupTypes'
+import { LIMIT } from './limits'
 
 // Workforce planning on the setup page (ADR 0020): the round's mode, staff from HR, and personnel
 // costs from the positions (ADR 0022).
@@ -119,7 +120,7 @@ export function Workforce({
         </label>
         <label className="su-field wf-fte-hours">
           Hours per FTE a year
-          <input
+          <input maxLength={LIMIT.number}
             className="su-input"
             inputMode="decimal"
             value={draft.fte_hours ?? ''}

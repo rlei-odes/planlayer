@@ -7,6 +7,7 @@ import PayBreakdown from './PayBreakdown'
 import PayRules from './PayRules'
 import SalaryUpload from './SalaryUpload'
 import Select from './Select'
+import { LIMIT } from './limits'
 
 // Personnel costs (ADR 0022). Pay is read by HR and by the cost center's owner as the source
 // names them; nobody else. The page shows a cost center's positions with HR's salary next to the
@@ -642,7 +643,7 @@ function PayDialog({
             {isHr ? (
               <label className="su-field">
                 HR salary / month
-                <input
+                <input maxLength={LIMIT.number}
                   className={`su-input num${hrValue === undefined ? ' invalid' : ''}`}
                   inputMode="decimal"
                   value={hrSalary}
@@ -662,7 +663,7 @@ function PayDialog({
             )}
             <label className="su-field">
               {typed ? 'Amount / month' : 'Planned salary / month'}
-              <input
+              <input maxLength={LIMIT.number}
                 className={`su-input num${salaryValue === undefined ? ' invalid' : ''}`}
                 inputMode="decimal"
                 value={salary}
@@ -679,7 +680,7 @@ function PayDialog({
           {!typed && (
             <label className="su-field">
               Bonus for the year
-              <input
+              <input maxLength={LIMIT.number}
                 className={`su-input num${bonusValue === undefined ? ' invalid' : ''}`}
                 inputMode="decimal"
                 value={bonus}

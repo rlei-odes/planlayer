@@ -33,6 +33,7 @@ _IGNORED = {
     "maxLength",
     "minItems",
     "maxItems",
+    "maxProperties",
     "propertyNames",
     "examples",
 }

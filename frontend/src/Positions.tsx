@@ -3,6 +3,7 @@ import type { Position, PositionIn, Transfer, WorkforceSheet } from './api'
 import { span } from './periods'
 import Select from './Select'
 import Tile from './Tile'
+import { LIMIT } from './limits'
 
 // The positions of a cost center in a positions round (ADR 0020): the build-up of heads over the
 // year, and the list of positions with their editor, transfers (ADR 0021) and removal.
@@ -259,11 +260,11 @@ export default function Positions({
             <div className="wf-grid">
               <label className="su-field wf-title">
                 Position (title)
-                <input className="su-input" value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} required autoFocus />
+                <input maxLength={LIMIT.name} className="su-input" value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} required autoFocus />
               </label>
               <label className="su-field">
                 Name
-                <input
+                <input maxLength={LIMIT.name}
                   className="su-input"
                   value={draft.person_name}
                   placeholder={draft.is_plan ? 'vacant' : ''}
@@ -273,7 +274,7 @@ export default function Positions({
               </label>
               <label className="su-field wf-code">
                 Number
-                <input className="su-input" value={current?.code ?? 'given on saving'} disabled />
+                <input maxLength={LIMIT.code} className="su-input" value={current?.code ?? 'given on saving'} disabled />
               </label>
               <div className="su-field">
                 Staff type
@@ -305,7 +306,7 @@ export default function Positions({
               </div>
               <label className="su-field wf-pct">
                 Contract %{external ? ' (optional)' : ''}
-                <input
+                <input maxLength={LIMIT.number}
                   className="su-input"
                   inputMode="decimal"
                   value={draft.contract_percent}
@@ -349,7 +350,7 @@ export default function Positions({
               </div>
               <label className="su-field wf-desc">
                 Description
-                <textarea
+                <textarea maxLength={LIMIT.longText}
                   className="su-input"
                   rows={2}
                   value={draft.description}

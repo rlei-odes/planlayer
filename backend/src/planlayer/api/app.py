@@ -4,16 +4,18 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Literal
 
-from fastapi import FastAPI, Response, status
+from fastapi import FastAPI, Request, Response, status
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from sqlalchemy import text
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import DBAPIError, SQLAlchemyError
 
 from planlayer import __version__
 from planlayer.adapters.source import PostgresSource
 from planlayer.api.access import router as access_router
 from planlayer.api.auth import router as auth_router
+from planlayer.api.bodylimit import BodyLimit
 from planlayer.api.capacity import router as capacity_router
 from planlayer.api.capex import router as capex_router
 from planlayer.api.forwarding import router as forwarding_router
@@ -32,6 +34,10 @@ from planlayer.config import Settings
 from planlayer.store.db import create_app_engine
 from planlayer.store.migrate import current_revision
 from planlayer.store.output import create_output_engine
+
+# Postgres refusing a value too large for its column: a number beyond its numeric(p, s), or a
+# text beyond a length. The parsers check numbers against their columns; this catches the rest.
+TOO_LARGE_SQLSTATES = ("22003", "22001")
 
 
 class Health(BaseModel):
@@ -59,6 +65,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = settings
     app.state.source = source
     app.state.output_engine = output
+    app.add_middleware(BodyLimit)
+
+    @app.exception_handler(DBAPIError)
+    def too_large(_: Request, e: DBAPIError) -> JSONResponse:
+        if getattr(e.orig, "sqlstate", None) in TOO_LARGE_SQLSTATES:
+            return JSONResponse({"detail": "a value is too large for its field"}, status_code=422)
+        raise e
+
     app.include_router(auth_router)
     app.include_router(access_router)
     app.include_router(masterdata_router)

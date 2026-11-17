@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api, type PayRights, type PayRightsRow } from './api'
 import Select from './Select'
+import { LIMIT } from './limits'
 
 // Access control of pay in a round (ADR 0023), for HR: per cost center the people HR lists, proposed
 // from the owners the source names; the release, before which nobody but HR reads pay; and the
@@ -103,7 +104,7 @@ export default function PayAccess({ version, onChanged }: { version: string; onC
           <h3>Access</h3>
           <span className="su-hint">Read and change the pay of a cost center’s positions. Without anyone listed, it is HR only.</span>
           <span className="cp-grow" />
-          <input
+          <input maxLength={LIMIT.name}
             className="su-input pc-filter"
             placeholder="Filter…"
             value={filter}

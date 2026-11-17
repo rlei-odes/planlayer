@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { format, parse } from './amounts'
 import { api, type Me, type PayRule, type PayRules as Rules, type PayRulesPage } from './api'
 import Select from './Select'
+import { LIMIT } from './limits'
 
 // The round's personnel cost rules (ADR 0022), for HR and controllers: an account per staff type
 // and whether its amounts are typed; yearly extras, raises, long-service awards and
@@ -423,7 +424,7 @@ function RuleDialog({
           <div className="pc-grid">
             <label className="su-field">
               Name
-              <input className="su-input" value={r.name} autoFocus onChange={(e) => setR({ ...r, name: e.target.value })} />
+              <input maxLength={LIMIT.name} className="su-input" value={r.name} autoFocus onChange={(e) => setR({ ...r, name: e.target.value })} />
             </label>
             <div className="su-field">
               Account
@@ -469,7 +470,7 @@ function RuleDialog({
               </div>
               <label className="su-field">
                 {extraAs === 'salaries' ? 'Salaries per year' : 'Percent of base pay'}
-                <input className="su-input num" inputMode="decimal" value={extraText} onChange={(e) => setExtraText(e.target.value)} />
+                <input maxLength={LIMIT.number} className="su-input num" inputMode="decimal" value={extraText} onChange={(e) => setExtraText(e.target.value)} />
                 <span className="su-hint">
                   {salaries !== null
                     ? `${+salaries.toFixed(4)} salar${+salaries.toFixed(4) === 1 ? 'y' : 'ies'} a year = ${((salaries * 100) / 12).toFixed(2)} % of base pay, a twelfth each month`
@@ -483,7 +484,7 @@ function RuleDialog({
             <div className="pc-grid">
               <label className="su-field">
                 {r.kind === 'raise' ? 'Raise %' : 'Rate %'}
-                <input
+                <input maxLength={LIMIT.number}
                   className="su-input num"
                   inputMode="decimal"
                   value={r.percent ?? ''}
@@ -504,7 +505,7 @@ function RuleDialog({
               ) : (
                 <label className="su-field">
                   Monthly ceiling <span className="ink-3">(optional)</span>
-                  <input
+                  <input maxLength={LIMIT.number}
                     className={`su-input num${ceiling === undefined ? ' invalid' : ''}`}
                     inputMode="decimal"
                     value={r.ceiling ?? ''}
@@ -544,7 +545,7 @@ function RuleDialog({
                           />
                         </td>
                         <td>
-                          <input
+                          <input maxLength={LIMIT.number}
                             className="su-input num"
                             inputMode="decimal"
                             value={s.salaries ?? ''}
@@ -552,7 +553,7 @@ function RuleDialog({
                           />
                         </td>
                         <td>
-                          <input
+                          <input maxLength={LIMIT.number}
                             className="su-input num"
                             inputMode="decimal"
                             value={s.amount ?? ''}

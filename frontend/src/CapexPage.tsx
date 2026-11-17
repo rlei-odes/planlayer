@@ -10,6 +10,7 @@ import FilterBar, { FilterSearch } from './FilterBar'
 import NotesPanel from './NotesPanel'
 import PageHeader from './PageHeader'
 import Select, { type Option } from './Select'
+import { LIMIT } from './limits'
 
 // Capex planning (ADR 0028): a round's investments as one list over every cost center the user
 // reads, an overview by area, type and period, and the investment types (controllers).
@@ -316,7 +317,7 @@ export default function CapexPage({
                 {ask.kind === 'delete' && asked.some((i) => i.kind === 'project') ? ' with the large project’s lines' : ''}?
               </strong>
               {ask.kind === 'decline' && (
-                <input
+                <input maxLength={LIMIT.longText}
                   className="su-input cx-reason"
                   autoFocus
                   placeholder="Reason"

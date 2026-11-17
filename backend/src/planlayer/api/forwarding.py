@@ -2,15 +2,17 @@
 Amounts, rates, shares and quantities are decimal strings."""
 
 from decimal import Decimal, InvalidOperation
-from typing import Literal
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from planlayer import forwarding
 from planlayer.api.auth import CurrentUser, engine_of
+from planlayer.api.limits import MANY, Code, Name, Number
 from planlayer.api.planning import HANDLED, _errors, _s
 from planlayer.domain.workflow import RoundStatus, Status
+from planlayer.sheet import fits
 
 router = APIRouter(prefix="/api")
 
@@ -19,28 +21,28 @@ Shares = Literal["percent", "portion"]
 
 
 class AccountIO(BaseModel):
-    code: str
-    name: str
+    code: Code
+    name: Name
 
 
 class ReceiverIn(BaseModel):
-    cost_center_code: str
-    quantity: str  # a share (percent or portion) or a quantity of the unit
+    cost_center_code: Code
+    quantity: Number  # a share (percent or portion) or a quantity of the unit
 
 
 class ForwardingIn(BaseModel):
-    code: str
-    name: str
+    code: Code
+    name: Name
     method: Method
-    source_code: str
-    group_code: str  # where new accounts go
+    source_code: Code
+    group_code: Code  # where new accounts go
     charge_account: AccountIO
     credit_account: AccountIO
-    receivers: list[ReceiverIn]
+    receivers: Annotated[list[ReceiverIn], MANY]
     shares: Shares | None = None  # full and fixed
-    amount: str | None = None  # fixed: the year's amount
-    rate: str | None = None  # rate: per unit and year
-    unit: str | None = None  # rate: what a quantity counts, e.g. m³
+    amount: Number | None = None  # fixed: the year's amount
+    rate: Number | None = None  # rate: per unit and year
+    unit: Code | None = None  # rate: what a quantity counts, e.g. m³
 
 
 class ReceiverOut(BaseModel):
@@ -112,7 +114,7 @@ class ForwardingPageOut(BaseModel):
     batch_id: str | None = None
 
 
-def _decimal(value: str | None, what: str) -> Decimal | None:
+def _decimal(value: str | None, what: str, scale: int = 4) -> Decimal | None:
     if value is None or not value.strip():
         return None
     try:
@@ -121,6 +123,8 @@ def _decimal(value: str | None, what: str) -> Decimal | None:
         raise HTTPException(422, f"{what}: not a number: {value!r}") from None
     if not d.is_finite():
         raise HTTPException(422, f"{what}: not a number: {value!r}")
+    if not fits(d, 18, scale):
+        raise HTTPException(422, f"{what}: {value} is too large")
     return d
 
 
@@ -210,7 +214,7 @@ def _given(body: ForwardingIn) -> forwarding.ForwardingIn:
         credit_account=forwarding.AccountIn(body.credit_account.code, body.credit_account.name),
         receivers=receivers,
         shares=body.shares,
-        amount=_decimal(body.amount, "amount"),
+        amount=_decimal(body.amount, "amount", scale=2),
         rate=_decimal(body.rate, "rate"),
         unit=body.unit,
     )

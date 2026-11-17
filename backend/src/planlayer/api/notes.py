@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from planlayer import notes
 from planlayer.access import AccessError
 from planlayer.api.auth import CurrentUser, engine_of
+from planlayer.api.limits import MANY, Code, Number
 from planlayer.api.planning import _s
 from planlayer.rounds import NotFoundError
 
@@ -35,10 +36,10 @@ class NoteLineIn(BaseModel):
     ``activity_type`` on the capacity sheet; ``investment`` (its id) for module ``capex``."""
 
     module: Module
-    cost_center: str | None = None
-    account: str | None = None
-    work_center: str | None = None
-    activity_type: str | None = None
+    cost_center: Code | None = None
+    account: Code | None = None
+    work_center: Code | None = None
+    activity_type: Code | None = None
     investment: int | None = None
 
     def ref(self) -> notes.LineRef:
@@ -78,7 +79,7 @@ class ThreadOut(BaseModel):
 
 class GridRowIO(BaseModel):
     text: Annotated[str, Field(max_length=500)]
-    amount: str | None
+    amount: Number | None
 
 
 class NotepadOut(BaseModel):
@@ -96,10 +97,10 @@ class LineNotesOut(BaseModel):
 
 
 class NoteIn(BaseModel):
-    version: str  # the round written from
+    version: Code  # the round written from
     body: Annotated[str, Field(min_length=1, max_length=notes.MAX_BODY)]
-    mentions: list[str] = []  # logins
-    assign: str | None = None  # a mentioned login: the thread becomes their task
+    mentions: Annotated[list[Code], MANY] = []  # logins
+    assign: Code | None = None  # a mentioned login: the thread becomes their task
 
 
 class ThreadIn(NoteIn):
@@ -107,18 +108,18 @@ class ThreadIn(NoteIn):
 
 
 class NoteEditIn(BaseModel):
-    version: str
+    version: Code
     body: Annotated[str, Field(min_length=1, max_length=notes.MAX_BODY)]
-    mentions: list[str] = []
+    mentions: Annotated[list[Code], MANY] = []
 
 
 class ResolveIn(BaseModel):
-    version: str
+    version: Code
     resolved: bool
 
 
 class NotepadIn(BaseModel):
-    version: str
+    version: Code
     line: NoteLineIn
     rows: Annotated[list[GridRowIO], Field(max_length=notes.MAX_GRID_ROWS)]
 
@@ -194,12 +195,12 @@ def _read(request: Request, user: CurrentUser, version: str, line: NoteLineIn) -
 def line_notes(
     request: Request,
     user: CurrentUser,
-    version: str,
+    version: Code,
     module: Module,
-    cost_center: str | None = None,
-    account: str | None = None,
-    work_center: str | None = None,
-    activity_type: str | None = None,
+    cost_center: Code | None = None,
+    account: Code | None = None,
+    work_center: Code | None = None,
+    activity_type: Code | None = None,
     investment: int | None = None,
 ) -> LineNotesOut:
     """The line's threads in the round (its own, and open ones carried from earlier rounds)
@@ -278,7 +279,7 @@ def delete_note(request: Request, user: CurrentUser, note_id: int) -> None:
 
 @router.get("/people", responses={404: {}})
 def people(
-    request: Request, user: CurrentUser, cost_center: str, module: Module = "cost_center"
+    request: Request, user: CurrentUser, cost_center: Code, module: Module = "cost_center"
 ) -> list[PersonOut]:
     """Who a note on the cost center's lines can mention: those who may read them."""
     try:

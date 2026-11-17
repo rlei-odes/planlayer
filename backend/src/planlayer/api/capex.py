@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 
 from planlayer import capex
 from planlayer.api.auth import CurrentUser, engine_of
+from planlayer.api.limits import MANY, Code, Name, Number
 from planlayer.api.planning import (
     HANDLED,
     NotesMarkerOut,
@@ -73,7 +74,7 @@ class CapexTypeIO(BaseModel):
 class CapexSettingsIO(BaseModel):
     """A round's capex planning (setup page)."""
 
-    project_threshold: str | None = None  # above it, plan an investment as a large project
+    project_threshold: Number | None = None  # above it, plan an investment as a large project
     cash_out: bool = False  # planners schedule when the cash goes out
 
 
@@ -85,7 +86,7 @@ class CostCenterRefOut(BaseModel):
 
 class CashOutIO(BaseModel):
     period: date
-    amount: str
+    amount: Number
 
 
 class ItemOut(BaseModel):
@@ -131,23 +132,23 @@ class CapexOut(BaseModel):
 class NewItemIn(BaseModel):
     kind: Kind = "line"
     project_id: int | None = None
-    cost_center: str | None = None
-    name: str = ""
-    type: str | None = None
+    cost_center: Code | None = None
+    name: Name = ""
+    type: Code | None = None
     priority: int | None = None
     start_month: date | None = None
-    amount: str | None = None
+    amount: Number | None = None
 
 
 class ItemValuesIn(BaseModel):
     """The fields to change; a field left out stays, null clears it."""
 
-    name: str | None = None
-    cost_center: str | None = None
-    type: str | None = None
+    name: Name | None = None
+    cost_center: Code | None = None
+    type: Code | None = None
     priority: int | None = None
     start_month: date | None = None
-    amount: str | None = None
+    amount: Number | None = None
 
 
 class ItemChangeIn(BaseModel):
@@ -157,16 +158,16 @@ class ItemChangeIn(BaseModel):
 
 
 class ChangesIn(BaseModel):
-    create: list[NewItemIn] = []
-    update: list[ItemChangeIn] = []
+    create: Annotated[list[NewItemIn], MANY] = []
+    update: Annotated[list[ItemChangeIn], MANY] = []
 
 
 class IdsIn(BaseModel):
-    item_ids: Annotated[list[int], Field(min_length=1)]
+    item_ids: Annotated[list[int], Field(min_length=1), MANY]
 
 
 class StatusIn(BaseModel):
-    item_ids: Annotated[list[int], Field(min_length=1)]
+    item_ids: Annotated[list[int], Field(min_length=1), MANY]
     status: Status
     comment: Annotated[str | None, Field(max_length=2000)] = None
 
@@ -176,7 +177,7 @@ class MoveIn(BaseModel):
 
 
 class CashOutIn(BaseModel):
-    periods: list[CashOutIO]
+    periods: Annotated[list[CashOutIO], MANY]
 
 
 class StatusSumsOut(BaseModel):
@@ -422,7 +423,7 @@ def capex_types(request: Request, user: CurrentUser) -> list[CapexTypeIO]:
 
 @router.put("/capex-types", responses=ERRORS)
 def save_capex_types(
-    request: Request, user: CurrentUser, body: list[CapexTypeIO]
+    request: Request, user: CurrentUser, body: Annotated[list[CapexTypeIO], MANY]
 ) -> list[CapexTypeIO]:
     """Replace the installation's investment types (controllers); a used one can't be removed."""
     try:

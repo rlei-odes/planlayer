@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { Transfer } from './api'
+import { LIMIT } from './limits'
 
 // Transfers of positions (ADR 0021) as lists show them: one transfer as a line, the control to
 // accept or decline one, and the card of transfers waiting for a cost center.
@@ -47,7 +48,7 @@ export function TransferDecision({
   if (declining)
     return (
       <span className="tr-actions">
-        <input className="su-input" placeholder="Reason (optional)" value={reason} autoFocus onChange={(e) => setReason(e.target.value)} />
+        <input maxLength={LIMIT.longText} className="su-input" placeholder="Reason (optional)" value={reason} autoFocus onChange={(e) => setReason(e.target.value)} />
         <button type="button" className="su-btn ghost sm" onClick={() => setDeclining(false)}>
           Cancel
         </button>

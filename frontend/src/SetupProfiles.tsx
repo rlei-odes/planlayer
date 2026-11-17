@@ -3,6 +3,7 @@ import { Bars } from './PlannerPreview'
 import Select from './Select'
 import type { Profile } from './setupTypes'
 import { type ProfilePreset, setupApi } from './setupShared'
+import { LIMIT } from './limits'
 
 // Seasonality profiles on the setup page (E-03): add, edit, delete, start from working days.
 
@@ -150,7 +151,7 @@ export function Profiles({
             <div className="su-row">
               <label className="su-field" style={{ flex: 1 }}>
                 Name
-                <input className="su-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Retail with Q4 peak" />
+                <input maxLength={LIMIT.name} className="su-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Retail with Q4 peak" />
               </label>
               <div className="su-field su-w-select">
                 Entered as
@@ -168,7 +169,7 @@ export function Profiles({
             <div className="su-field su-presets">
               <label className="su-row">
                 Fill with the days of fiscal year
-                <input
+                <input maxLength={4}
                   className="su-input su-year"
                   inputMode="numeric"
                   aria-label="Fiscal year"
@@ -189,7 +190,7 @@ export function Profiles({
               {values.map((v, i) => (
                 <label key={i}>
                   {months[i] ?? `M${i + 1}`}
-                  <input
+                  <input maxLength={LIMIT.number}
                     inputMode="decimal"
                     aria-label={`${months[i] ?? `Month ${i + 1}`} value`}
                     value={v}

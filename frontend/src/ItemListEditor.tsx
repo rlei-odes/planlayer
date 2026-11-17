@@ -3,6 +3,7 @@ import { format, sum, times, toCents } from './amounts'
 import { api, type ItemList, type ItemRow, type Visibility } from './api'
 import { VISIBILITY } from './itemLists'
 import Select from './Select'
+import { LIMIT } from './limits'
 
 // An item list in a large overlay (ADR 0017): the items behind a cost center × account's value.
 // Each item is quantity × unit price; typing only a name and a unit price is enough. The server
@@ -193,19 +194,19 @@ export default function ItemListEditor({
               {rows.map((r, i) => (
                 <tr key={i}>
                   <td>
-                    <input className="su-input" value={r.name} disabled={!editable} placeholder="e.g. Cloud subscription"
+                    <input maxLength={300} className="su-input" value={r.name} disabled={!editable} placeholder="e.g. Cloud subscription"
                       onChange={(e) => change(i, { name: e.target.value })} onKeyDown={onEnter(i)} />
                   </td>
                   <td>
-                    <input className="su-input" value={r.supplier ?? ''} disabled={!editable}
+                    <input maxLength={300} className="su-input" value={r.supplier ?? ''} disabled={!editable}
                       onChange={(e) => change(i, { supplier: e.target.value })} onKeyDown={onEnter(i)} />
                   </td>
                   <td>
-                    <input className="su-input num" value={r.quantity ?? '1'} disabled={!editable} inputMode="decimal"
+                    <input maxLength={LIMIT.number} className="su-input num" value={r.quantity ?? '1'} disabled={!editable} inputMode="decimal"
                       onChange={(e) => change(i, { quantity: e.target.value })} onKeyDown={onEnter(i)} />
                   </td>
                   <td>
-                    <input
+                    <input maxLength={LIMIT.number}
                       className={`su-input num${r.unit_price.trim() && amounts[i] === undefined ? ' invalid' : ''}`}
                       value={r.unit_price}
                       disabled={!editable}
@@ -217,7 +218,7 @@ export default function ItemListEditor({
                   </td>
                   <td className="num il-amount-cell">{format(amounts[i] ?? null)}</td>
                   <td>
-                    <input className="su-input" value={r.comment ?? ''} disabled={!editable}
+                    <input maxLength={LIMIT.longText} className="su-input" value={r.comment ?? ''} disabled={!editable}
                       onChange={(e) => change(i, { comment: e.target.value })} onKeyDown={onEnter(i)} />
                   </td>
                   <td>

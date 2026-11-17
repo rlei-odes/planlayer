@@ -92,7 +92,15 @@ def parse_amount(value: str | None) -> Decimal | None:
     exponent = amount.as_tuple().exponent
     if isinstance(exponent, int) and exponent < -2:
         raise EditError(f"{value} has more than 2 decimal places")
+    if not fits(amount):
+        raise EditError(f"{value} is too large")
     return amount
+
+
+def fits(value: Decimal, precision: int = 18, scale: int = 2) -> bool:
+    """Whether a value fits a ``numeric(precision, scale)`` column: amounts are
+    ``numeric(18, 2)`` (T-12), so fewer than 16 digits before the point."""
+    return abs(value) < Decimal(10) ** (precision - scale)
 
 
 def locked_error(e: DBAPIError) -> LockedError | None:

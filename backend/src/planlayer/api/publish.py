@@ -12,6 +12,7 @@ from sqlalchemy import Engine
 from planlayer import publish, rounds
 from planlayer.access import AccessError
 from planlayer.api.auth import CurrentUser, engine_of, settings_of
+from planlayer.api.limits import Code
 
 router = APIRouter(prefix="/api")
 Scope = Literal["approved", "all"]
@@ -73,7 +74,7 @@ class PublishPreviewOut(BaseModel):
 
 class PublishRunIn(BaseModel):
     scope: Scope
-    fingerprint: str
+    fingerprint: Code
 
 
 class PublishRunOut(BaseModel):

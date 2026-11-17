@@ -19,6 +19,7 @@ from sqlalchemy.exc import DBAPIError, IntegrityError
 
 from planlayer.access import AccessError, User, cost_center_rights
 from planlayer.rounds import NotFoundError
+from planlayer.sheet import fits
 from planlayer.store.schema import ACCOUNT, COST_CENTER, app_user, item, item_list, member
 from planlayer.store.uow import unit_of_work
 
@@ -84,6 +85,8 @@ def _decimal(value: str, what: str, places: int) -> Decimal:
     exponent = amount.as_tuple().exponent
     if isinstance(exponent, int) and exponent < -places:
         raise ListError(f"{what} {value} has more than {places} decimal places")
+    if not fits(amount, 18, places):
+        raise ListError(f"{what} {value} is too large")
     return amount
 
 

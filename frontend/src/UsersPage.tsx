@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { api, type User } from './api'
 import { initials } from './names'
 import PageHeader from './PageHeader'
+import { LIMIT } from './limits'
 
 // Users (admin): roles and accounts (ADR 0009). Roles combine; planners need no role, their rights
 // come from cost center ownership and deputies.
@@ -69,11 +70,11 @@ export default function UsersPage() {
           <div className="su-row md-add-row">
             <label className="su-field">
               Login
-              <input className="su-input" value={draft.login} onChange={(e) => setDraft({ ...draft, login: e.target.value })} required />
+              <input maxLength={LIMIT.code} className="su-input" value={draft.login} onChange={(e) => setDraft({ ...draft, login: e.target.value })} required />
             </label>
             <label className="su-field md-grow">
               Name
-              <input
+              <input maxLength={LIMIT.name}
                 className="su-input"
                 value={draft.display_name}
                 onChange={(e) => setDraft({ ...draft, display_name: e.target.value })}
@@ -82,7 +83,7 @@ export default function UsersPage() {
             </label>
             <label className="su-field md-grow">
               E-mail
-              <input className="su-input" type="email" value={draft.email} onChange={(e) => setDraft({ ...draft, email: e.target.value })} />
+              <input maxLength={LIMIT.email} className="su-input" type="email" value={draft.email} onChange={(e) => setDraft({ ...draft, email: e.target.value })} />
             </label>
             <button type="button" className="su-btn ghost" onClick={() => setAdding(false)}>
               Cancel

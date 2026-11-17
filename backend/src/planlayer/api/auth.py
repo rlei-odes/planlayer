@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from sqlalchemy import Engine
 
 from planlayer import access
+from planlayer.api.limits import Code
 from planlayer.config import Settings
 
 SESSION_COOKIE = "planlayer_session"
@@ -64,7 +65,7 @@ class DevUser(BaseModel):
 
 
 class DevLoginIn(BaseModel):
-    login: str
+    login: Code
 
 
 def me_of(engine: Engine, user: access.User) -> Me:

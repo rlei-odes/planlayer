@@ -2,6 +2,7 @@ import { useRef, useState, type KeyboardEvent } from 'react'
 import { format, fromCents, parse, toCents } from './amounts'
 import type { Capex, CapexItem } from './api'
 import { monthLabel } from './capex'
+import { LIMIT } from './limits'
 
 // An investment's cash-out schedule (ADR 0028): when the money goes out, over the round's months
 // (or quarters) and one period more, the next fiscal year. An entry above what is left of the
@@ -127,7 +128,7 @@ export default function CapexCashOut({
                 <tr key={p} className={p === view.next_year ? 'next' : undefined}>
                   <th scope="row">{periodLabel(p, view)}</th>
                   <td>
-                    <input
+                    <input maxLength={LIMIT.number}
                       className="su-input num"
                       inputMode="decimal"
                       aria-label={`Cash out ${periodLabel(p, view)}`}

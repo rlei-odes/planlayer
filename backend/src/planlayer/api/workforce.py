@@ -12,10 +12,11 @@ from pydantic import BaseModel, Field
 from planlayer import workforce
 from planlayer.api.auth import CurrentUser, engine_of
 from planlayer.api.capacity import CodeName, UndoIn
+from planlayer.api.limits import Code, LongText, Name, Number
 from planlayer.api.planning import HANDLED, CellOut, ComparisonOut, ConflictOut, _errors, _s
 from planlayer.domain.workflow import RoundStatus, Status
 from planlayer.domain.workforce import Measure, Mode, TransferKind
-from planlayer.sheet import ConflictError, EditError
+from planlayer.sheet import ConflictError, EditError, fits
 
 router = APIRouter(prefix="/api")
 
@@ -271,12 +272,12 @@ class WorkforceEditIn(BaseModel):
     """One edit: a month, a quarter (rounds planned by quarter), or neither for the year, which
     fills the open months."""
 
-    staff_type_code: str
-    staff_category_code: str
+    staff_type_code: Code
+    staff_category_code: Code
     measure: Measure
     month: Annotated[int, Field(ge=0, le=11)] | None = None
     quarter: Annotated[int, Field(ge=0, le=3)] | None = None
-    value: str | None
+    value: Number | None
     expected: Annotated[list[int | None], Field(min_length=12, max_length=12)]
 
 
@@ -285,23 +286,23 @@ class WorkforceEditsIn(BaseModel):
 
 
 class WorkforceLineIn(BaseModel):
-    staff_type_code: Annotated[str, Field(min_length=1)]
-    staff_category_code: Annotated[str, Field(min_length=1)]
+    staff_type_code: Annotated[Code, Field(min_length=1)]
+    staff_category_code: Annotated[Code, Field(min_length=1)]
 
 
 class WorkforcePositionIn(BaseModel):
     """A position as the planner enters it; its number is Planlayer's (N00001, ...)."""
 
-    title: str
-    staff_type_code: Annotated[str, Field(min_length=1)]
-    staff_category_code: Annotated[str, Field(min_length=1)]
-    person_name: str | None = None
+    title: Name
+    staff_type_code: Annotated[Code, Field(min_length=1)]
+    staff_category_code: Annotated[Code, Field(min_length=1)]
+    person_name: Name | None = None
     entry_date: date | None = None
     leave_date: date | None = None
-    contract_percent: str | None = None  # e.g. "80" or "62.5"
+    contract_percent: Number | None = None  # e.g. "80" or "62.5"
     is_plan: bool = False
     is_replacement: bool = False
-    description: str | None = None
+    description: LongText | None = None
 
 
 class HrTakenOut(BaseModel):
@@ -318,6 +319,8 @@ def _percent(value: str | None) -> Decimal | None:
         raise EditError(f"not a percentage: {value!r}") from None
     if not percent.is_finite():
         raise EditError(f"not a percentage: {value!r}")
+    if not fits(percent, 5, 2):
+        raise EditError(f"percentage {value} is too large")
     return percent
 
 
@@ -499,7 +502,7 @@ def transfer_targets(
 
 
 class TransferIn(BaseModel):
-    to_cost_center: Annotated[str, Field(min_length=1)]
+    to_cost_center: Annotated[Code, Field(min_length=1)]
     kind: TransferKind
     starts: date | None = None  # the first of a month; required for during_year
     note: Annotated[str, Field(max_length=2000)] | None = None

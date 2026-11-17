@@ -10,7 +10,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b",
-    "lint": "oxlint --deny-warnings",
+    "lint": "oxlint --deny-warnings && node scripts/check-inputs.mjs",
     "preview": "vite preview",
     "gen:api": "uv run --project ../backend planlayer api-types src/schema.ts"
   },

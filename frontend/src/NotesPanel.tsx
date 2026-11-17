@@ -4,6 +4,7 @@ import { format, parse, sum } from './amounts'
 import { api, type LineNotes, type NoteEntry, type NoteLine, type NotepadRow, type Person, type Thread } from './api'
 import { initials } from './names'
 import Select from './Select'
+import { LIMIT } from './limits'
 
 // The notes of one line (ADR 0017): the line's gridnote, then its threads, open ones first.
 // Everyone who reads the line writes notes; a note can @mention people who read it and assign
@@ -174,7 +175,7 @@ function Composer({
   return (
     <div className="nt-compose">
       <div className="nt-input">
-        <textarea
+        <textarea maxLength={10_000}
           ref={box}
           className="su-input"
           rows={3}
@@ -471,7 +472,7 @@ function NotepadView({
             <tr key={i}>
               <td>
                 {editing ? (
-                  <input
+                  <input maxLength={500}
                     className="su-input"
                     value={r.text}
                     placeholder="What"
@@ -484,7 +485,7 @@ function NotepadView({
               </td>
               <td className="num">
                 {editing ? (
-                  <input
+                  <input maxLength={LIMIT.number}
                     className={`su-input num${r.amount && parse(r.amount) === undefined ? ' invalid' : ''}`}
                     value={r.amount ?? ''}
                     placeholder="0.00"

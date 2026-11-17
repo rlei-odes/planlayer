@@ -12,6 +12,7 @@ from planlayer import rounds
 from planlayer.access import AccessError
 from planlayer.api.auth import CurrentUser, engine_of
 from planlayer.api.capex import CapexSettingsIO
+from planlayer.api.limits import MANY, Code, Name, Number
 from planlayer.api.planning import Version, version_out
 from planlayer.capex import CapexSettings
 from planlayer.domain.entry_forms import Form
@@ -38,15 +39,15 @@ HANDLED = (AccessError, rounds.NotFoundError, rounds.RoundError, SpreadError)
 
 
 class RuleIO(BaseModel):
-    account_code: str
+    account_code: Code
     form: Form
-    profile_code: str | None = None
-    reference_version_code: str | None = None
+    profile_code: Code | None = None
+    reference_version_code: Code | None = None
 
 
 class ComparisonIO(BaseModel):
     kind: Literal["prior_year_actuals", "actuals", "version"]
-    version_code: str | None = None
+    version_code: Code | None = None
     # The controller's note to planners, shown with the column.
     note: Annotated[str | None, Field(max_length=200)] = None
 
@@ -55,25 +56,25 @@ class AccountSetIO(BaseModel):
     """A named list of accounts and account groups, assigned to cost center nodes or cost
     centers; the nearest assignment above a cost center wins (ADR 0014)."""
 
-    name: str
-    accounts: list[str]
-    assigned_to: list[str] = []
+    name: Name
+    accounts: Annotated[list[Code], MANY]
+    assigned_to: Annotated[list[Code], MANY] = []
 
 
 class SetupIO(BaseModel):
     default_form: Form
-    entry_forms: list[RuleIO]
-    comparisons: list[ComparisonIO]
-    not_planned_accounts: list[str]
+    entry_forms: Annotated[list[RuleIO], MANY]
+    comparisons: Annotated[list[ComparisonIO], MANY]
+    not_planned_accounts: Annotated[list[Code], MANY]
     deadline: date | None
     # Productive cost centers (ADR 0013): hours typed per work center line, and hours from
     # positions (ADR 0027); either makes a cost center productive.
-    capacity_work_centers: list[str] = []
-    capacity_workforce: list[str] = []
-    fte_hours: str | None = None  # hours a full-time position works in the year
+    capacity_work_centers: Annotated[list[Code], MANY] = []
+    capacity_workforce: Annotated[list[Code], MANY] = []
+    fte_hours: Number | None = None  # hours a full-time position works in the year
     # Cost centers planned in the round; null leaves them as they are.
-    planned_cost_centers: list[str] | None = None
-    account_sets: list[AccountSetIO] = []
+    planned_cost_centers: Annotated[list[Code], MANY] | None = None
+    account_sets: Annotated[list[AccountSetIO], MANY] = []
     grain: Literal["month", "quarter"] = "month"  # ADR 0015
     actuals_through: date | None = None  # forecasts: the last closed month
     # Workforce planning's mode (ADR 0020); null: the round doesn't plan its workforce.
@@ -121,11 +122,11 @@ class SetupOut(BaseModel):
 
 class RoundIn(BaseModel):
     code: Annotated[str, Field(min_length=1, max_length=20)]
-    name: Annotated[str, Field(min_length=1)]
+    name: Annotated[Name, Field(min_length=1)]
     kind: Literal["budget", "forecast"]
     fiscal_year: Annotated[int, Field(ge=2000, le=2100)]
     deadline: date | None = None
-    copy_from: str | None = None
+    copy_from: Code | None = None
     carry: CarryOverIn = CarryOverIn()
     grain: Literal["month", "quarter"] = "month"
     actuals_through: date | None = None  # forecasts: the last closed month (ADR 0015)
@@ -159,8 +160,8 @@ class ScopeOut(BaseModel):
 
 
 class ProfileIO(BaseModel):
-    code: Annotated[str, Field(min_length=1)]
-    name: Annotated[str, Field(min_length=1)]
+    code: Annotated[Code, Field(min_length=1)]
+    name: Annotated[Name, Field(min_length=1)]
     entered_as: Literal["percent", "relative"]
     values: Annotated[list[Decimal], Field(min_length=12, max_length=12)]
 

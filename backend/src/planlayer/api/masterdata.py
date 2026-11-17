@@ -12,6 +12,7 @@ from planlayer import masterdata, sync
 from planlayer.access import AccessError, User
 from planlayer.adapters.source import Query, SourceAdapter
 from planlayer.api.auth import CurrentUser, engine_of
+from planlayer.api.limits import FEW, MANY, Code, Email, Name, SqlQuery
 
 router = APIRouter(prefix="/api")
 Dataset = Literal[
@@ -92,9 +93,9 @@ def _type_text(t: pa.DataType) -> str:
 
 
 class MappingIO(BaseModel):
-    query: str
-    fields: dict[str, str]
-    hierarchy: dict[str, Any] | None = None
+    query: SqlQuery
+    fields: Annotated[dict[Code, Code], FEW]
+    hierarchy: Annotated[dict[Code, Any], FEW] | None = None
 
 
 class WindowOut(BaseModel):
@@ -281,7 +282,7 @@ def sync_years(request: Request, user: CurrentUser) -> SyncYearsOut:
 
 
 class SyncIn(BaseModel):
-    entity: str | None = None
+    entity: Code | None = None
     # Fiscal years whose actuals and actual hours are replaced; None: the default window, the
     # years the setup and open rounds compare with.
     years: YearsIO | None = None
@@ -291,7 +292,7 @@ class SyncIn(BaseModel):
 
 
 class SyncRunIn(SyncIn):
-    confirm: list[str] = []
+    confirm: Annotated[list[Code], MANY] = []
 
 
 class YearCountOut(BaseModel):
@@ -392,30 +393,30 @@ class MemberOut(BaseModel):
 
 
 class MemberIn(BaseModel):
-    code: Annotated[str, Field(min_length=1)]
-    name: Annotated[str, Field(min_length=1)]
-    parent: str | None = None
+    code: Annotated[Code, Field(min_length=1)]
+    name: Annotated[Name, Field(min_length=1)]
+    parent: Code | None = None
     is_group: bool = False
-    entity_code: str | None = None
-    owner: str | None = None
-    account_type: str | None = None
-    cost_center_code: str | None = None
-    account_code: str | None = None
-    variable_account_code: str | None = None
+    entity_code: Code | None = None
+    owner: Email | None = None
+    account_type: Code | None = None
+    cost_center_code: Code | None = None
+    account_code: Code | None = None
+    variable_account_code: Code | None = None
     external: bool | None = None  # staff types
 
 
 class MemberChange(BaseModel):
     """Only the given keys change; ``parent: null`` makes the member a root."""
 
-    name: str | None = None
-    parent: str | None = None
-    entity_code: str | None = None
-    owner: str | None = None
-    account_type: str | None = None
-    cost_center_code: str | None = None
-    account_code: str | None = None
-    variable_account_code: str | None = None
+    name: Name | None = None
+    parent: Code | None = None
+    entity_code: Code | None = None
+    owner: Email | None = None
+    account_type: Code | None = None
+    cost_center_code: Code | None = None
+    account_code: Code | None = None
+    variable_account_code: Code | None = None
     external: bool | None = None
 
 

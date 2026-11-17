@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 from planlayer import capacity, planning
 from planlayer.api.auth import CurrentUser, engine_of
+from planlayer.api.limits import Code, Name, Number
 from planlayer.api.planning import (
     HANDLED,
     CellOut,
@@ -24,7 +25,7 @@ from planlayer.api.planning import (
 )
 from planlayer.domain.entry_forms import Basis
 from planlayer.domain.workflow import RoundStatus, Status
-from planlayer.sheet import ConflictError, EditError
+from planlayer.sheet import ConflictError, EditError, fits
 
 router = APIRouter(prefix="/api")
 
@@ -101,11 +102,11 @@ class CapacitySheetOut(BaseModel):
 class HoursEditIn(BaseModel):
     """One edit: a month, a quarter (rounds planned by quarter), or neither for the year."""
 
-    work_center_code: str
-    activity_type_code: str
+    work_center_code: Code
+    activity_type_code: Code
     month: Annotated[int, Field(ge=0, le=11)] | None = None
     quarter: Annotated[int, Field(ge=0, le=3)] | None = None
-    value: str | None
+    value: Number | None
     expected: Annotated[list[int | None], Field(min_length=12, max_length=12)]
 
 
@@ -116,16 +117,16 @@ class HoursEditsIn(BaseModel):
 class LineChangeIn(BaseModel):
     """Only the given keys change; ``spread: null`` goes back to prior-year actual hours."""
 
-    rate: str | None = None
+    rate: Number | None = None
     active: bool | None = None
     spread: LineSpreadIO | None = None
 
 
 class LineIn(BaseModel):
-    work_center_code: Annotated[str, Field(min_length=1)]
-    activity_type_code: Annotated[str, Field(min_length=1)]
-    rate: str
-    new_work_center_name: str | None = None  # creates the work center for this cost center
+    work_center_code: Annotated[Code, Field(min_length=1)]
+    activity_type_code: Annotated[Code, Field(min_length=1)]
+    rate: Number
+    new_work_center_name: Name | None = None  # creates the work center for this cost center
 
 
 def _rate(value: str) -> Decimal:
@@ -135,6 +136,8 @@ def _rate(value: str) -> Decimal:
         raise EditError(f"not a rate: {value!r}") from None
     if not rate.is_finite():
         raise EditError(f"not a rate: {value!r}")
+    if not fits(rate, 18, 4):
+        raise EditError(f"rate {value} is too large")
     return rate
 
 
@@ -378,13 +381,13 @@ class StaffOut(BaseModel):
 
 
 class LineRefIO(BaseModel):
-    work_center_code: Annotated[str, Field(min_length=1)]
-    activity_type_code: Annotated[str, Field(min_length=1)]
+    work_center_code: Annotated[Code, Field(min_length=1)]
+    activity_type_code: Annotated[Code, Field(min_length=1)]
 
 
 class StaffDefaultsIn(BaseModel):
     line: LineRefIO | None
-    percent: str | None
+    percent: Number | None
 
 
 class StaffPositionIn(BaseModel):
@@ -392,8 +395,8 @@ class StaffPositionIn(BaseModel):
     for the year instead of a share."""
 
     line: LineRefIO | None
-    percent: str | None
-    hours: str | None = None
+    percent: Number | None
+    hours: Number | None = None
 
 
 def _staff_out(v: capacity.StaffView, batch_id: str | None = None) -> StaffOut:

@@ -5,6 +5,7 @@ import { monthLabel, parseMonth, scheduleState, STATUS_TEXT } from './capex'
 import { noteMarker } from './lineMarks'
 import MonthPicker from './MonthPicker'
 import Select, { type Option } from './Select'
+import { LIMIT } from './limits'
 
 // The investments list (ADR 0028): one row per investment, large projects as group rows summing
 // their lines (collapsible) with a row of their own to add a line, and a last row that adds an
@@ -136,7 +137,7 @@ function CellInput({
     setText(value)
   }
   return (
-    <input
+    <input maxLength={numeric ? LIMIT.number : LIMIT.name}
       className={`cx-field${numeric ? ' num' : ''}`}
       data-col={col}
       data-row={row}

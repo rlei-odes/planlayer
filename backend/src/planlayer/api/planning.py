@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 
 from planlayer import access, notes, planning, rounds, workflow
 from planlayer.api.auth import CurrentUser, engine_of
+from planlayer.api.limits import MANY, Code, LongText, Number
 from planlayer.domain.entry_forms import Basis, Form
 from planlayer.domain.workflow import Action, RoundStatus, Status, WorkflowError
 from planlayer.sheet import ConflictError, EditError, LockedError
@@ -64,7 +65,7 @@ class LineSpreadIO(BaseModel):
     """How one line spreads: ``reference`` is prior-year actuals; ``profile`` names a profile."""
 
     basis: Basis
-    profile_code: str | None = None
+    profile_code: Code | None = None
 
 
 class SpreadIn(BaseModel):
@@ -159,10 +160,10 @@ class GridOut(BaseModel):
 class EditIn(BaseModel):
     """One edit: a month, a quarter (rounds planned by quarter), or neither for the year."""
 
-    account_code: str
+    account_code: Code
     month: Annotated[int, Field(ge=0, le=11)] | None = None
     quarter: Annotated[int, Field(ge=0, le=3)] | None = None
-    value: str | None
+    value: Number | None
     expected: Annotated[list[int | None], Field(min_length=12, max_length=12)]
 
 
@@ -185,14 +186,14 @@ class AccountOut(BaseModel):
 
 
 class AddAccountIn(BaseModel):
-    account_code: str
+    account_code: Code
 
 
 class ActionIn(BaseModel):
     action: Action
-    cost_centers: list[str] | None = None
-    node: str | None = None
-    comment: str | None = None
+    cost_centers: Annotated[list[Code], MANY] | None = None
+    node: Code | None = None
+    comment: LongText | None = None
 
 
 class RoundStatusIn(BaseModel):

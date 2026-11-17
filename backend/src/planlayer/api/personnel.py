@@ -8,17 +8,18 @@ from typing import Annotated, Literal, cast
 
 from fastapi import APIRouter, Body, Request
 from fastapi.responses import Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from planlayer import personnel
 from planlayer.api.auth import CurrentUser, engine_of
 from planlayer.api.capacity import CodeName
+from planlayer.api.limits import MANY, Code, Name, Number
 from planlayer.api.planning import HANDLED, _errors, _s
 from planlayer.domain.workflow import RoundStatus, Status
 from planlayer.personnel import upload
 from planlayer.personnel.rules import Kind
 from planlayer.personnel.salary_files import MEDIA
-from planlayer.sheet import EditError, parse_amount
+from planlayer.sheet import EditError, fits, parse_amount
 
 router = APIRouter(prefix="/api")
 
@@ -148,7 +149,7 @@ class PayRightsOut(BaseModel):
 
 
 class PayReadersIn(BaseModel):
-    readers: list[str]  # logins
+    readers: Annotated[list[Code], MANY]  # logins
     owner_decided: bool = False  # the source's current owner counts as decided on
 
 
@@ -157,13 +158,13 @@ class PayReleaseIn(BaseModel):
 
 
 class PayIn(BaseModel):
-    salary: str | None = None  # null or blank: HR's
-    bonus: str | None = None
-    charged_to: str | None = None
+    salary: Number | None = None  # null or blank: HR's
+    bonus: Number | None = None
+    charged_to: Code | None = None
     # HR only (ADR 0023); left out, HR's salary stays as it is.
-    hr_salary: str | None = None
+    hr_salary: Number | None = None
     # HR only (ADR 0026); left out, the exclusions stay as they are.
-    excluded_rules: list[int] | None = None
+    excluded_rules: Annotated[list[int], MANY] | None = None
 
 
 class PayReviewIn(BaseModel):
@@ -176,37 +177,37 @@ class PayHandoverIn(BaseModel):
 
 class PayStepIO(BaseModel):
     years: int
-    salaries: str | None = None
-    amount: str | None = None
+    salaries: Number | None = None
+    amount: Number | None = None
 
 
 class PayRuleIO(BaseModel):
     id: int | None = None  # the stored rule; null: a new one
     kind: Kind
-    name: str
-    account: str
-    entity: str | None = None
-    salaries: str | None = None  # extra: salaries per year
-    percent: str | None = None  # raise, contribution
-    ceiling: str | None = None  # contribution: monthly
+    name: Name
+    account: Code
+    entity: Code | None = None
+    salaries: Number | None = None  # extra: salaries per year
+    percent: Number | None = None  # raise, contribution
+    ceiling: Number | None = None  # contribution: monthly
     starts: date | None = None  # raise: its first month
-    steps: list[PayStepIO]  # award; empty for the other kinds
+    steps: Annotated[list[PayStepIO], MANY]  # award; empty for the other kinds
 
 
 class PayStaffTypeIO(BaseModel):
-    code: str
-    name: str = ""
+    code: Code
+    name: Name = ""
     external: bool = False
-    account: str | None  # null: not costed
+    account: Code | None  # null: not costed
     typed: bool
 
 
 class PayRulesIO(BaseModel):
     min_group: int
     review_required: bool  # HR's review before approval; HR switches it (ADR 0024)
-    bonus_account: str | None
-    staff_types: list[PayStaffTypeIO]
-    rules: list[PayRuleIO]
+    bonus_account: Code | None
+    staff_types: Annotated[list[PayStaffTypeIO], MANY]
+    rules: Annotated[list[PayRuleIO], MANY]
 
 
 class PayRulesPageOut(BaseModel):
@@ -284,6 +285,7 @@ def _upload_out(r: upload.UploadResult) -> SalaryUploadOut:
 
 # The uploaded file as the request body, as it is.
 FileBody = Annotated[bytes, Body(media_type="application/octet-stream")]
+FileName = Annotated[str, Field(max_length=255)]  # the uploaded file's name
 
 
 def _position_out(r: personnel.PayRow) -> PayPositionOut:
@@ -360,7 +362,7 @@ def _page_out(p: personnel.PayPage, batch_id: str | None = None) -> PayPageOut:
     )
 
 
-def _number(value: str | None, what: str) -> Decimal | None:
+def _number(value: str | None, what: str, precision: int) -> Decimal | None:
     if value is None or not value.strip():
         return None
     text = value.strip().removesuffix("%").strip().replace(",", ".")
@@ -370,6 +372,8 @@ def _number(value: str | None, what: str) -> Decimal | None:
         raise EditError(f"not a {what}: {value!r}") from None
     if not number.is_finite():
         raise EditError(f"not a {what}: {value!r}")
+    if not fits(number, precision, 4):
+        raise EditError(f"{what} {value} is too large")
     return number
 
 
@@ -387,13 +391,15 @@ def _rules_in(body: PayRulesIO) -> personnel.RulesIO:
                 r.name,
                 r.account,
                 r.entity or None,
-                _number(r.salaries, "number of salaries"),
-                _number(r.percent, "percentage"),
+                _number(r.salaries, "number of salaries", 8),
+                _number(r.percent, "percentage", 7),
                 parse_amount(r.ceiling),
                 r.starts,
                 [
                     personnel.StepIO(
-                        s.years, _number(s.salaries, "number of salaries"), parse_amount(s.amount)
+                        s.years,
+                        _number(s.salaries, "number of salaries", 8),
+                        parse_amount(s.amount),
                     )
                     for s in r.steps
                 ],
@@ -600,7 +606,7 @@ def salary_template(
 
 @router.post(V + "/salaries/check", responses={403: {}, 404: {}, 422: {}})
 def check_salaries(
-    request: Request, user: CurrentUser, version_code: str, filename: str, file: FileBody
+    request: Request, user: CurrentUser, version_code: str, filename: FileName, file: FileBody
 ) -> SalaryUploadOut:
     """What the uploaded file would change; writes nothing."""
     try:
@@ -611,7 +617,7 @@ def check_salaries(
 
 @router.post(V + "/salaries/apply", responses={403: {}, 404: {}, 422: {}, 423: {}})
 def apply_salaries(
-    request: Request, user: CurrentUser, version_code: str, filename: str, file: FileBody
+    request: Request, user: CurrentUser, version_code: str, filename: FileName, file: FileBody
 ) -> SalaryUploadOut:
     """Write the uploaded file's salaries as the check shows them; failed rows are left out."""
     try:

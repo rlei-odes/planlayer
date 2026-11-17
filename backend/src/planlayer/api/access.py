@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from planlayer import access
 from planlayer.api.auth import CurrentUser, engine_of
+from planlayer.api.limits import Code, Email, Name
 
 router = APIRouter(prefix="/api")
 
@@ -35,9 +36,9 @@ class UserOut(BaseModel):
 
 
 class UserIn(BaseModel):
-    login: str
-    display_name: str
-    email: str | None = None
+    login: Code
+    display_name: Name
+    email: Email | None = None
     is_admin: bool = False
     is_controller: bool = False
     is_viewer: bool = False
@@ -45,8 +46,8 @@ class UserIn(BaseModel):
 
 
 class UserChange(BaseModel):
-    display_name: str | None = None
-    email: str | None = None
+    display_name: Name | None = None
+    email: Email | None = None
     is_admin: bool | None = None
     is_controller: bool | None = None
     is_viewer: bool | None = None
@@ -75,11 +76,11 @@ class ResponsibilitiesOut(BaseModel):
 
 
 class OwnerIn(BaseModel):
-    login: str | None  # None: no owner
+    login: Code | None  # None: no owner
 
 
 class LoginIn(BaseModel):
-    login: str
+    login: Code
 
 
 @router.get("/users", responses={403: {}})

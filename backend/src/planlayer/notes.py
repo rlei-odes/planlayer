@@ -34,6 +34,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from planlayer.access import AccessError, User, capacity_rights, cost_center_rights
 from planlayer.rounds import NotFoundError, RoundRef, get_round
+from planlayer.sheet import fits
 from planlayer.store.schema import (
     ACCOUNT,
     ACTIVITY_TYPE,
@@ -343,6 +344,8 @@ def _amount(value: object) -> Decimal | None:
     exponent = amount.as_tuple().exponent
     if isinstance(exponent, int) and exponent < -2:
         raise NoteError(f"{value} has more than 2 decimal places")
+    if not fits(amount):
+        raise NoteError(f"{value} is too large")
     return amount
 
 

@@ -5,6 +5,7 @@ import type { LatestActualsOut } from './schema'
 import Select, { type Option } from './Select'
 import type { CarryOver, NewRound, SetupView } from './setupTypes'
 import { setupApi } from './setupShared'
+import { LIMIT } from './limits'
 
 // The round itself on the setup page (ADR 0014, ADR 0015): a new round and what it carries,
 // how it was created, its periods, and a forecast's closed months.
@@ -333,11 +334,11 @@ export function NewRoundCard({
         </label>
         <label className="su-field">
           Code
-          <input className="su-input" value={r.code} onChange={(e) => setR({ ...r, code: e.target.value })} style={{ width: 90 }} />
+          <input maxLength={20} className="su-input" value={r.code} onChange={(e) => setR({ ...r, code: e.target.value })} style={{ width: 90 }} />
         </label>
         <label className="su-field" style={{ flex: 1 }}>
           Name
-          <input className="su-input" value={r.name} onChange={(e) => setR({ ...r, name: e.target.value })} />
+          <input maxLength={LIMIT.name} className="su-input" value={r.name} onChange={(e) => setR({ ...r, name: e.target.value })} />
         </label>
         <PeriodFields
           kind={r.kind}

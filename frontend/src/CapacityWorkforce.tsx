@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { format, sum } from './amounts'
 import { api, type LineRef, type Staff, type StaffPosition } from './api'
 import Select, { type Option } from './Select'
+import { LIMIT } from './limits'
 
 // The capacity page's workforce tab (ADR 0027): the productive hours of a cost center's
 // positions and the line each one's go to. The server computes the hours and writes them to
@@ -55,7 +56,7 @@ function NumberInput({
   }
   return (
     <span className="cw-pct">
-      <input
+      <input maxLength={LIMIT.number}
         key={shown}
         className="su-input"
         inputMode="decimal"

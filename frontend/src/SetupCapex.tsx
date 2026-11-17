@@ -1,5 +1,6 @@
 import { type Version } from './api'
 import { type SetupDraft } from './setupTypes'
+import { LIMIT } from './limits'
 
 // Capex planning on the setup page (ADR 0028): on or off, the threshold above which an investment
 // is better planned as a large project, and whether planners schedule cash out.
@@ -35,7 +36,7 @@ export function Capex({ draft, setDraft, saved, round }: { draft: SetupDraft; se
         <div className="su-body cx-setup">
           <label className="su-field">
             Large project from
-            <input
+            <input maxLength={LIMIT.number}
               className="su-input"
               inputMode="decimal"
               value={capex.project_threshold ?? ''}

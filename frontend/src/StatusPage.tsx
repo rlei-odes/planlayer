@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { api, STATUS_LABEL, type Action, type ActionRequest, type Me, type Overview, type Status, type StatusRow } from './api'
 import PageHeader from './PageHeader'
 import Tile from './Tile'
+import { LIMIT } from './limits'
 
 // The status page (T-20, ADR 0008): every enabled cost center of the round with its status and
 // approver, rolled up per hierarchy node; approve, reject and reopen; the round's status. The
@@ -197,7 +198,7 @@ export default function StatusPage({
           }}
         >
           <strong>{pending.label}</strong>
-          <input
+          <input maxLength={LIMIT.longText}
             className="su-input"
             value={comment}
             onChange={(e) => setComment(e.target.value)}

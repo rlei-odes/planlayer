@@ -22,6 +22,7 @@ import PageHeader from './PageHeader'
 import Select, { type Option } from './Select'
 import { byColumn, isClosed, monthsOf, periodColumns, quarterly, span, type Layout } from './periods'
 import { pickUnit } from './units'
+import { LIMIT } from './limits'
 
 // The capacity sheet of a productive cost center (ADR 0013): per activity type, its work
 // centers' planned hours and plan rates, and the credit they give the cost center (hours × rate,
@@ -797,11 +798,11 @@ function AddLine({
           <>
             <label className="su-field">
               Code
-              <input className="su-input md-w-code" value={code} onChange={(e) => setCode(e.target.value)} />
+              <input maxLength={LIMIT.code} className="su-input md-w-code" value={code} onChange={(e) => setCode(e.target.value)} />
             </label>
             <label className="su-field cp-grow">
               Name
-              <input className="su-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Laser cutter (planned)" />
+              <input maxLength={LIMIT.name} className="su-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Laser cutter (planned)" />
             </label>
           </>
         )}
@@ -816,7 +817,7 @@ function AddLine({
         </div>
         <label className="su-field">
           Rate per hour
-          <input className="su-input cp-w-rate" inputMode="decimal" value={rate} onChange={(e) => setRate(e.target.value)} />
+          <input maxLength={LIMIT.number} className="su-input cp-w-rate" inputMode="decimal" value={rate} onChange={(e) => setRate(e.target.value)} />
         </label>
         <span className="cp-grow" />
         <button type="button" className="su-btn ghost" onClick={onCancel}>

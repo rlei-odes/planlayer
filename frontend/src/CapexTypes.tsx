@@ -63,7 +63,7 @@ export default function CapexTypes({ onSaved }: { onSaved: () => void }) {
             {draft.map((t, i) => (
               <tr key={i}>
                 <td>
-                  <input
+                  <input maxLength={20}
                     className="su-input cx-code"
                     value={t.code}
                     aria-label="Code"
@@ -72,10 +72,10 @@ export default function CapexTypes({ onSaved }: { onSaved: () => void }) {
                   />
                 </td>
                 <td>
-                  <input className="su-input" value={t.name} aria-label="Name" onChange={(e) => change(i, { name: e.target.value })} />
+                  <input maxLength={100} className="su-input" value={t.name} aria-label="Name" onChange={(e) => change(i, { name: e.target.value })} />
                 </td>
                 <td>
-                  <input
+                  <input maxLength={40}
                     className="su-input cx-code"
                     value={t.asset_account ?? ''}
                     aria-label="Asset account"
@@ -83,7 +83,7 @@ export default function CapexTypes({ onSaved }: { onSaved: () => void }) {
                   />
                 </td>
                 <td className="num">
-                  <input
+                  <input maxLength={3}
                     className="su-input num cx-life"
                     inputMode="numeric"
                     value={t.useful_life ?? ''}

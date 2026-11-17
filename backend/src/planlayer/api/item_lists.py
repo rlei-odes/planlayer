@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from planlayer import item_lists
 from planlayer.access import AccessError
 from planlayer.api.auth import CurrentUser, engine_of
+from planlayer.api.limits import Code, Number
 from planlayer.rounds import NotFoundError
 
 router = APIRouter(prefix="/api/item-lists")
@@ -32,9 +33,9 @@ def _http(e: Exception) -> HTTPException:
 class ItemIO(BaseModel):
     name: Annotated[str, Field(max_length=300)]
     supplier: Annotated[str | None, Field(max_length=300)] = None
-    quantity: str = "1"
-    unit_price: str
-    amount: str | None = None  # computed by the server; ignored on input
+    quantity: Number = "1"
+    unit_price: Number
+    amount: Number | None = None  # computed by the server; ignored on input
     comment: Annotated[str | None, Field(max_length=2000)] = None
 
 
@@ -60,8 +61,8 @@ class ItemListOut(ListSummaryOut):
 
 
 class NewListIn(BaseModel):
-    cost_center: str
-    account: str
+    cost_center: Code
+    account: Code
     visibility: Visibility = "private"
     items: Annotated[list[ItemIO], Field(max_length=item_lists.MAX_ITEMS)] = []
 
@@ -121,7 +122,7 @@ def lists(request: Request, user: CurrentUser) -> list[ListSummaryOut]:
 
 @router.get("/line", responses={404: {}})
 def list_of_line(
-    request: Request, user: CurrentUser, cost_center: str, account: str
+    request: Request, user: CurrentUser, cost_center: Code, account: Code
 ) -> ItemListOut | None:
     """The line's list, if there is one the user can see."""
     try:

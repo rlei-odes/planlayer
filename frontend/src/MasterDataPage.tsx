@@ -16,6 +16,7 @@ import FilterBar, { FilterSearch } from './FilterBar'
 import PageHeader from './PageHeader'
 import Select, { type Option } from './Select'
 import Tile from './Tile'
+import { LIMIT } from './limits'
 
 // Master data (ADR 0012): the admin's query per dataset with named columns (Sources), the sync
 // preview with confirmation of matches (Sync), and the member tree with manual members and
@@ -273,7 +274,7 @@ function DatasetEditor({ info, onSaved }: { info: DatasetInfo; onSaved: () => vo
         <div className="md-dataset-body">
           <label className="su-field">
             Query
-            <textarea
+            <textarea maxLength={LIMIT.query}
               className="su-input md-query"
               aria-label={`Query for ${info.dataset}`}
               rows={4}
@@ -590,7 +591,7 @@ function Sync() {
         <div className="su-body su-row">
           <label className="su-field">
             Actuals of entity
-            <input
+            <input maxLength={LIMIT.code}
               className="su-input md-entity"
               value={entity}
               onChange={(e) => setEntity(e.target.value)}
@@ -875,11 +876,11 @@ function Members() {
           <div className="su-row md-add-row">
             <label className="su-field">
               Code
-              <input className="su-input md-w-code" value={draft.code} onChange={(e) => setDraft({ ...draft, code: e.target.value })} required />
+              <input maxLength={LIMIT.code} className="su-input md-w-code" value={draft.code} onChange={(e) => setDraft({ ...draft, code: e.target.value })} required />
             </label>
             <label className="su-field md-grow">
               Name
-              <input className="su-input" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} required />
+              <input maxLength={LIMIT.name} className="su-input" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} required />
             </label>
             {tree && (
               <div className="su-field md-w-parent">
@@ -891,18 +892,18 @@ function Members() {
               <>
                 <label className="su-field">
                   Entity
-                  <input className="su-input md-w-code" value={draft.entity_code} onChange={(e) => setDraft({ ...draft, entity_code: e.target.value })} />
+                  <input maxLength={LIMIT.code} className="su-input md-w-code" value={draft.entity_code} onChange={(e) => setDraft({ ...draft, entity_code: e.target.value })} />
                 </label>
                 <label className="su-field md-grow">
                   Owner (e-mail)
-                  <input className="su-input" value={draft.owner} onChange={(e) => setDraft({ ...draft, owner: e.target.value })} />
+                  <input maxLength={LIMIT.email} className="su-input" value={draft.owner} onChange={(e) => setDraft({ ...draft, owner: e.target.value })} />
                 </label>
               </>
             )}
             {dataset === 'work_centers' && (
               <label className="su-field">
                 Cost center
-                <input
+                <input maxLength={LIMIT.code}
                   className="su-input md-w-code"
                   value={draft.cost_center_code}
                   onChange={(e) => setDraft({ ...draft, cost_center_code: e.target.value })}
@@ -912,7 +913,7 @@ function Members() {
             {dataset === 'activity_types' && (
               <label className="su-field">
                 Credited account
-                <input
+                <input maxLength={LIMIT.code}
                   className="su-input md-w-code"
                   value={draft.account_code}
                   onChange={(e) => setDraft({ ...draft, account_code: e.target.value })}
@@ -988,7 +989,7 @@ function Members() {
                         }}
                       >
                         <span className="code">{r.code}</span>
-                        <input
+                        <input maxLength={LIMIT.name}
                           className="su-input"
                           value={editing.name}
                           onChange={(e) => setEditing({ ...editing, name: e.target.value })}
