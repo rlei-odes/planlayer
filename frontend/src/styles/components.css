@@ -29,10 +29,20 @@
 /* Spaced from what follows by the page rhythm (--stack), like every other block. */
 .pg-head {
   display: flex;
+  flex-direction: column;
+  gap: var(--stack);
+}
+
+.pg-head-row {
+  display: flex;
   align-items: flex-end;
   justify-content: space-between;
   gap: 16px;
   flex-wrap: wrap;
+}
+
+.pg-tabs {
+  display: flex;
 }
 
 .pg-title {

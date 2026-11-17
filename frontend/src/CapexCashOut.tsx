@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState, type KeyboardEvent } from 'react'
 import { format, fromCents, parse, toCents } from './amounts'
 import type { Capex, CapexItem } from './api'
 import { monthLabel } from './capex'
@@ -6,6 +6,9 @@ import { monthLabel } from './capex'
 // An investment's cash-out schedule (ADR 0028): when the money goes out, over the round's months
 // (or quarters) and one period more, the next fiscal year. An entry above what is left of the
 // investment is reduced to it, so the schedule never exceeds the amount.
+//
+// Keyboard: the first period has the focus; Enter takes the value and moves down, from the last
+// period to Save; the up and down arrows move between periods; Escape closes without saving.
 
 function periodLabel(iso: string, view: Capex): string {
   if (iso === view.next_year) return `FY ${view.round.fiscal_year + 1}`
@@ -33,6 +36,7 @@ export default function CapexCashOut({
   const [reduced, setReduced] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const saveButton = useRef<HTMLButtonElement>(null)
   const amount = toCents(item.amount ?? '0')
   const periods = [...view.periods, ...(nextYear ? [view.next_year] : [])]
 
@@ -58,6 +62,20 @@ export default function CapexCashOut({
     setValues({ ...values, [p]: capped === 0n ? '' : format(fromCents(capped)) })
   }
 
+  /** Enter and the arrows: to the period below or above; Enter from the last period to Save. */
+  function move(e: KeyboardEvent<HTMLInputElement>, p: string) {
+    const by = e.key === 'ArrowUp' ? -1 : e.key === 'ArrowDown' || e.key === 'Enter' ? 1 : 0
+    if (!by) return
+    e.preventDefault()
+    if (e.key === 'Enter') settle(p)
+    const inputs = [...(e.currentTarget.closest('table')?.querySelectorAll('input') ?? [])]
+    const next = inputs[inputs.indexOf(e.currentTarget) + by]
+    if (next) {
+      next.focus()
+      next.select()
+    } else if (e.key === 'Enter') saveButton.current?.focus()
+  }
+
   async function save() {
     const out = periods.flatMap((p) => (cents(p) > 0n ? [{ period: p, amount: fromCents(cents(p)) }] : []))
     setSaving(true)
@@ -73,7 +91,19 @@ export default function CapexCashOut({
 
   return (
     <div className="il-backdrop" role="presentation" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="il-dialog cx-dialog" role="dialog" aria-modal="true" aria-label={`Cash out of ${item.name}`}>
+      <div
+        className="il-dialog cx-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Cash out of ${item.name}`}
+        // Read only, no field takes the focus: the dialog does, so Escape reaches it.
+        tabIndex={-1}
+        autoFocus={readOnly}
+        onKeyDown={(e) => {
+          e.stopPropagation()
+          if (e.key === 'Escape') onClose()
+        }}
+      >
         <header className="il-head">
           <div>
             <div className="su-eyebrow">Cash out</div>
@@ -93,7 +123,7 @@ export default function CapexCashOut({
         <div className="il-body">
           <table className="cx-co">
             <tbody>
-              {periods.map((p) => (
+              {periods.map((p, i) => (
                 <tr key={p} className={p === view.next_year ? 'next' : undefined}>
                   <th scope="row">{periodLabel(p, view)}</th>
                   <td>
@@ -103,12 +133,13 @@ export default function CapexCashOut({
                       aria-label={`Cash out ${periodLabel(p, view)}`}
                       value={values[p] ?? ''}
                       disabled={readOnly}
+                      autoFocus={i === 0 && !readOnly}
                       onChange={(e) => {
                         setReduced(null)
                         setValues({ ...values, [p]: e.target.value })
                       }}
                       onBlur={() => settle(p)}
-                      onKeyDown={(e) => e.key === 'Enter' && settle(p)}
+                      onKeyDown={(e) => move(e, p)}
                     />
                   </td>
                   <td className="cx-co-act">
@@ -147,7 +178,7 @@ export default function CapexCashOut({
             {readOnly ? 'Close' : 'Cancel'}
           </button>
           {!readOnly && (
-            <button type="button" className="su-btn primary" disabled={saving} onClick={() => void save()}>
+            <button ref={saveButton} type="button" className="su-btn primary" disabled={saving} onClick={() => void save()}>
               {saving ? 'Saving…' : 'Save'}
             </button>
           )}

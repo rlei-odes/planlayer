@@ -136,6 +136,20 @@ export default function SetupPage({
             </button>
           )
         }
+        tabs={
+          !creating &&
+          view &&
+          draft &&
+          round && (
+            <div className="seg" role="tablist" aria-label="Setup">
+              {TABS.map((t) => (
+                <button key={t.tab} type="button" role="tab" aria-selected={tab === t.tab} aria-pressed={tab === t.tab} onClick={() => setTab(t.tab)}>
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          )
+        }
       />
 
       {/* Creating a round is a step of its own: what the new round takes from an earlier one.
@@ -153,21 +167,12 @@ export default function SetupPage({
       )}
       {!creating && justCreated === code && (
         <div className="su-note ok">
-          Round created, in status setup: planners don’t see it yet. Set up its forms, cost centers and accounts on the
-          tabs below; all of it stays changeable until you open the round on the status page.
+          Round created, in status setup: planners don’t see it yet. Set up its forms, cost centers and accounts on its
+          tabs; all of it stays changeable until you open the round on the status page.
         </div>
       )}
       {!creating && note && <div className={`su-note ${note.kind}`}>{note.text}</div>}
 
-      {!creating && view && draft && round && (
-        <div className="seg su-tabs" role="tablist" aria-label="Setup">
-          {TABS.map((t) => (
-            <button key={t.tab} type="button" role="tab" aria-selected={tab === t.tab} aria-pressed={tab === t.tab} onClick={() => setTab(t.tab)}>
-              {t.label}
-            </button>
-          ))}
-        </div>
-      )}
       {!creating && view && draft && round && scope && tab !== 'forms' && (
         <div className="su-scope">
           {tab === 'cost_centers' ? (

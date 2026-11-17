@@ -437,10 +437,6 @@
 
 /* --- Setup tabs and the round's scope (ADR 0014) ------------------------------------------- */
 
-.su-tabs {
-  align-self: flex-start;
-}
-
 .su-scope {
   display: flex;
   flex-direction: column;

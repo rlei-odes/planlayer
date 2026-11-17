@@ -105,15 +105,26 @@
 }
 
 .cx-w-cc {
-  width: 168px;
-}
-
-.cx-w-type {
   width: 150px;
 }
 
+.cx-w-type {
+  width: 140px;
+}
+
+/* On a wide page cost center and type grow with the table, so the space isn't all the name's. */
+@container (min-width: 1500px) {
+  .cx-w-cc {
+    width: 15%;
+  }
+
+  .cx-w-type {
+    width: 13%;
+  }
+}
+
 .cx-w-prio {
-  width: 76px;
+  width: 64px;
 }
 
 .cx-w-start {
@@ -121,15 +132,15 @@
 }
 
 .cx-w-amount {
-  width: 128px;
+  width: 120px;
 }
 
 .cx-w-cash {
-  width: 120px;
+  width: 108px;
 }
 
 .cx-w-status {
-  width: 120px;
+  width: 112px;
 }
 
 /* A large project: a group row, its amount and start its lines'. */
@@ -164,17 +175,22 @@
   min-width: 0;
 }
 
+/* Every row's number and name start and end at the same place: the number and the marks keep
+   their width, and a row without a project's toggle takes its width instead. */
 .cx-name.cx-indent {
-  padding-left: 22px;
+  padding-left: 24px;
 }
 
 .cx-name .pl-code {
   flex: none;
+  width: 22px;
+  text-align: right;
 }
 
 .cx-name .cx-field,
 .cx-name .cx-text {
-  flex: 1;
+  flex: 1 1 auto;
+  max-width: 420px;
 }
 
 .cx-text {
@@ -273,6 +289,7 @@ tr.cx-project .cx-field {
 
 .cx-marks {
   flex: none;
+  width: 64px;
   display: inline-flex;
   align-items: center;
   gap: 2px;
@@ -310,7 +327,10 @@ tr:hover .cx-marks .pl-mark.empty {
   cursor: pointer;
 }
 
+/* Priority: as wide as its pill and caret. */
 .cx-pick-mid {
+  width: auto;
+  display: inline-flex;
   justify-content: center;
 }
 

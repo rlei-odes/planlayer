@@ -356,7 +356,8 @@ export default function CapexList({
     const i = row.item
     if (i === null)
       return (
-        <div className={`cx-name${row.project !== null ? ' cx-indent' : ''}`}>
+        <div className="cx-name cx-indent">
+          <span className="pl-code" />
           <CellInput
             value=""
             col="name"
@@ -367,10 +368,11 @@ export default function CapexList({
             onCommit={(raw) => commit(rowIndex, 'name', raw)}
             onPasteBlock={(b) => paste(rowIndex, 'name', b)}
           />
+          <span className="cx-marks" />
         </div>
       )
     return (
-      <div className={`cx-name${i.project_id !== null ? ' cx-indent' : ''}`}>
+      <div className={`cx-name${i.kind === 'project' ? '' : ' cx-indent'}`}>
         {i.kind === 'project' && (
           <button type="button" className="cx-toggle" onClick={() => toggle(i.item_id)} aria-label={collapsed.has(i.item_id) ? 'Show lines' : 'Hide lines'}>
             {collapsed.has(i.item_id) ? '▸' : '▾'}

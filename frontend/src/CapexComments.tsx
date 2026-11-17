@@ -48,7 +48,16 @@ export default function CapexComments({
 
   return (
     <div className="il-backdrop" role="presentation" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="il-dialog cx-dialog" role="dialog" aria-modal="true" aria-label={`Comments on ${item.name}`}>
+      <div
+        className="il-dialog cx-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Comments on ${item.name}`}
+        onKeyDown={(e) => {
+          e.stopPropagation()
+          if (e.key === 'Escape') onClose()
+        }}
+      >
         <header className="il-head">
           <div>
             <div className="su-eyebrow">Comments</div>
@@ -96,6 +105,7 @@ export default function CapexComments({
             value={text}
             placeholder="Comment"
             aria-label="New comment"
+            autoFocus
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) void add()

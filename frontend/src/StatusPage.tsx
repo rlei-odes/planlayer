@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api, STATUS_LABEL, type Action, type ActionRequest, type Me, type Overview, type Status, type StatusRow } from './api'
-import FilterBar from './FilterBar'
 import PageHeader from './PageHeader'
 import Tile from './Tile'
 
@@ -139,26 +138,43 @@ export default function StatusPage({
         sub={`${round.deadline ? `Deadline ${round.deadline}` : 'No deadline'} · ${centers.length} cost centers to plan`}
         actions={
           <>
-          <span className={`su-pill ${round.status === 'open' ? 'open' : round.status === 'closed' ? 'overdue' : 'in_progress'}`}>
-            <i className={`su-dot ${round.status}`} />
-            Round {round.status}
-          </span>
-          {due && (
-            <span className={`su-pill ${due.tone}`} title={`Deadline ${round.deadline}`}>
-              {due.text}
+            <span className={`su-pill ${round.status === 'open' ? 'open' : round.status === 'closed' ? 'overdue' : 'in_progress'}`}>
+              <i className={`su-dot ${round.status}`} />
+              Round {round.status}
             </span>
-          )}
-          {me.is_controller && round.status !== 'open' && (
-            <button type="button" className="su-btn primary" onClick={() => void setRound('open')}>
-              {round.status === 'closed' ? 'Reopen round' : 'Open round'}
-            </button>
-          )}
-          {me.is_controller && round.status === 'open' && (
-            <button type="button" className="su-btn" onClick={() => void setRound('closed')}>
-              Close round
-            </button>
-          )}
+            {due && (
+              <span className={`su-pill ${due.tone}`} title={`Deadline ${round.deadline}`}>
+                {due.text}
+              </span>
+            )}
+            {me.is_controller && round.status !== 'open' && (
+              <button type="button" className="su-btn primary" onClick={() => void setRound('open')}>
+                {round.status === 'closed' ? 'Reopen round' : 'Open round'}
+              </button>
+            )}
+            {me.is_controller && round.status === 'open' && (
+              <button type="button" className="su-btn" onClick={() => void setRound('closed')}>
+                Close round
+              </button>
+            )}
           </>
+        }
+        tabs={
+          <div className="seg" role="group" aria-label="Show">
+            {(
+              [
+                ['all', 'All'],
+                ['mine', 'Waiting for me'],
+                ['submitted', 'Waiting for approval'],
+                ['overdue', 'Overdue'],
+              ] as [Filter, string][]
+            ).map(([f, label]) => (
+              <button key={f} type="button" aria-pressed={filter === f} onClick={() => setFilter(f)}>
+                {label}
+                <span className="count">{filterCount[f]}</span>
+              </button>
+            ))}
+          </div>
         }
       />
 
@@ -198,24 +214,6 @@ export default function StatusPage({
           </button>
         </form>
       )}
-
-      <FilterBar>
-        <div className="seg" role="group" aria-label="Show">
-          {(
-            [
-              ['all', 'All'],
-              ['mine', 'Waiting for me'],
-              ['submitted', 'Waiting for approval'],
-              ['overdue', 'Overdue'],
-            ] as [Filter, string][]
-          ).map(([f, label]) => (
-            <button key={f} type="button" aria-pressed={filter === f} onClick={() => setFilter(f)}>
-              {label}
-              <span className="count">{filterCount[f]}</span>
-            </button>
-          ))}
-        </div>
-      </FilterBar>
 
       <div className="tbl-card">
         <div className="tbl-scroll">

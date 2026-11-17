@@ -190,7 +190,7 @@ export default function CapexPage({ version, me }: { version: string; me: Me }) 
             {saving && <span className="pg-saving"> · Saving…</span>}
           </>
         }
-        actions={
+        tabs={
           view.on && (
             <div className="seg" role="tablist" aria-label="Investments">
               {tabs.map(([value, label]) => (

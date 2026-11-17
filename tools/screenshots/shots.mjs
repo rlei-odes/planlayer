@@ -1,12 +1,14 @@
 // Screenshots of the main pages, logged in through the development login.
-// Usage: node shots.mjs [base URL]   (default http://localhost:5173)
+// Usage: node shots.mjs [base URL] [width]   (default http://localhost:5173, 1440 pixels wide)
+// Only the names given in SHOTS (comma-separated) are taken, e.g. SHOTS=capex,status.
 
 import { mkdir } from 'node:fs/promises'
 import { chromium } from 'playwright'
 
 const base = process.argv[2] ?? 'http://localhost:5173'
 const out = new URL('./out/', import.meta.url).pathname
-const viewport = { width: 1440, height: 900 }
+const viewport = { width: Number(process.argv[3] ?? 1440), height: 900 }
+const only = process.env.SHOTS?.split(',')
 
 const CONTROLLER = 'controller@nordwerk.example'
 const ADMIN = 'admin@nordwerk.example'
@@ -34,7 +36,7 @@ const shots = [
 await mkdir(out, { recursive: true })
 const browser = await chromium.launch()
 try {
-  for (const shot of shots) {
+  for (const shot of shots.filter((s) => !only || only.includes(s.name))) {
     const context = await browser.newContext({ viewport })
     const res = await context.request.post(`${base}/api/auth/dev-login`, { data: { login: shot.user } })
     if (!res.ok()) throw new Error(`Dev login as ${shot.user} failed: ${res.status()}`)

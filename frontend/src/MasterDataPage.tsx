@@ -118,7 +118,7 @@ export default function MasterDataPage({ me }: { me: Me }) {
               ? 'Bring members and actuals in from the source, after a preview of what changes.'
               : 'The members planners see, synced or entered here, and their hierarchy.'
         }
-        actions={
+        tabs={
           <div className="seg" role="group" aria-label="Section">
             {sections.map((s) => (
               <button key={s} type="button" aria-pressed={section === s} onClick={() => setSection(s)}>

@@ -550,9 +550,9 @@ export default function CapacityPage({
             {saving && <span className="pg-saving"> · Saving…</span>}
           </>
         }
+        tabs={tabs}
         actions={
           <>
-            {tabs}
             {current && <span className={`su-pill ${current.status}`}>{STATUS_LABEL[current.status]}</span>}
             {sheet?.deadline && <span className="su-pill neutral">Due {sheet.deadline}</span>}
             {open && !staffTab && (

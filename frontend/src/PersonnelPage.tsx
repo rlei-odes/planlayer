@@ -113,7 +113,7 @@ export default function PersonnelPage({
   ]
   const tabs =
     views.length > 1 ? (
-      <div className="seg pc-tabs" role="tablist" aria-label="Personnel costs">
+      <div className="seg" role="tablist" aria-label="Personnel costs">
         {views.map(([value, label]) => (
           <button key={value} type="button" role="tab" aria-selected={tab === value} aria-pressed={tab === value} onClick={() => setTab(value)}>
             {label}
@@ -129,7 +129,7 @@ export default function PersonnelPage({
           eyebrow="Personnel costs"
           title="Access control"
           sub="Per cost center and round, set by HR. Nobody but HR reads pay until HR releases the round."
-          actions={tabs}
+          tabs={tabs}
         />
         <PayAccess version={version} onChanged={loadUnits} />
       </div>
@@ -143,7 +143,7 @@ export default function PersonnelPage({
           eyebrow="Personnel costs"
           title="Upload"
           sub="Salaries and bonuses from a file. Checked before anything is saved."
-          actions={tabs}
+          tabs={tabs}
         />
         <SalaryUpload version={version} onApplied={loadUnits} />
       </div>
@@ -157,7 +157,7 @@ export default function PersonnelPage({
           eyebrow="Personnel costs"
           title="Rules"
           sub="Accounts, yearly extras, raises, awards and contributions. They hold no one’s pay."
-          actions={tabs}
+          tabs={tabs}
         />
         <PayRules version={version} me={me} onSaved={() => loadUnits()} />
       </div>
@@ -244,12 +244,8 @@ export default function PersonnelPage({
             {busy && <span className="pg-saving"> · Saving…</span>}
           </>
         }
-        actions={
-          <>
-            {tabs}
-            {current && <span className={`su-pill ${current.status}`}>{STATUS_LABEL[current.status]}</span>}
-          </>
-        }
+        tabs={tabs}
+        actions={current && <span className={`su-pill ${current.status}`}>{STATUS_LABEL[current.status]}</span>}
       />
 
       {message && <div className={`su-note ${message.kind === 'error' ? 'error' : 'ok'}`}>{message.text}</div>}
