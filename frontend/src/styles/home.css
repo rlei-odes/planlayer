@@ -295,6 +295,8 @@
   background: var(--ok);
 }
 
-.tr-line .tr-line {
+.tr-line .tr-line,
+.mn-item > .tr-line {
+  /* Its basis (transfers.css) is a width in a row; in a column it would be a height. */
   flex: none;
 }
