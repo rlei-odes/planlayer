@@ -23,8 +23,11 @@ function Icon({ children, size = 18 }: { children: ReactNode; size?: number }) {
 export const LogoMark = () => (
   <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true">
     <rect width="26" height="26" rx="7" fill="var(--accent)" />
-    <path d="M6 15.5 13 19l7-3.5" fill="none" stroke="#fff" strokeOpacity=".55" strokeWidth="1.7" strokeLinejoin="round" />
-    <path d="M6 11.5 13 15l7-3.5L13 8z" fill="#fff" />
+    <g fill="none" stroke="#fff" strokeWidth="1.7" strokeLinejoin="round" strokeLinecap="round">
+      <path d="M6.45 18.225 13 21.5l6.55-3.275" strokeOpacity=".32" />
+      <path d="M6.45 13.025 13 16.3l6.55-3.275" strokeOpacity=".62" />
+    </g>
+    <path d="M6 9.6 13 6.1 20 9.6 13 13.1z" fill="#fff" />
   </svg>
 )
 
