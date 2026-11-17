@@ -19,6 +19,7 @@ import { RedoIcon, UndoIcon } from './icons'
 import ItemListEditor from './ItemListEditor'
 import { headerWithMarks, listMark, noteMark, type H } from './lineMarks'
 import NotesPanel from './NotesPanel'
+import PageHeader from './PageHeader'
 import Select, { type Option } from './Select'
 import { isClosed, monthProp, monthsOf, periodColumns, quarterProp, quarterly, span, type Layout } from './periods'
 import { pickUnit } from './units'
@@ -515,9 +516,9 @@ export default function PlanningPage({
 
   return (
     <div className="su pl" style={grid ? { maxWidth: sheetWidth } : undefined}>
-      <div className="pl-head">
-        <div className="pl-title">
-          <div className="su-eyebrow">Planning{grid ? ` · ${grid.version_name}` : ''}</div>
+      <PageHeader
+        eyebrow={`Planning${grid ? ` · ${grid.version_name}` : ''}`}
+        title={
           <Select
             variant="title"
             label="Cost center"
@@ -536,49 +537,53 @@ export default function PlanningPage({
               dot: u.status,
             }))}
           />
-          <div className="pl-sub">
+        }
+        sub={
+          <>
             {current?.owner ? `Owner ${current.owner}` : 'No owner'}
             {grid && ` · fiscal year ${grid.fiscal_year}`}
             {grid && forecast && closed > 0 && ` · forecast ${closed}+${12 - closed}`}
             {grid && quarters && ' · by quarter'}
-            {saving && <span className="pl-saving"> · Saving…</span>}
-          </div>
-        </div>
-        <div className="pl-actions">
-          {grid && <span className={`su-pill ${grid.status}`}>{STATUS_LABEL[grid.status]}</span>}
-          {grid?.deadline && <span className="su-pill neutral">Due {grid.deadline}</span>}
-          {open && accountRows > 0 && (
-            <span className="pl-undo" role="group" aria-label="Undo and redo">
-              <button
-                type="button"
-                className="su-icon"
-                disabled={undoStack.length === 0 || saving}
-                onClick={() => void step('undo')}
-                aria-label="Undo"
-                title={`Undo your last change (Ctrl+Z)${undoStack.length ? ` · ${undoStack.length} step${undoStack.length === 1 ? '' : 's'}` : ''}`}
-              >
-                <UndoIcon />
+            {saving && <span className="pg-saving"> · Saving…</span>}
+          </>
+        }
+        actions={
+          <>
+            {grid && <span className={`su-pill ${grid.status}`}>{STATUS_LABEL[grid.status]}</span>}
+            {grid?.deadline && <span className="su-pill neutral">Due {grid.deadline}</span>}
+            {open && accountRows > 0 && (
+              <span className="pl-undo" role="group" aria-label="Undo and redo">
+                <button
+                  type="button"
+                  className="su-icon"
+                  disabled={undoStack.length === 0 || saving}
+                  onClick={() => void step('undo')}
+                  aria-label="Undo"
+                  title={`Undo your last change (Ctrl+Z)${undoStack.length ? ` · ${undoStack.length} step${undoStack.length === 1 ? '' : 's'}` : ''}`}
+                >
+                  <UndoIcon />
+                </button>
+                <button
+                  type="button"
+                  className="su-icon"
+                  disabled={redoStack.length === 0 || saving}
+                  onClick={() => void step('redo')}
+                  aria-label="Redo"
+                  title="Redo (Ctrl+Y)"
+                >
+                  <RedoIcon />
+                </button>
+              </span>
+            )}
+            {open && accountRows > 0 && addAccountSelect}
+            {open && (
+              <button type="button" className="su-btn primary" onClick={() => void submit()}>
+                Submit for approval
               </button>
-              <button
-                type="button"
-                className="su-icon"
-                disabled={redoStack.length === 0 || saving}
-                onClick={() => void step('redo')}
-                aria-label="Redo"
-                title="Redo (Ctrl+Y)"
-              >
-                <RedoIcon />
-              </button>
-            </span>
-          )}
-          {open && accountRows > 0 && addAccountSelect}
-          {open && (
-            <button type="button" className="su-btn primary" onClick={() => void submit()}>
-              Submit for approval
-            </button>
-          )}
-        </div>
-      </div>
+            )}
+          </>
+        }
+      />
 
       {grid?.lock_reason && (
         <div className="su-note pl-note">

@@ -12,7 +12,10 @@ import {
   type SyncPlan,
   type SyncYears,
 } from './api'
+import FilterBar, { FilterSearch } from './FilterBar'
+import PageHeader from './PageHeader'
 import Select, { type Option } from './Select'
+import Tile from './Tile'
 
 // Master data (ADR 0012): the admin's query per dataset with named columns (Sources), the sync
 // preview with confirmation of matches (Sync), and the member tree with manual members and
@@ -105,26 +108,26 @@ export default function MasterDataPage({ me }: { me: Me }) {
   const [section, setSection] = useState<Section>(sections[0])
   return (
     <div className="su md">
-      <div className="pg-head">
-        <div>
-          <div className="su-eyebrow">Master data</div>
-          <h2 className="su-title">{SECTION_LABEL[section]}</h2>
-          <div className="pg-sub">
-            {section === 'sources'
-              ? 'Where each dataset comes from: one query per dataset, run read-only on the source.'
-              : section === 'sync'
-                ? 'Bring members and actuals in from the source, after a preview of what changes.'
-                : 'The members planners see, synced or entered here, and their hierarchy.'}
+      <PageHeader
+        eyebrow="Master data"
+        title={SECTION_LABEL[section]}
+        sub={
+          section === 'sources'
+            ? 'Where each dataset comes from: one query per dataset, run read-only on the source.'
+            : section === 'sync'
+              ? 'Bring members and actuals in from the source, after a preview of what changes.'
+              : 'The members planners see, synced or entered here, and their hierarchy.'
+        }
+        actions={
+          <div className="seg" role="group" aria-label="Section">
+            {sections.map((s) => (
+              <button key={s} type="button" aria-pressed={section === s} onClick={() => setSection(s)}>
+                {SECTION_LABEL[s]}
+              </button>
+            ))}
           </div>
-        </div>
-        <div className="seg" role="group" aria-label="Section">
-          {sections.map((s) => (
-            <button key={s} type="button" aria-pressed={section === s} onClick={() => setSection(s)}>
-              {SECTION_LABEL[s]}
-            </button>
-          ))}
-        </div>
-      </div>
+        }
+      />
       {section === 'sources' && <Sources />}
       {section === 'sync' && <Sync />}
       {section === 'members' && <Members />}
@@ -634,11 +637,11 @@ function Sync() {
           </h3>
           <p className="su-hint">Datasets: {plan.datasets.join(', ') || 'none mapped'}</p>
           <div className="su-body">
-            <div className="pb-tiles md-tiles">
-              <Tile label="new" value={plan.new.length} tone="add" />
-              <Tile label="changed" value={plan.changed.length} tone="chg" />
-              <Tile label="no longer delivered" value={plan.gone.length} tone="rem" />
-              <Tile label="actual cells" value={plan.actual_cells ?? 0} tone="same" />
+            <div className="tiles md-tiles">
+              <Tile label="new" value={plan.new.length.toLocaleString('en-US')} tone="add" />
+              <Tile label="changed" value={plan.changed.length.toLocaleString('en-US')} tone="chg" />
+              <Tile label="no longer delivered" value={plan.gone.length.toLocaleString('en-US')} tone="rem" />
+              <Tile label="actual cells" value={(plan.actual_cells ?? 0).toLocaleString('en-US')} tone="same" />
             </div>
             {plan.actual_cells !== null && <ActualYears plan={plan} />}
             {plan.problems.length > 0 && (
@@ -748,15 +751,6 @@ function ActualYears({ plan }: { plan: SyncPlan }) {
   )
 }
 
-function Tile({ label, value, tone }: { label: string; value: number; tone: string }) {
-  return (
-    <div className={`pb-tile ${tone}`}>
-      <div className="pb-value">{value.toLocaleString('en-US')}</div>
-      <div className="pb-label">{label}</div>
-    </div>
-  )
-}
-
 function Changes({ label, items, open = false }: { label: string; items: string[]; open?: boolean }) {
   if (items.length === 0) return null
   return (
@@ -828,7 +822,7 @@ function Members() {
 
   return (
     <div className="su-col">
-      <div className="md-bar">
+      <FilterBar>
         <div className="seg" role="group" aria-label="Dimension">
           {DIMENSIONS.map((d) => (
             <button
@@ -845,20 +839,14 @@ function Members() {
             </button>
           ))}
         </div>
-        <div className="md-search">
-          <svg width="14" height="14" viewBox="0 0 20 20" aria-hidden="true">
-            <circle cx="9" cy="9" r="5.5" fill="none" stroke="currentColor" strokeWidth="1.7" />
-            <path d="m13.5 13.5 3 3" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
-          </svg>
-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filter by code, name or owner" aria-label="Filter members" />
-        </div>
+        <FilterSearch value={query} onChange={setQuery} placeholder="Filter by code, name or owner" label="Filter members" />
         <span className="ink-3 md-counts">
           {rows.length} members · {manual} entered here · {changed} changed here
         </span>
         <button type="button" className="su-btn primary" onClick={() => setAdding((a) => !a)}>
           Add member
         </button>
-      </div>
+      </FilterBar>
 
       {adding && (
         <form

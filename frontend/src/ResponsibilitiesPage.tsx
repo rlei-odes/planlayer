@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api, type Responsibilities, type Responsibility } from './api'
+import FilterBar, { FilterSearch } from './FilterBar'
+import PageHeader from './PageHeader'
 import Select, { type Option } from './Select'
 
 // Responsibilities (ADR 0009), for the controller: per cost center the owner matched from the
@@ -61,16 +63,11 @@ export default function ResponsibilitiesPage() {
 
   return (
     <div className="su rs">
-      <div className="pg-head">
-        <div>
-          <div className="su-eyebrow">Responsibilities</div>
-          <h2 className="su-title">Who plans and who approves</h2>
-          <div className="pg-sub">
-            Owners come from the source and plan their cost centers. Overrides, deputies, capacity planners and approvers
-            are kept here.
-          </div>
-        </div>
-      </div>
+      <PageHeader
+        eyebrow="Responsibilities"
+        title="Who plans and who approves"
+        sub="Owners come from the source and plan their cost centers. Overrides, deputies, capacity planners and approvers are kept here."
+      />
 
       {data.unmatched_owners.length > 0 && (
         <div className="su-note warn rs-gap">
@@ -80,18 +77,12 @@ export default function ResponsibilitiesPage() {
       )}
       {note && <div className={`su-note ${note.kind} rs-gap`}>{note.text}</div>}
 
-      <div className="md-bar rs-gap">
-        <div className="md-search">
-          <svg width="14" height="14" viewBox="0 0 20 20" aria-hidden="true">
-            <circle cx="9" cy="9" r="5.5" fill="none" stroke="currentColor" strokeWidth="1.7" />
-            <path d="m13.5 13.5 3 3" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
-          </svg>
-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filter by cost center or person" aria-label="Filter" />
-        </div>
+      <FilterBar>
+        <FilterSearch value={query} onChange={setQuery} placeholder="Filter by cost center or person" label="Filter" />
         <span className="ink-3 md-counts">
           {overrides} planner override{overrides === 1 ? '' : 's'}
         </span>
-      </div>
+      </FilterBar>
 
       <div className="tbl-card">
         <div className="tbl-scroll">

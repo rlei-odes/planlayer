@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { Version } from './api'
+import PageHeader from './PageHeader'
 import type * as S from './schema'
+import Tile from './Tile'
 
 // Publishing (ADR 0011): download a round's plan values, or preview and run a publish into
 // planlayer_out. The preview shows every row added, changed and removed before anything is
@@ -81,12 +83,7 @@ export default function PublishPage({ round }: { round: Version }) {
   const file = (fmt: string) => `/api/rounds/${encodeURIComponent(code)}/export.${fmt}?scope=${scope}`
   return (
     <div className="su">
-      <div className="su-head">
-        <div>
-          <div className="su-eyebrow">Publishing</div>
-          <h2 className="su-title">{round.name}</h2>
-        </div>
-      </div>
+      <PageHeader eyebrow="Publishing" title={round.name} />
 
       <div className="pb-layout">
         <div className="su-col">
@@ -188,11 +185,11 @@ export default function PublishPage({ round }: { round: Version }) {
           {!preview && <div className="pb-empty">Preview a publish to see every row it adds, changes and removes.</div>}
           {preview && (
             <>
-              <div className="pb-tiles">
-                <Tile label="added" value={preview.added} tone="add" />
-                <Tile label="changed" value={preview.changed} tone="chg" />
-                <Tile label="removed" value={preview.removed} tone="rem" />
-                <Tile label="unchanged" value={preview.unchanged} tone="same" />
+              <div className="tiles pb-tiles">
+                <Tile label="added" value={preview.added.toLocaleString('en-US')} tone="add" />
+                <Tile label="changed" value={preview.changed.toLocaleString('en-US')} tone="chg" />
+                <Tile label="removed" value={preview.removed.toLocaleString('en-US')} tone="rem" />
+                <Tile label="unchanged" value={preview.unchanged.toLocaleString('en-US')} tone="same" />
               </div>
               <div className="pv-notes">
                 {nothing && <div className="su-note ok">The output already holds exactly these rows. Nothing to publish.</div>}
@@ -283,15 +280,6 @@ export default function PublishPage({ round }: { round: Version }) {
           )}
         </section>
       </div>
-    </div>
-  )
-}
-
-function Tile({ label, value, tone }: { label: string; value: number; tone: string }) {
-  return (
-    <div className={`pb-tile ${tone}`}>
-      <div className="pb-value">{value.toLocaleString('en-US')}</div>
-      <div className="pb-label">{label}</div>
     </div>
   )
 }

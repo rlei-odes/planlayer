@@ -1,11 +1,5 @@
 /* Personnel costs (ADR 0022): pay per position, totals, the review, the rules. */
 
-.pc-h1 {
-  margin: 2px 0 0;
-  font-size: 22px;
-  font-weight: 650;
-}
-
 .pc-tabs {
   margin-right: 4px;
 }
@@ -306,16 +300,6 @@ input.pc-low {
   padding-top: 4px;
 }
 
-.su-upload-tiles .pb-tile {
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.su-upload-tiles .pb-tile[aria-pressed='true'] {
-  border-color: var(--accent-2);
-  box-shadow: 0 0 0 3px var(--accent-tint);
-}
 
 .su-file {
   font-weight: 600;

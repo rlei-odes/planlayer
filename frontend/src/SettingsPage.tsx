@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api, type Signs } from './api'
+import PageHeader from './PageHeader'
 
 // Installation settings (E-12), for the admin. So far: the sign convention of published amounts
 // (ADR 0019). Plan values stay natural-positive in Planlayer and in `amount`; `amount_signed`
@@ -55,9 +56,7 @@ export default function SettingsPage() {
 
   return (
     <div className="su st-settings">
-      <div className="pg-head">
-        <h2 className="su-title">Settings</h2>
-      </div>
+      <PageHeader title="Settings" />
 
       <div className="su-card">
         <h3>Published signs</h3>

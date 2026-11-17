@@ -3,6 +3,7 @@ import { format } from './amounts'
 import { api, type ItemList, type ListSummary } from './api'
 import ItemListEditor from './ItemListEditor'
 import { VISIBILITY } from './itemLists'
+import PageHeader from './PageHeader'
 
 // Every item list the user can see (ADR 0017): their own, those shared with the cost centers
 // they plan, and public ones of cost centers they read. A list is started from its line on the
@@ -26,16 +27,11 @@ export default function ItemListsPage() {
 
   return (
     <div className="su il-page">
-      <div className="su-head">
-        <div>
-          <div className="su-eyebrow">Item lists</div>
-          <h2 className="su-title">My item lists</h2>
-        </div>
-      </div>
-      <p className="su-hint il-intro">
-        The items behind a line’s value: invoices, licences, contracts. Lists live outside planning rounds, so keep them
-        up to date during the year. Start one from a line on the planning sheet (the list icon beside the account).
-      </p>
+      <PageHeader
+        eyebrow="Item lists"
+        title="My item lists"
+        sub="The items behind a line’s value: invoices, licences, contracts. Lists live outside planning rounds, so keep them up to date during the year. Start one from a line on the planning sheet (the list icon beside the account)."
+      />
       {error && <div className="su-note error">{error}</div>}
       {lists && lists.length === 0 && (
         <div className="su-card empty-state">

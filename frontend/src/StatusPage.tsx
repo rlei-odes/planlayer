@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api, STATUS_LABEL, type Action, type ActionRequest, type Me, type Overview, type Status, type StatusRow } from './api'
+import FilterBar from './FilterBar'
+import PageHeader from './PageHeader'
+import Tile from './Tile'
 
 // The status page (T-20, ADR 0008): every enabled cost center of the round with its status and
 // approver, rolled up per hierarchy node; approve, reject and reopen; the round's status. The
@@ -130,15 +133,12 @@ export default function StatusPage({
 
   return (
     <div className="su st">
-      <div className="pg-head">
-        <div>
-          <div className="su-eyebrow">Status</div>
-          <h2 className="su-title">{round.name}</h2>
-          <div className="pg-sub">
-            {round.deadline ? `Deadline ${round.deadline}` : 'No deadline'} · {centers.length} cost centers to plan
-          </div>
-        </div>
-        <div className="pg-actions">
+      <PageHeader
+        eyebrow="Status"
+        title={round.name}
+        sub={`${round.deadline ? `Deadline ${round.deadline}` : 'No deadline'} · ${centers.length} cost centers to plan`}
+        actions={
+          <>
           <span className={`su-pill ${round.status === 'open' ? 'open' : round.status === 'closed' ? 'overdue' : 'in_progress'}`}>
             <i className={`su-dot ${round.status}`} />
             Round {round.status}
@@ -158,23 +158,17 @@ export default function StatusPage({
               Close round
             </button>
           )}
-        </div>
-      </div>
+          </>
+        }
+      />
 
-      <div className="st-summary">
+      <div className="tiles st-summary">
         {STATUSES.map((s) => (
-          <div key={s} className={`st-tile ${s}`}>
-            <div className="st-value">{counts[s]}</div>
-            <div className="st-label">
-              <i className={`su-dot ${s}`} /> {STATUS_LABEL[s]}
-            </div>
-          </div>
+          <Tile key={s} value={counts[s]} label={STATUS_LABEL[s]} dot={s} />
         ))}
-        <div className="st-tile st-progress">
-          <div className="st-value">{done}%</div>
-          <div className="st-label">approved</div>
+        <Tile value={`${done}%`} label="approved" className="st-progress">
           <StatusBar counts={counts} />
-        </div>
+        </Tile>
       </div>
 
       {note && <div className={`su-note ${note.kind} st-gap`}>{note.text}</div>}
@@ -205,7 +199,7 @@ export default function StatusPage({
         </form>
       )}
 
-      <div className="st-bar">
+      <FilterBar>
         <div className="seg" role="group" aria-label="Show">
           {(
             [
@@ -221,7 +215,7 @@ export default function StatusPage({
             </button>
           ))}
         </div>
-      </div>
+      </FilterBar>
 
       <div className="tbl-card">
         <div className="tbl-scroll">

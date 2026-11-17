@@ -1,7 +1,7 @@
 /* Shared components, used across pages: the page frame (su), cards, buttons, inputs, pills,
    notes, the save bar, empty states, page heads, table cards, segmented tabs, dialogs, the tree
    picker, and small helpers. Some helpers keep the prefix of the page they first appeared on
-   (pl-code, fw-card-head, md-add-row, pb-tile …). Tokens are in theme.css; each page's own
+   (pl-code, fw-card-head, md-add-row …). Tokens are in theme.css; each page's own
    styles are in its file next to this one. */
 
 .su {
@@ -24,15 +24,38 @@
   width: fit-content;
 }
 
-/* --- Header ------------------------------------------------------------------------------- */
+/* --- Page head (PageHeader.tsx) ----------------------------------------------------------- */
 
-.su-head {
+/* Spaced from what follows by the page rhythm (--stack), like every other block. */
+.pg-head {
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
   gap: 16px;
   flex-wrap: wrap;
-  margin-bottom: 18px;
+}
+
+.pg-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.pg-sub {
+  max-width: 820px;
+  color: var(--ink-3);
+  font-size: 12.5px;
+  margin-top: 2px;
+}
+
+.pg-saving {
+  color: var(--accent);
+}
+
+.pg-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .su-eyebrow {
@@ -320,28 +343,54 @@
   background: rgb(255 255 255 / 8%);
 }
 
-.pb-tiles {
+/* --- Tiles (Tile.tsx): key figures in a grid ------------------------------------------------ */
+
+.tiles {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 10px;
-  padding: 16px 18px;
 }
 
-.pb-tile {
+.tile {
+  display: block;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   padding: 12px 14px;
   background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
 }
 
-.pb-value {
+/* Tiles standing on the page, not inside a card, are raised like cards. */
+.su > .tiles > .tile {
+  box-shadow: var(--shadow);
+}
+
+button.tile {
+  cursor: pointer;
+}
+
+button.tile:hover,
+.tile[aria-pressed='true'] {
+  border-color: var(--accent-2);
+}
+
+.tile[aria-pressed='true'] {
+  box-shadow: 0 0 0 3px var(--accent-tint);
+}
+
+.tile-value {
   font-size: 24px;
   font-weight: 650;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.02em;
 }
 
-.pb-label {
+.tile-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.06em;
@@ -349,24 +398,43 @@
   color: var(--ink-3);
 }
 
-.pb-tile.add .pb-value,
+.tile-hint {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.tile.add .tile-value,
+.tile.up .tile-value,
+.tile.ok .tile-value,
 .su .add {
   color: var(--ok);
 }
 
-.pb-tile.chg .pb-value,
+.tile.chg .tile-value,
 .su .chg {
   color: var(--warn);
 }
 
-.pb-tile.rem .pb-value,
+.tile.rem .tile-value,
+.tile.down .tile-value,
 .su .rem {
   color: var(--danger);
 }
 
-.pb-tile.same .pb-value,
+.tile.same .tile-value,
 .pb-muted {
   color: var(--ink-3);
+}
+
+/* Asks for the user's action: a task waiting. */
+.tile.waiting {
+  border-color: var(--warn-mid);
+  background: var(--warn-tint);
+}
+
+.tile.waiting .tile-value {
+  color: var(--warn);
 }
 
 /* --- Empty states ------------------------------------------------------------------------- */
@@ -385,30 +453,6 @@
 
 .su-rule .sel {
   min-width: 0;
-}
-
-/* --- Page head, shared by the redesigned pages ---------------------------------------------- */
-
-.pg-head {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
-  margin-bottom: 16px;
-}
-
-.pg-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.pg-sub {
-  color: var(--ink-3);
-  font-size: 12.5px;
-  margin-top: 2px;
 }
 
 /* A card holding a table that fills it edge to edge. */
@@ -592,14 +636,15 @@
   padding: 2px 0;
 }
 
-.md-bar {
+/* FilterBar.tsx: the bar above a list, and its search box. */
+.filter-bar {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   flex-wrap: wrap;
 }
 
-.md-search {
+.filter-search {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -612,12 +657,12 @@
   width: 280px;
 }
 
-.md-search:focus-within {
+.filter-search:focus-within {
   border-color: var(--accent-2);
   box-shadow: 0 0 0 3px var(--accent-tint);
 }
 
-.md-search input {
+.filter-search input {
   flex: 1;
   min-width: 0;
   border: none;

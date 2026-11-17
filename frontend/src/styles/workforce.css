@@ -71,28 +71,7 @@ revo-grid.pl-revo .rgCell.wf-total {
 }
 
 .wf-tiles {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 10px;
   margin: 12px 0;
-}
-
-.wf-tile {
-  display: flex;
-  flex-direction: column;
-  padding: 10px 12px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-s);
-}
-
-.wf-tile strong {
-  font-size: 22px;
-  font-weight: 650;
-  font-variant-numeric: tabular-nums;
-}
-
-.wf-tile small {
-  color: var(--ink-3);
 }
 
 .wf-months td,
@@ -202,14 +181,6 @@ revo-grid.pl-revo .rgCell.wf-total {
 .wf-mode .su-hint {
   margin: 0;
   padding: 0;
-}
-
-.wf-tile.up strong {
-  color: var(--ok);
-}
-
-.wf-tile.down strong {
-  color: var(--danger);
 }
 
 .wf-hr {

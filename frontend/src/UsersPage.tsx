@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api, type User } from './api'
 import { initials } from './names'
+import PageHeader from './PageHeader'
 
 // Users (admin): roles and accounts (ADR 0009). Roles combine; planners need no role, their rights
 // come from cost center ownership and deputies.
@@ -42,18 +43,16 @@ export default function UsersPage() {
   const active = users.filter((u) => !u.disabled).length
   return (
     <div className="su us">
-      <div className="pg-head">
-        <div>
-          <div className="su-eyebrow">Users</div>
-          <h2 className="su-title">People and roles</h2>
-          <div className="pg-sub">
-            {active} active of {users.length}. Planners need no role: owning or deputising a cost center lets them plan it.
-          </div>
-        </div>
-        <button type="button" className="su-btn primary" onClick={() => setAdding((a) => !a)}>
-          Add user
-        </button>
-      </div>
+      <PageHeader
+        eyebrow="Users"
+        title="People and roles"
+        sub={`${active} active of ${users.length}. Planners need no role: owning or deputising a cost center lets them plan it.`}
+        actions={
+          <button type="button" className="su-btn primary" onClick={() => setAdding((a) => !a)}>
+            Add user
+          </button>
+        }
+      />
 
       {adding && (
         <form

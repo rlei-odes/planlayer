@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { format, parse, sum } from './amounts'
 import { api, STATUS_LABEL, type Me, type PayIn, type PayPage, type PayPosition, type PayUnit } from './api'
+import PageHeader from './PageHeader'
 import PayAccess from './PayAccess'
 import PayBreakdown from './PayBreakdown'
 import PayRules from './PayRules'
@@ -124,14 +125,12 @@ export default function PersonnelPage({
   if (tab === 'access') {
     return (
       <div className="su pc">
-        <div className="pl-head">
-          <div className="pl-title">
-            <div className="su-eyebrow">Personnel costs</div>
-            <h1 className="pc-h1">Access control</h1>
-            <div className="pl-sub">Per cost center and round, set by HR. Nobody but HR reads pay until HR releases the round.</div>
-          </div>
-          <div className="pl-actions">{tabs}</div>
-        </div>
+        <PageHeader
+          eyebrow="Personnel costs"
+          title="Access control"
+          sub="Per cost center and round, set by HR. Nobody but HR reads pay until HR releases the round."
+          actions={tabs}
+        />
         <PayAccess version={version} onChanged={loadUnits} />
       </div>
     )
@@ -140,14 +139,12 @@ export default function PersonnelPage({
   if (tab === 'upload') {
     return (
       <div className="su pc">
-        <div className="pl-head">
-          <div className="pl-title">
-            <div className="su-eyebrow">Personnel costs</div>
-            <h1 className="pc-h1">Upload</h1>
-            <div className="pl-sub">Salaries and bonuses from a file. Checked before anything is saved.</div>
-          </div>
-          <div className="pl-actions">{tabs}</div>
-        </div>
+        <PageHeader
+          eyebrow="Personnel costs"
+          title="Upload"
+          sub="Salaries and bonuses from a file. Checked before anything is saved."
+          actions={tabs}
+        />
         <SalaryUpload version={version} onApplied={loadUnits} />
       </div>
     )
@@ -156,14 +153,12 @@ export default function PersonnelPage({
   if (tab === 'rules') {
     return (
       <div className="su pc">
-        <div className="pl-head">
-          <div className="pl-title">
-            <div className="su-eyebrow">Personnel costs</div>
-            <h1 className="pc-h1">Rules</h1>
-            <div className="pl-sub">Accounts, yearly extras, raises, awards and contributions. They hold no one’s pay.</div>
-          </div>
-          <div className="pl-actions">{tabs}</div>
-        </div>
+        <PageHeader
+          eyebrow="Personnel costs"
+          title="Rules"
+          sub="Accounts, yearly extras, raises, awards and contributions. They hold no one’s pay."
+          actions={tabs}
+        />
         <PayRules version={version} me={me} onSaved={() => loadUnits()} />
       </div>
     )
@@ -215,9 +210,9 @@ export default function PersonnelPage({
 
   return (
     <div className="su pc">
-      <div className="pl-head">
-        <div className="pl-title">
-          <div className="su-eyebrow">Personnel costs{page ? ` · ${page.round_name}` : ''}</div>
+      <PageHeader
+        eyebrow={`Personnel costs${page ? ` · ${page.round_name}` : ''}`}
+        title={
           <Select
             variant="title"
             label="Cost center"
@@ -242,16 +237,20 @@ export default function PersonnelPage({
               dot: u.status,
             }))}
           />
-          <div className="pl-sub">
+        }
+        sub={
+          <>
             Pay per position and the totals on the personnel accounts · fiscal year {page?.fiscal_year ?? ''}
-            {busy && <span className="pl-saving"> · Saving…</span>}
-          </div>
-        </div>
-        <div className="pl-actions">
-          {tabs}
-          {current && <span className={`su-pill ${current.status}`}>{STATUS_LABEL[current.status]}</span>}
-        </div>
-      </div>
+            {busy && <span className="pg-saving"> · Saving…</span>}
+          </>
+        }
+        actions={
+          <>
+            {tabs}
+            {current && <span className={`su-pill ${current.status}`}>{STATUS_LABEL[current.status]}</span>}
+          </>
+        }
+      />
 
       {message && <div className={`su-note ${message.kind === 'error' ? 'error' : 'ok'}`}>{message.text}</div>}
       {me.is_hr && !released && (

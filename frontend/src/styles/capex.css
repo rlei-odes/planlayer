@@ -1,22 +1,7 @@
-/* Capex planning (cx-, ADR 0028): the investments list in the planning grid, its dialogs, the
+/* Capex planning (cx-, ADR 0028): the investments list, its dialogs, the
    overview and the investment types. */
 
-.cx-title {
-  margin: 2px 0 0;
-}
-
 /* --- Filter bar and selection ----------------------------------------------------------------- */
-
-.cx-bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-}
-
-.cx-search {
-  width: 200px;
-}
 
 .cx-waiting-toggle {
   display: inline-flex;
@@ -73,80 +58,183 @@
   max-width: 480px;
 }
 
-/* --- The list --------------------------------------------------------------------------------- */
+/* --- The list: a table in the sheet's card, its head kept in view ------------------------------ */
 
 .cx-sheet {
   min-height: 320px;
 }
 
-revo-grid.cx-revo revogr-header .rgHeaderCell.cx-head {
-  text-align: left;
-  justify-content: flex-start;
+.cx-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
 }
 
-revo-grid.cx-revo revogr-header .rgHeaderCell.cx-head-center,
-revo-grid.cx-revo revogr-header .rgHeaderCell.cx-sel-head {
-  justify-content: center;
+/* Fixed columns, the name taking the rest; below that width the list scrolls sideways. */
+.cx-table {
+  table-layout: fixed;
+  min-width: 1120px;
+  font-size: 12.5px;
+}
+
+.cx-table th {
+  height: 38px;
+  padding: 0 8px;
+}
+
+.cx-table td {
+  height: 34px;
+  padding: 0 8px;
+}
+
+.cx-table .num {
+  text-align: right;
+}
+
+.cx-table .cx-center {
   text-align: center;
-  padding: 0 4px;
 }
 
-revo-grid.cx-revo revogr-data .rgCell.cx-center {
-  text-align: center;
-}
-
-revo-grid.cx-revo revogr-data .rgCell.cx-sel-cell {
+.cx-table .cx-sel {
   padding: 0;
   text-align: center;
 }
 
+.cx-w-sel {
+  width: 36px;
+}
+
+.cx-w-cc {
+  width: 168px;
+}
+
+.cx-w-type {
+  width: 150px;
+}
+
+.cx-w-prio {
+  width: 76px;
+}
+
+.cx-w-start {
+  width: 116px;
+}
+
+.cx-w-amount {
+  width: 128px;
+}
+
+.cx-w-cash {
+  width: 120px;
+}
+
+.cx-w-status {
+  width: 120px;
+}
+
 /* A large project: a group row, its amount and start its lines'. */
-revo-grid.cx-revo .rgCell.cx-project {
+.cx-table tr.cx-project td {
   background: #f7f8fa;
   font-weight: 650;
 }
 
-revo-grid.cx-revo .rgCell.cx-in-project.pl-acc .pl-acc-in {
-  padding-left: 22px;
+.cx-table tr.cx-new td {
+  background: #fcfcfd;
 }
 
-revo-grid.cx-revo .rgCell.cx-declined {
+.cx-table tr.cx-selected td {
+  background: var(--accent-tint);
+}
+
+.cx-table tr.cx-declined td {
   color: var(--ink-3);
 }
 
-revo-grid.cx-revo .rgCell.cx-declined.pl-acc .pl-acc-name {
+.cx-table tr.cx-declined .cx-name .cx-field,
+.cx-table tr.cx-declined .cx-name .cx-text {
   text-decoration: line-through;
   text-decoration-color: rgb(134 145 161 / 50%);
 }
 
-revo-grid.cx-revo .rgCell.cx-selected {
-  background: var(--accent-tint);
+/* The name column: toggle, number, tag, the name, and its marks at the right. */
+.cx-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
 }
 
-/* The row that adds an investment. */
-revo-grid.cx-revo .rgCell.cx-new {
-  background: #fcfcfd;
+.cx-name.cx-indent {
+  padding-left: 22px;
 }
 
-.cx-new-text {
+.cx-name .pl-code {
+  flex: none;
+}
+
+.cx-name .cx-field,
+.cx-name .cx-text {
+  flex: 1;
+}
+
+.cx-text {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cx-text.muted {
+  color: var(--ink-3);
+}
+
+/* A field that is typed or picked, boxed like the entered cells of a sheet. */
+.cx-field {
+  width: 100%;
+  min-width: 0;
+  height: 26px;
+  padding: 0 6px;
+  border: 1px solid #d7dde7;
+  border-radius: 4px;
+  background: var(--surface);
+  color: inherit;
+  font: inherit;
+}
+
+.cx-field:hover {
+  border-color: #b9c6e6;
+}
+
+.cx-field:focus,
+.cx-field:focus-visible {
+  outline: none;
+  border-color: var(--accent-2);
+  box-shadow: 0 0 0 3px var(--accent-tint);
+}
+
+.cx-field.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.cx-field::placeholder {
   color: var(--ink-3);
   font-style: italic;
   font-weight: 400;
 }
 
+tr.cx-project .cx-field {
+  font-weight: 650;
+}
+
 .cx-check {
   width: 16px;
   height: 16px;
-  margin-top: 8px;
   padding: 0;
   border: 1.5px solid #b8c0cc;
   border-radius: 4px;
   background: var(--surface);
-  vertical-align: top;
-}
-
-revogr-header .cx-check {
-  margin-top: 0;
   vertical-align: middle;
 }
 
@@ -158,8 +246,8 @@ revogr-header .cx-check {
 }
 
 .cx-toggle {
+  flex: none;
   width: 18px;
-  margin-right: 2px;
   padding: 0;
   border: none;
   background: none;
@@ -168,7 +256,7 @@ revogr-header .cx-check {
 }
 
 .cx-tag {
-  margin-right: 6px;
+  flex: none;
   padding: 1px 6px;
   border-radius: 9px;
   background: var(--accent-tint);
@@ -184,7 +272,14 @@ revogr-header .cx-check {
 }
 
 .cx-marks {
+  flex: none;
+  display: inline-flex;
   align-items: center;
+  gap: 2px;
+}
+
+tr:hover .cx-marks .pl-mark.empty {
+  opacity: 0.7;
 }
 
 .cx-more {
@@ -204,13 +299,19 @@ revogr-header .cx-check {
   color: var(--accent);
 }
 
-/* A cell that is typed or picked: its text, and the caret that opens the picker. */
+/* A picked field: its value, and the caret that opens the list. */
 .cx-pick {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 4px;
-  height: 100%;
+  padding-right: 2px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cx-pick-mid {
+  justify-content: center;
 }
 
 .cx-pick-text {
@@ -220,21 +321,12 @@ revogr-header .cx-check {
   white-space: nowrap;
 }
 
-.cx-pick.muted {
-  color: var(--ink-3);
-}
-
 .cx-caret {
   flex: none;
   position: relative;
-  /* Clear of the cell's right edge, where the grid's fill handle sits. */
-  margin-right: 8px;
   width: 20px;
-  height: 22px;
-  padding: 0;
-  border: none;
+  height: 20px;
   border-radius: 4px;
-  background: none;
   color: var(--ink-3);
 }
 
@@ -247,13 +339,9 @@ revogr-header .cx-check {
     center / 14px no-repeat;
 }
 
-.cx-caret:hover {
+.cx-pick:hover .cx-caret {
   background: var(--accent-tint);
   color: var(--accent);
-}
-
-revo-grid.cx-revo .rgCell .cx-pick:has(.cx-prio) {
-  justify-content: center;
 }
 
 .cx-prio {
@@ -264,6 +352,7 @@ revo-grid.cx-revo .rgCell .cx-pick:has(.cx-prio) {
   font-size: 11.5px;
   font-weight: 650;
   line-height: 18px;
+  text-align: center;
 }
 
 .cx-prio.p1 {
@@ -454,17 +543,6 @@ button.cx-cash:hover,
 
 .cx-tiles {
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  padding: 0;
-}
-
-button.pb-tile.cx-waiting {
-  text-align: left;
-  border-color: var(--warn-mid);
-  background: var(--warn-tint);
-}
-
-button.pb-tile.cx-waiting .pb-value {
-  color: var(--warn);
 }
 
 .cx-card-head {
@@ -556,10 +634,6 @@ button.pb-tile.cx-waiting .pb-value {
 
 .cx-page .su-card > .su-hint {
   margin: 4px 0 12px;
-}
-
-revo-grid.cx-revo .rgCell.cx-new.cx-in-project .cx-new-text {
-  padding-left: 22px;
 }
 
 /* --- Month picker ------------------------------------------------------------------------- */

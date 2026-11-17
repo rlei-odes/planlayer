@@ -15,6 +15,12 @@
   }
 }
 
+/* The preview's figures, inside its card. */
+.pb-tiles {
+  grid-template-columns: repeat(4, 1fr);
+  padding: 16px 18px;
+}
+
 .pb-scope {
   grid-template-columns: 1fr 1fr;
 }

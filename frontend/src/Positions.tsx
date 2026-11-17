@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { Position, PositionIn, Transfer, WorkforceSheet } from './api'
 import { span } from './periods'
 import Select from './Select'
+import Tile from './Tile'
 
 // The positions of a cost center in a positions round (ADR 0020): the build-up of heads over the
 // year, and the list of positions with their editor, transfers (ADR 0021) and removal.
@@ -146,13 +147,9 @@ export default function Positions({
             {plan.length} plan position{plan.length === 1 ? '' : 's'} · headcount changes month to month by entering minus leaving
           </span>
         </div>
-        <div className="wf-tiles">
+        <div className="tiles wf-tiles">
           {tiles.map((t) => (
-            <div key={t.label} className={`wf-tile${t.tone ? ` ${t.tone}` : ''}`}>
-              <strong>{t.value}</strong>
-              <span>{t.label}</span>
-              <small>{t.hint}</small>
-            </div>
+            <Tile key={t.label} value={t.value} label={t.label} hint={t.hint} tone={t.tone} />
           ))}
         </div>
         {b && (

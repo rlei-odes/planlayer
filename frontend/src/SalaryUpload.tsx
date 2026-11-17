@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { format } from './amounts'
 import { api, type SalaryFormat, type SalaryUpload as Result, type SalaryUploadInfo, type SalaryUploadRow } from './api'
+import Tile from './Tile'
 
 // HR's salary upload (ADR 0025): while the sync doesn't read salaries, HR downloads a template of
 // the round's people, fills in monthly salaries and yearly bonuses and uploads it. The check shows
@@ -153,18 +154,16 @@ export default function SalaryUpload({ version, onApplied }: { version: string; 
                 : 'Not saved yet.'}
             </span>
           </div>
-          <div className="pb-tiles su-upload-tiles">
+          <div className="tiles su-upload-tiles">
             {OUTCOMES.map((o) => (
-              <button
+              <Tile
                 key={o.value}
-                type="button"
-                className={`pb-tile ${o.tone}`}
-                aria-pressed={filter === o.value}
+                value={count(o.value)}
+                label={o.label}
+                tone={o.tone}
+                pressed={filter === o.value}
                 onClick={() => setFilter(filter === o.value ? 'all' : o.value)}
-              >
-                <div className="pb-value">{count(o.value)}</div>
-                <div className="pb-label">{o.label}</div>
-              </button>
+              />
             ))}
           </div>
           <div className="su-body su-col">

@@ -1,6 +1,7 @@
 import { type ClipboardEvent, type KeyboardEvent, useCallback, useEffect, useRef, useState } from 'react'
 import { format } from './amounts'
 import { api, type Forwarding, type ForwardingIn, type ForwardingPage as Page } from './api'
+import PageHeader from './PageHeader'
 import Select, { type Option } from './Select'
 import TreePicker from './TreePicker'
 
@@ -215,19 +216,17 @@ export default function ForwardingPage({ version }: { version: string }) {
 
   return (
     <div className="su fw">
-      <div className="pg-head">
-        <div>
-          <div className="su-eyebrow">{page.version_name}</div>
-          <h2 className="su-title">Cost forwarding</h2>
-        </div>
-        {editable && (
-          <div className="pg-actions">
+      <PageHeader
+        eyebrow={page.version_name}
+        title="Cost forwarding"
+        actions={
+          editable && (
             <button type="button" className="su-btn primary" onClick={() => open(newDraft())}>
               + New forwarding
             </button>
-          </div>
-        )}
-      </div>
+          )
+        }
+      />
 
       {page.lock_reason && <div className="su-note warn fw-gap">Read only: {page.lock_reason}.</div>}
       {page.closed_months > 0 && (

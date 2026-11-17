@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api, type MemberRow, type Version } from './api'
+import PageHeader from './PageHeader'
 import PlannerPreview from './PlannerPreview'
 import { AccountsTab, CostCentersTab } from './ScopeTabs'
 import type { Profile, Scope, SetupDraft, SetupView } from './setupTypes'
@@ -125,17 +126,17 @@ export default function SetupPage({
   const round = view?.round
   return (
     <div className="su">
-      <div className="su-head">
-        <div>
-          <div className="su-eyebrow">Yearly planning setup</div>
-          <h2 className="su-title">{creating ? 'New planning round' : round ? `${round.name}` : 'Planning rounds'}</h2>
-        </div>
-        {!creating && (
-          <button type="button" className="su-btn primary" onClick={() => setCreating(true)}>
-            New round
-          </button>
-        )}
-      </div>
+      <PageHeader
+        eyebrow="Yearly planning setup"
+        title={creating ? 'New planning round' : round ? round.name : 'Planning rounds'}
+        actions={
+          !creating && (
+            <button type="button" className="su-btn primary" onClick={() => setCreating(true)}>
+              New round
+            </button>
+          )
+        }
+      />
 
       {/* Creating a round is a step of its own: what the new round takes from an earlier one.
           Its forms, cost centers and accounts are set up afterwards, on the round itself. */}

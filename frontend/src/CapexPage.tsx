@@ -7,6 +7,8 @@ import CapexComments from './CapexComments'
 import CapexList from './CapexList'
 import CapexOverview from './CapexOverview'
 import CapexTypes from './CapexTypes'
+import FilterBar, { FilterSearch } from './FilterBar'
+import PageHeader from './PageHeader'
 import Select, { type Option } from './Select'
 
 // Capex planning (ADR 0028): a round's investments as one list over every cost center the user
@@ -172,11 +174,11 @@ export default function CapexPage({ version, me }: { version: string; me: Me }) 
 
   return (
     <div className={`su ${tab === 'list' && view.on ? 'pl cx-page' : 'cx-page'}`}>
-      <div className="pl-head">
-        <div className="pl-title">
-          <div className="su-eyebrow">Investments · {view.round.name}</div>
-          <h1 className="su-title cx-title">Capex plan {view.round.fiscal_year}</h1>
-          <div className="pl-sub">
+      <PageHeader
+        eyebrow={`Investments · ${view.round.name}`}
+        title={`Capex plan ${view.round.fiscal_year}`}
+        sub={
+          <>
             {view.on ? (
               <>
                 {lines.length} investments · {format(planned) || '0.00'} planned · {format(confirmed) || '0.00'} confirmed
@@ -185,11 +187,11 @@ export default function CapexPage({ version, me }: { version: string; me: Me }) 
             ) : (
               'Not planned in this round'
             )}
-            {saving && <span className="pl-saving"> · Saving…</span>}
-          </div>
-        </div>
-        <div className="pl-actions">
-          {view.on && (
+            {saving && <span className="pg-saving"> · Saving…</span>}
+          </>
+        }
+        actions={
+          view.on && (
             <div className="seg" role="tablist" aria-label="Investments">
               {tabs.map(([value, label]) => (
                 <button key={value} type="button" role="tab" aria-selected={tab === value} aria-pressed={tab === value} onClick={() => setTab(value)}>
@@ -197,9 +199,9 @@ export default function CapexPage({ version, me }: { version: string; me: Me }) 
                 </button>
               ))}
             </div>
-          )}
-        </div>
-      </div>
+          )
+        }
+      />
 
       {!view.on && (
         <div className="su-card empty-state">
@@ -218,8 +220,8 @@ export default function CapexPage({ version, me }: { version: string; me: Me }) 
 
       {view.on && tab === 'list' && (
         <>
-          <div className="cx-bar">
-            <input className="su-input cx-search" type="search" placeholder="Search" aria-label="Search investments" value={query} onChange={(e) => setQuery(e.target.value)} />
+          <FilterBar>
+            <FilterSearch value={query} onChange={setQuery} placeholder="Search investments" label="Search investments" />
             <Select
               variant="compact"
               label="Cost center"
@@ -261,7 +263,7 @@ export default function CapexPage({ version, me }: { version: string; me: Me }) 
                 + Large project
               </button>
             )}
-          </div>
+          </FilterBar>
 
           {/* The selection's actions and questions have a place of their own, so the list stays put. */}
           <div className="cx-slot">
@@ -340,7 +342,6 @@ export default function CapexPage({ version, me }: { version: string; me: Me }) 
             defaultCostCenter={defaultCostCenter}
             actions={{
               save,
-              dismiss: () => setMenu(null),
               openMenu: (item, anchor) => setMenu({ item, anchor, kind: 'row' }),
               openStatus: (item, anchor) => setMenu({ item, anchor, kind: 'status' }),
               openCashOut: setCashFor,

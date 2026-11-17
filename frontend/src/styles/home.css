@@ -1,10 +1,6 @@
 /* The start page (hm-, ADR 0021), with its lists of notes (mn-). */
 
 /* My item lists, and notes on Home. */
-.il-intro {
-  margin: -6px 0 14px;
-  max-width: 760px;
-}
 
 .il-row {
   cursor: pointer;

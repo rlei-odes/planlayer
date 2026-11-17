@@ -18,6 +18,7 @@ import { RedoIcon, UndoIcon } from './icons'
 import { headerWithMarks, noteMark, type H } from './lineMarks'
 import CapacityWorkforce from './CapacityWorkforce'
 import NotesPanel from './NotesPanel'
+import PageHeader from './PageHeader'
 import Select, { type Option } from './Select'
 import { byColumn, isClosed, monthsOf, periodColumns, quarterly, span, type Layout } from './periods'
 import { pickUnit } from './units'
@@ -517,9 +518,9 @@ export default function CapacityPage({
 
   return (
     <div className="su pl" style={hasSheet ? { maxWidth: sheetWidth } : undefined}>
-      <div className="pl-head">
-        <div className="pl-title">
-          <div className="su-eyebrow">Capacity{sheet ? ` · ${sheet.version_name}` : ''}</div>
+      <PageHeader
+        eyebrow={`Capacity${sheet ? ` · ${sheet.version_name}` : ''}`}
+        title={
           <Select
             variant="title"
             label="Cost center"
@@ -539,54 +540,58 @@ export default function CapacityPage({
               dot: u.status,
             }))}
           />
-          <div className="pl-sub">
+        }
+        sub={
+          <>
             {staffTab ? 'Productive hours of its positions' : 'Hours its work centers run, and what they credit the cost center'}
             {sheet && ` · fiscal year ${sheet.fiscal_year}`}
             {sheet && forecast && closed > 0 && ` · forecast ${closed}+${12 - closed}`}
             {sheet && quarters && ' · by quarter'}
-            {saving && <span className="pl-saving"> · Saving…</span>}
-          </div>
-        </div>
-        <div className="pl-actions">
-          {tabs}
-          {current && <span className={`su-pill ${current.status}`}>{STATUS_LABEL[current.status]}</span>}
-          {sheet?.deadline && <span className="su-pill neutral">Due {sheet.deadline}</span>}
-          {open && !staffTab && (
-            <span className="pl-undo" role="group" aria-label="Undo and redo">
-              <button
-                type="button"
-                className="su-icon"
-                disabled={undoStack.length === 0 || saving}
-                onClick={() => void step('undo')}
-                aria-label="Undo"
-                title={`Undo your last change (Ctrl+Z)${undoStack.length ? ` · ${undoStack.length} step${undoStack.length === 1 ? '' : 's'}` : ''}`}
-              >
-                <UndoIcon />
+            {saving && <span className="pg-saving"> · Saving…</span>}
+          </>
+        }
+        actions={
+          <>
+            {tabs}
+            {current && <span className={`su-pill ${current.status}`}>{STATUS_LABEL[current.status]}</span>}
+            {sheet?.deadline && <span className="su-pill neutral">Due {sheet.deadline}</span>}
+            {open && !staffTab && (
+              <span className="pl-undo" role="group" aria-label="Undo and redo">
+                <button
+                  type="button"
+                  className="su-icon"
+                  disabled={undoStack.length === 0 || saving}
+                  onClick={() => void step('undo')}
+                  aria-label="Undo"
+                  title={`Undo your last change (Ctrl+Z)${undoStack.length ? ` · ${undoStack.length} step${undoStack.length === 1 ? '' : 's'}` : ''}`}
+                >
+                  <UndoIcon />
+                </button>
+                <button
+                  type="button"
+                  className="su-icon"
+                  disabled={redoStack.length === 0 || saving}
+                  onClick={() => void step('redo')}
+                  aria-label="Redo"
+                  title="Redo (Ctrl+Y)"
+                >
+                  <RedoIcon />
+                </button>
+              </span>
+            )}
+            {open && !staffTab && (
+              <button type="button" className="su-btn" aria-expanded={adding} onClick={() => setAdding((a) => !a)}>
+                <span className="pl-plus">+</span> Add line
               </button>
-              <button
-                type="button"
-                className="su-icon"
-                disabled={redoStack.length === 0 || saving}
-                onClick={() => void step('redo')}
-                aria-label="Redo"
-                title="Redo (Ctrl+Y)"
-              >
-                <RedoIcon />
+            )}
+            {canSubmit && (
+              <button type="button" className="su-btn primary" onClick={() => void submit()}>
+                Submit for approval
               </button>
-            </span>
-          )}
-          {open && !staffTab && (
-            <button type="button" className="su-btn" aria-expanded={adding} onClick={() => setAdding((a) => !a)}>
-              <span className="pl-plus">+</span> Add line
-            </button>
-          )}
-          {canSubmit && (
-            <button type="button" className="su-btn primary" onClick={() => void submit()}>
-              Submit for approval
-            </button>
-          )}
-        </div>
-      </div>
+            )}
+          </>
+        }
+      />
 
       {staffTab && (
         <CapacityWorkforce

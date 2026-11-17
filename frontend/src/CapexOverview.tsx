@@ -2,6 +2,7 @@ import { Fragment, useEffect, useState } from 'react'
 import { format, fromCents, toCents } from './amounts'
 import { api, type CapexOverview as Overview, type CapexSums } from './api'
 import { monthLabel, thousands } from './capex'
+import Tile from './Tile'
 
 // The overview of a round's investments (ADR 0028): amounts by priority and confirmation, per
 // area of the cost center hierarchy or per investment type, and the cash out per period. Over
@@ -118,31 +119,12 @@ export default function CapexOverview({ version, onWaiting }: { version: string;
 
   return (
     <div className="cx-overview">
-      <div className="pb-tiles cx-tiles">
-        <div className="pb-tile">
-          <div className="pb-label">Planned</div>
-          <div className="pb-value">{format(t.total)}</div>
-          <div className="pb-muted">{o.total.count} investments, declined left out</div>
-        </div>
-        <div className="pb-tile">
-          <div className="pb-label">Confirmed</div>
-          <div className="pb-value cx-ok">{format(t.confirmed)}</div>
-        </div>
-        <div className="pb-tile">
-          <div className="pb-label">Open</div>
-          <div className="pb-value">{format(t.open)}</div>
-        </div>
-        <div className="pb-tile">
-          <div className="pb-label">Declined</div>
-          <div className="pb-value ink-3">{format(t.declined)}</div>
-        </div>
-        {o.waiting > 0 && (
-          <button type="button" className="pb-tile cx-waiting" onClick={onWaiting}>
-            <div className="pb-label">Waiting for you</div>
-            <div className="pb-value">{o.waiting}</div>
-            <div className="pb-muted">open investments you confirm</div>
-          </button>
-        )}
+      <div className="tiles cx-tiles">
+        <Tile label="Planned" value={format(t.total)} hint={`${o.total.count} investments, declined left out`} />
+        <Tile label="Confirmed" value={format(t.confirmed)} tone="ok" />
+        <Tile label="Open" value={format(t.open)} />
+        <Tile label="Declined" value={format(t.declined)} tone="same" />
+        {o.waiting > 0 && <Tile label="Waiting for you" value={o.waiting} hint="open investments you confirm" tone="waiting" onClick={onWaiting} />}
       </div>
 
       <section className="su-card">

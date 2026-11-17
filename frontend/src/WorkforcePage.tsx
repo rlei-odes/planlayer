@@ -15,6 +15,7 @@ import {
 } from './api'
 import { RedoIcon, UndoIcon } from './icons'
 import type { H } from './lineMarks'
+import PageHeader from './PageHeader'
 import { byColumn, isClosed, monthsOf, periodColumns, type Layout } from './periods'
 import Select from './Select'
 import TransferDialog from './TransferDialog'
@@ -386,9 +387,9 @@ export default function WorkforcePage({
 
   return (
     <div className={`su pl${positions ? ' wf-scroll' : ''}`} style={sheet ? { maxWidth: Math.max(sheetWidth, 1100) } : undefined}>
-      <div className="pl-head">
-        <div className="pl-title">
-          <div className="su-eyebrow">Workforce{sheet ? ` · ${sheet.version_name}` : ''}</div>
+      <PageHeader
+        eyebrow={`Workforce${sheet ? ` · ${sheet.version_name}` : ''}`}
+        title={
           <Select
             variant="title"
             label="Cost center"
@@ -408,53 +409,57 @@ export default function WorkforcePage({
               dot: u.status,
             }))}
           />
-          <div className="pl-sub">
+        }
+        sub={
+          <>
             {modeText}
             {sheet && ` · month-end levels, fiscal year ${sheet.fiscal_year}`}
             {sheet && forecast && closed > 0 && ` · forecast ${closed}+${12 - closed}`}
             {sheet && quarters && ' · by quarter'}
-            {saving && <span className="pl-saving"> · Saving…</span>}
-          </div>
-        </div>
-        <div className="pl-actions">
-          {current && <span className={`su-pill ${current.status}`}>{STATUS_LABEL[current.status]}</span>}
-          {sheet?.deadline && <span className="su-pill neutral">Due {sheet.deadline}</span>}
-          {open && !positions && (
-            <span className="pl-undo" role="group" aria-label="Undo and redo">
-              <button
-                type="button"
-                className="su-icon"
-                disabled={undoStack.length === 0 || saving}
-                onClick={() => void step('undo')}
-                aria-label="Undo"
-                title="Undo your last change (Ctrl+Z)"
-              >
-                <UndoIcon />
+            {saving && <span className="pg-saving"> · Saving…</span>}
+          </>
+        }
+        actions={
+          <>
+            {current && <span className={`su-pill ${current.status}`}>{STATUS_LABEL[current.status]}</span>}
+            {sheet?.deadline && <span className="su-pill neutral">Due {sheet.deadline}</span>}
+            {open && !positions && (
+              <span className="pl-undo" role="group" aria-label="Undo and redo">
+                <button
+                  type="button"
+                  className="su-icon"
+                  disabled={undoStack.length === 0 || saving}
+                  onClick={() => void step('undo')}
+                  aria-label="Undo"
+                  title="Undo your last change (Ctrl+Z)"
+                >
+                  <UndoIcon />
+                </button>
+                <button
+                  type="button"
+                  className="su-icon"
+                  disabled={redoStack.length === 0 || saving}
+                  onClick={() => void step('redo')}
+                  aria-label="Redo"
+                  title="Redo (Ctrl+Y)"
+                >
+                  <RedoIcon />
+                </button>
+              </span>
+            )}
+            {open && !positions && (
+              <button type="button" className="su-btn" aria-expanded={adding} onClick={() => setAdding((a) => !a)}>
+                <span className="pl-plus">+</span> Add line
               </button>
-              <button
-                type="button"
-                className="su-icon"
-                disabled={redoStack.length === 0 || saving}
-                onClick={() => void step('redo')}
-                aria-label="Redo"
-                title="Redo (Ctrl+Y)"
-              >
-                <RedoIcon />
+            )}
+            {canSubmit && (
+              <button type="button" className="su-btn primary" onClick={() => void submit()}>
+                Submit for approval
               </button>
-            </span>
-          )}
-          {open && !positions && (
-            <button type="button" className="su-btn" aria-expanded={adding} onClick={() => setAdding((a) => !a)}>
-              <span className="pl-plus">+</span> Add line
-            </button>
-          )}
-          {canSubmit && (
-            <button type="button" className="su-btn primary" onClick={() => void submit()}>
-              Submit for approval
-            </button>
-          )}
-        </div>
-      </div>
+            )}
+          </>
+        }
+      />
 
       {sheet?.lock_reason && (
         <div className="su-note pl-note">

@@ -11,36 +11,6 @@
   padding-bottom: 0;
 }
 
-.pl-head {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-
-.pl-title {
-  flex: 1;
-  min-width: 0;
-}
-
-.pl-sub {
-  color: var(--ink-3);
-  font-size: 12.5px;
-  margin-top: 2px;
-}
-
-.pl-saving {
-  color: var(--accent);
-}
-
-.pl-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
 .pl-undo {
   display: inline-flex;
   gap: 2px;
