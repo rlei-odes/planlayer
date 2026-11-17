@@ -19,7 +19,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 10px 16px;
-  background: linear-gradient(180deg, #fafbfc, #f4f6f9);
+  background: linear-gradient(180deg, var(--hover), var(--canvas));
   border-bottom: 1px solid var(--line);
 }
 
@@ -140,7 +140,7 @@
 .pv-table th {
   position: sticky;
   top: 0;
-  background: #fbfcfd;
+  background: var(--head);
   color: var(--ink-3);
   font-weight: 600;
   font-size: 11px;
@@ -260,7 +260,7 @@
 
 .pv-cmp {
   color: var(--ink-3);
-  background: #fcfcfd;
+  background: var(--faint);
 }
 
 .pv-cmp.last {
@@ -277,14 +277,14 @@
   content: '';
   position: absolute;
   inset: 4px 1px;
-  border: 1px solid #d7dde7;
+  border: 1px solid var(--field-line);
   border-radius: 4px;
   pointer-events: none;
 }
 
 .pv-edit.total::after {
-  border-color: #b9c6e6;
-  background: rgb(36 70 168 / 3%);
+  border-color: var(--field-hover);
+  background: var(--edit-tint);
 }
 
 .pv-edit.total {
@@ -318,8 +318,8 @@
 
 .pv-hidden {
   background:
-    repeating-linear-gradient(-45deg, transparent 0 6px, rgb(24 32 44 / 4.5%) 6px 7px),
-    #fafbfc;
+    repeating-linear-gradient(-45deg, transparent 0 6px, var(--hatch) 6px 7px),
+    var(--hover);
   color: var(--ink-3);
   font-size: 11px;
   font-style: italic;
@@ -327,18 +327,18 @@
 }
 
 .pv-group td {
-  background: #f7f8fa;
+  background: var(--group);
   font-weight: 650;
   height: 32px;
 }
 
 .pv-group .acc {
-  background: #f7f8fa;
+  background: var(--group);
   padding-left: 12px;
 }
 
 .pv-group .pv-cmp {
-  background: #f7f8fa;
+  background: var(--group);
 }
 
 .pv-bars {
@@ -382,8 +382,8 @@
 }
 
 .pv-key .k-edit {
-  border: 1px solid #c9d1de;
-  background: #fff;
+  border: 1px solid var(--field-line);
+  background: var(--surface);
 }
 
 .pv-key .k-calc {
@@ -397,12 +397,12 @@
 }
 
 .pv-key .k-hidden {
-  background: repeating-linear-gradient(-45deg, transparent 0 3px, rgb(24 32 44 / 12%) 3px 4px), #fafbfc;
+  background: repeating-linear-gradient(-45deg, transparent 0 3px, var(--hatch-strong) 3px 4px), var(--hover);
   border: 1px solid var(--line);
 }
 
 .pv-key .k-cmp {
-  background: #fcfcfd;
+  background: var(--faint);
   border: 1px solid var(--line);
 }
 

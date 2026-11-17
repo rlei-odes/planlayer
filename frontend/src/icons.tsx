@@ -156,6 +156,27 @@ export const RedoIcon = () => (
   </Icon>
 )
 
+// The colour theme: as the system, light, dark (the top bar's toggle).
+export const ThemeSystemIcon = () => (
+  <Icon size={16}>
+    <circle cx="10" cy="10" r="6.5" />
+    <path d="M10 3.5v13a6.5 6.5 0 0 0 0-13z" fill="currentColor" stroke="none" />
+  </Icon>
+)
+
+export const ThemeLightIcon = () => (
+  <Icon size={16}>
+    <circle cx="10" cy="10" r="3.2" />
+    <path d="M10 2.5v1.8M10 15.7v1.8M2.5 10h1.8M15.7 10h1.8M4.7 4.7l1.3 1.3M14 14l1.3 1.3M4.7 15.3 6 14M14 6l1.3-1.3" />
+  </Icon>
+)
+
+export const ThemeDarkIcon = () => (
+  <Icon size={16}>
+    <path d="M16 12.2A6.5 6.5 0 0 1 7.8 4a6.5 6.5 0 1 0 8.2 8.2z" />
+  </Icon>
+)
+
 export const LogoutIcon = () => (
   <Icon size={16}>
     <path d="M8 4H5.5a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2H8M12.5 6.5 16 10l-3.5 3.5M16 10H8" />

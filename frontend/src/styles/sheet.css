@@ -73,7 +73,7 @@ revo-grid.pl-revo {
   --revo-grid-cell-padding: 0 10px;
   --revo-grid-text: var(--ink);
   --revo-grid-background: var(--surface);
-  --revo-grid-header-bg: #fbfcfd;
+  --revo-grid-header-bg: var(--head);
   --revo-grid-header-color: var(--ink-3);
   --revo-grid-header-border: var(--line);
   --revo-grid-cell-border: var(--line-2);
@@ -201,17 +201,17 @@ revo-grid.pl-revo revogr-viewport-scroll.colPinStart revogr-data .rgCell {
 }
 
 revo-grid.pl-revo .rgCell.pl-group {
-  background: #f7f8fa;
+  background: var(--group);
   font-weight: 650;
 }
 
 revo-grid.pl-revo .rgCell.pl-cmp {
   color: var(--ink-3);
-  background: #fcfcfd;
+  background: var(--faint);
 }
 
 revo-grid.pl-revo .rgCell.pl-group.pl-cmp {
-  background: #f7f8fa;
+  background: var(--group);
 }
 
 revo-grid.pl-revo .rgCell.pl-cmp-last {
@@ -227,13 +227,13 @@ revo-grid.pl-revo .rgCell.pl-edit::after {
   content: '';
   position: absolute;
   inset: 4px 4px;
-  border: 1px solid #d7dde7;
+  border: 1px solid var(--field-line);
   border-radius: 4px;
   pointer-events: none;
 }
 
 revo-grid.pl-revo .rgCell.pl-edit:hover::after {
-  border-color: #b9c6e6;
+  border-color: var(--field-hover);
 }
 
 revo-grid.pl-revo .rgCell.pl-total {
@@ -242,8 +242,8 @@ revo-grid.pl-revo .rgCell.pl-total {
 }
 
 revo-grid.pl-revo .rgCell.pl-edit.pl-total::after {
-  border-color: #b9c6e6;
-  background: rgb(36 70 168 / 3%);
+  border-color: var(--field-hover);
+  background: var(--edit-tint);
 }
 
 revo-grid.pl-revo .rgCell.pl-calc {
@@ -265,7 +265,7 @@ revo-grid.pl-revo .rgCell.pl-group.pl-act {
 }
 
 revo-grid.pl-revo .rgCell.pl-hidden {
-  background: repeating-linear-gradient(-45deg, transparent 0 6px, rgb(24 32 44 / 4.5%) 6px 7px), #fafbfc;
+  background: repeating-linear-gradient(-45deg, transparent 0 6px, var(--hatch) 6px 7px), var(--hover);
   background-attachment: fixed;
 }
 

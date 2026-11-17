@@ -32,7 +32,7 @@ revo-grid.pl-revo .rgCell.cp-credit {
 
 .pv-key .k-credit {
   background: var(--ok-tint);
-  border: 1px solid #c6e3cf;
+  border: 1px solid var(--ok-line);
 }
 
 .cp-add {

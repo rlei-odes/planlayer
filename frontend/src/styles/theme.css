@@ -1,7 +1,8 @@
 /* App-wide design tokens, base styles and the app shell (E-13). Shared components (buttons,
    inputs, cards, notes) are in components.css; each page's styles are in its own file here, with
    the page's prefix.
-   Colours are tokens only, so a dark palette can later redefine them in one place. */
+   Colours are tokens only: the dark palette below redefines them in one place. The theme is
+   chosen before the first paint (public/theme.js) and switched in the top bar (theme.ts). */
 
 :root {
   --stack: 14px; /* the gap between a page's blocks: head, notes, cards (components.css) */
@@ -26,6 +27,26 @@
   --danger-tint: #fdeeee;
   --ok: #1d6b3a;
   --ok-tint: #e6f4ea;
+  --ok-line: #c6e3cf;
+  --danger-line: #f1c9c9;
+  --prio-1: #9b2c1c;
+  --prio-1-tint: #fde8e4;
+  /* Surfaces within surfaces: table heads, group rows, hovered and faint rows. */
+  --head: #fbfcfd;
+  --group: #f7f8fa;
+  --hover: #fafbfc;
+  --faint: #fcfcfd;
+  /* Fields: an entered cell's box, pointed at; a checkbox's edge; a switch's track. */
+  --field-line: #d7dde7;
+  --field-line-strong: #b8c0cc;
+  --field-hover: #b9c6e6;
+  --edit-tint: rgb(36 70 168 / 3%);
+  --track: #d3d8df;
+  /* Hatching of months not shown or not planned; the shade behind a dialog; the top bar. */
+  --hatch: rgb(24 32 44 / 4.5%);
+  --hatch-strong: rgb(24 32 44 / 12%);
+  --scrim: rgb(16 24 40 / 35%);
+  --topbar-bg: rgb(245 246 248 / 88%);
   --radius: 10px;
   --radius-s: 6px;
   --shadow: 0 1px 2px rgb(16 24 40 / 5%), 0 1px 3px rgb(16 24 40 / 6%);
@@ -40,11 +61,58 @@
   --content-base: 1728px;
   --content-max: var(--content-base);
 
+  color-scheme: light;
   font-family: var(--sans);
   font-size: 13px;
   line-height: 1.45;
   color: var(--ink);
   background: var(--canvas);
+}
+
+/* The dark palette: the same tokens, for a dark surface. The accent stays light enough to read
+   on it and dark enough to carry white text on a button. */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --ink: #e4e8ef;
+  --ink-2: #b3bccb;
+  --ink-3: #8390a3;
+  --line: #2d3543;
+  --line-2: #262d39;
+  --canvas: #12161d;
+  --surface: #1a1f28;
+  --accent: #4f74e0;
+  --accent-2: #7493ee;
+  --accent-tint: #1f2a45;
+  --accent-ink: #aac0ff;
+  --calc: #1f2530;
+  --actual: #1a2a21;
+  --actual-ink: #9cc8aa;
+  --warn: #e3ab4d;
+  --warn-tint: #33280f;
+  --warn-mid: #c9902e;
+  --danger: #f08080;
+  --danger-tint: #3a1d20;
+  --ok: #6fcf8f;
+  --ok-tint: #16301f;
+  --ok-line: #24503a;
+  --danger-line: #5a2a2d;
+  --prio-1: #f3a594;
+  --prio-1-tint: #3d211b;
+  --head: #1e242e;
+  --group: #20262f;
+  --hover: #212834;
+  --faint: #1c222b;
+  --field-line: #3a4353;
+  --field-line-strong: #4a5466;
+  --field-hover: #56659a;
+  --edit-tint: rgb(120 150 255 / 6%);
+  --track: #3a4354;
+  --hatch: rgb(255 255 255 / 4%);
+  --hatch-strong: rgb(255 255 255 / 10%);
+  --scrim: rgb(0 0 0 / 55%);
+  --topbar-bg: rgb(18 22 29 / 88%);
+  --shadow: 0 1px 2px rgb(0 0 0 / 35%), 0 1px 3px rgb(0 0 0 / 30%);
+  --shadow-lift: 0 4px 16px rgb(0 0 0 / 45%), 0 1px 3px rgb(0 0 0 / 35%);
 }
 
 *,
@@ -257,7 +325,7 @@ button {
   top: 0;
   z-index: 30;
   height: var(--topbar-h);
-  background: rgb(245 246 248 / 88%);
+  background: var(--topbar-bg);
   backdrop-filter: blur(8px);
   border-bottom: 1px solid var(--line);
 }
@@ -343,7 +411,7 @@ button {
 }
 
 .sel:hover:not(:disabled) {
-  border-color: #cfd5de;
+  border-color: var(--field-line);
 }
 
 .sel:focus-visible,

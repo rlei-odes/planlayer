@@ -9,8 +9,13 @@ npm run shots                      # against http://localhost:5173
 node shots.mjs http://localhost:8000
 node shots.mjs http://localhost:5173 1920      # wider
 SHOTS=capex,status npm run shots              # only these
+npm run website                               # light and dark pairs for the website
 ```
 
 The script logs in through the development login (`PLANLAYER_DEV_LOGIN`), so it needs the dev
 users (`planlayer seed-dev-users`) and a round with data. Each page is captured at 1440×900, or
 the width given, the viewport only, into `out/` (not tracked). Pages are listed in `shots.mjs`.
+
+For the website, `--website` takes every page twice, as a browser in light and in dark colour
+scheme states it, into `out/website/<name>-light.png` and `<name>-dark.png`: the website shows the
+one matching its visitor's scheme, e.g. with `<picture>` and `prefers-color-scheme`.

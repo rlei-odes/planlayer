@@ -21,6 +21,9 @@ import {
   SetupIcon,
   SettingsIcon,
   StatusIcon,
+  ThemeDarkIcon,
+  ThemeLightIcon,
+  ThemeSystemIcon,
   UsersIcon,
   WorkforceIcon,
 } from './icons'
@@ -28,6 +31,7 @@ import ItemListsPage from './ItemListsPage'
 import LoginPage from './LoginPage'
 import { initials } from './names'
 import Select from './Select'
+import { applyTheme, resolvedTheme, savedTheme, saveTheme, type ThemeChoice } from './theme'
 import MasterDataPage from './MasterDataPage'
 import PersonnelPage from './PersonnelPage'
 import PlanningPage from './PlanningPage'
@@ -76,6 +80,11 @@ const NAV: Record<Page, { label: string; icon: () => ReactNode }> = {
   responsibilities: { label: 'Responsibilities', icon: ResponsibilitiesIcon },
   users: { label: 'Users', icon: UsersIcon },
   settings: { label: 'Settings', icon: SettingsIcon },
+}
+const THEME_TITLE: Record<ThemeChoice, string> = {
+  system: 'Theme as the system',
+  light: 'Light theme',
+  dark: 'Dark theme',
 }
 const ROUND_PAGES: Page[] = ['capacity', 'workforce', 'personnel', 'planning', 'capex', 'status', 'setup', 'forwarding', 'publish']
 
@@ -146,6 +155,9 @@ export default function App() {
     return stored ? stored === 'collapsed' : window.innerWidth < 1360
   })
   const [error, setError] = useState<string | null>(null)
+  // The colour theme: the user's choice in this browser, or the system's (theme.ts).
+  const [theme, setTheme] = useState<ThemeChoice>(savedTheme)
+  useEffect(() => applyTheme(theme), [theme])
   // The cost center shown on the capacity and planning pages: switching pages keeps it.
   const [costCenter, setCostCenter] = useState(() => remembered('planlayer.costCenter') ?? '')
   // A line whose notes a sheet opens once loaded (from Home), and the open tasks for the badge.
@@ -231,6 +243,13 @@ export default function App() {
         : { account: t.line_code, thread: t.thread_id },
     )
     go(t.module === 'capacity' ? 'capacity' : 'planning')
+  }
+
+  /** The theme toggle: as the system, then light, then dark, then the system again. */
+  function nextTheme() {
+    const next: ThemeChoice = theme === 'system' ? 'light' : theme === 'light' ? 'dark' : 'system'
+    saveTheme(next)
+    setTheme(next)
   }
 
   function toggleSidebar() {
@@ -354,6 +373,17 @@ export default function App() {
               </div>
             )}
             <div className="tb-user">
+              <button
+                type="button"
+                className="su-icon tb-theme"
+                onClick={nextTheme}
+                aria-label={THEME_TITLE[theme]}
+                title={`${THEME_TITLE[theme]}${theme === 'system' ? ` (${resolvedTheme('system')} now)` : ''} · click for ${
+                  THEME_TITLE[theme === 'system' ? 'light' : theme === 'light' ? 'dark' : 'system'].toLowerCase()
+                }`}
+              >
+                {theme === 'system' ? <ThemeSystemIcon /> : theme === 'light' ? <ThemeLightIcon /> : <ThemeDarkIcon />}
+              </button>
               <span className="tb-avatar" aria-hidden="true">
                 {initials(me.display_name)}
               </span>

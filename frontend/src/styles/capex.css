@@ -145,12 +145,12 @@
 
 /* A large project: a group row, its amount and start its lines'. */
 .cx-table tr.cx-project td {
-  background: #f7f8fa;
+  background: var(--group);
   font-weight: 650;
 }
 
 .cx-table tr.cx-new td {
-  background: #fcfcfd;
+  background: var(--faint);
 }
 
 .cx-table tr.cx-selected td {
@@ -211,7 +211,7 @@
   min-width: 0;
   height: 26px;
   padding: 0 6px;
-  border: 1px solid #d7dde7;
+  border: 1px solid var(--field-line);
   border-radius: 4px;
   background: var(--surface);
   color: inherit;
@@ -219,7 +219,7 @@
 }
 
 .cx-field:hover {
-  border-color: #b9c6e6;
+  border-color: var(--field-hover);
 }
 
 .cx-field:focus,
@@ -248,7 +248,7 @@ tr.cx-project .cx-field {
   width: 16px;
   height: 16px;
   padding: 0;
-  border: 1.5px solid #b8c0cc;
+  border: 1.5px solid var(--field-line-strong);
   border-radius: 4px;
   background: var(--surface);
   vertical-align: middle;
@@ -376,8 +376,8 @@ tr:hover .cx-marks .pl-mark.empty {
 }
 
 .cx-prio.p1 {
-  background: #fde8e4;
-  color: #9b2c1c;
+  background: var(--prio-1-tint);
+  color: var(--prio-1);
 }
 
 .cx-prio.p2 {
@@ -566,7 +566,7 @@ button.cx-cash:hover,
 }
 
 .cx-sums tr.cx-node td {
-  background: #f9fafb;
+  background: var(--group);
   font-weight: 600;
 }
 

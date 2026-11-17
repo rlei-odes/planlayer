@@ -49,7 +49,7 @@
   position: absolute;
   inset: 0;
   border-radius: 999px;
-  background: #d3d8df;
+  background: var(--track);
   transition: background 0.15s;
   pointer-events: none;
 }

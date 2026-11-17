@@ -9,6 +9,7 @@
   },
   "scripts": {
     "shots": "node shots.mjs",
+    "website": "node shots.mjs --website",
     "install-browser": "playwright install chromium"
   },
   "devDependencies": {

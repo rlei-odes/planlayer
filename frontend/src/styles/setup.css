@@ -38,7 +38,7 @@
 }
 
 .su-level:hover:not(:disabled) {
-  border-color: #c6cdd8;
+  border-color: var(--field-line);
   transform: translateY(-1px);
 }
 
@@ -118,7 +118,7 @@
   padding: 6px;
   border: 1px solid var(--line-2);
   border-radius: var(--radius-s);
-  background: #fbfcfd;
+  background: var(--head);
 }
 
 .su-rule .su-select {
@@ -211,7 +211,7 @@
 }
 
 .su-chip button:hover {
-  background: #dde1e7;
+  background: var(--track);
   color: var(--ink);
 }
 
@@ -640,7 +640,7 @@
 .su-carried li span[aria-hidden] {
   display: inline-block;
   width: 18px;
-  color: var(--ok, #2f7d4f);
+  color: var(--ok);
 }
 
 .su-carried li.off {

@@ -34,7 +34,7 @@
 }
 
 .st-statusbar .not_started {
-  background: #d3d8df;
+  background: var(--track);
 }
 
 .st-statusbar .in_progress {
@@ -84,7 +84,7 @@
   align-items: center;
   gap: 10px;
   margin-bottom: 12px;
-  border-color: #b9c6e6;
+  border-color: var(--field-hover);
   box-shadow: 0 0 0 3px var(--accent-tint);
 }
 

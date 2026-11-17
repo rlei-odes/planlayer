@@ -489,7 +489,7 @@ button.tile:hover,
   position: sticky;
   top: 0;
   z-index: 1;
-  background: #fbfcfd;
+  background: var(--head);
   color: var(--ink-3);
   font-size: 11px;
   font-weight: 600;
@@ -512,11 +512,11 @@ button.tile:hover,
 }
 
 .tbl tbody tr:hover td {
-  background: #fafbfc;
+  background: var(--hover);
 }
 
 .tbl tr.node td {
-  background: #f7f8fa;
+  background: var(--group);
   font-weight: 650;
   height: 36px;
 }
@@ -567,7 +567,7 @@ button.tile:hover,
 
 .su-btn.danger:hover {
   background: var(--danger-tint);
-  border-color: #f1c9c9;
+  border-color: var(--danger-line);
 }
 
 /* Segmented tabs (sections of a page), in the look of the setup page's entry forms. */
@@ -727,7 +727,7 @@ button.tile:hover,
   display: grid;
   place-items: center;
   padding: 24px;
-  background: rgb(16 24 40 / 35%);
+  background: var(--scrim);
 }
 
 .il-dialog {
