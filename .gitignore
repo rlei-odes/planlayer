@@ -77,6 +77,7 @@ blob-report/
 # --- Data, databases, test output ------------------------------------------------
 # Output of the test data generator (section 4); the generator and its seeds are tracked
 /tools/gen_testdata/out/
+/tools/screenshots/out/
 /data/
 *.dump
 *.sql.gz
