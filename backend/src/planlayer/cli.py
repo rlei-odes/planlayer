@@ -104,6 +104,11 @@ def main(argv: list[str] | None = None) -> None:
         help="investment types and the test company's investments in a round (development)",
     )
     capex_cmd.add_argument("--round", default="B2026", help="the planning round (default B2026)")
+    notes_cmd = commands.add_parser(
+        "seed-dev-notes",
+        help="notes on the seeded sheets and investments of a round (development)",
+    )
+    notes_cmd.add_argument("--round", default="B2026", help="the planning round (default B2026)")
     types_cmd = commands.add_parser(
         "api-types", help="write the frontend's TypeScript types from the API schema"
     )
@@ -235,6 +240,16 @@ def main(argv: list[str] | None = None) -> None:
             finally:
                 engine.dispose()
             print(f"created {projects} large project(s) and {lines} investment(s) in {args.round}")
+        case "seed-dev-notes":
+            settings = Settings()  # type: ignore[call-arg]
+            if settings.environment == "production":
+                raise SystemExit("seed-dev-notes is refused in production")
+            engine = create_app_engine(settings)
+            try:
+                threads = devdata.seed_notes(engine, args.round)
+            finally:
+                engine.dispose()
+            print(f"created {threads} note thread(s) in {args.round}")
         case "seed-dev-workforce":
             settings = Settings()  # type: ignore[call-arg]
             if settings.environment == "production":

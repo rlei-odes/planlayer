@@ -311,13 +311,13 @@ revo-grid.pl-revo .rgCell:hover .pl-mark.empty,
   line-height: 1.45;
 }
 
+/* Portalled to the page, placed at the text box (Composer): above dialogs and panels. */
 .nt-suggest {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 100%;
-  z-index: 5;
-  margin: 2px 0 0;
+  position: fixed;
+  z-index: 70;
+  max-height: 280px;
+  overflow-y: auto;
+  margin: 0;
   padding: 4px;
   list-style: none;
   background: var(--surface);

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
+import { createPortal } from 'react-dom'
 import { format, parse, sum } from './amounts'
 import { api, type LineNotes, type NoteEntry, type NoteLine, type NotepadRow, type Person, type Thread } from './api'
 import { initials } from './names'
@@ -87,6 +88,27 @@ function Composer({
           .slice(0, 6)
   const target = mentions.find((m) => m.login === assignee) ?? mentions[0]
 
+  // The suggestions stand on the page's top layer, at the text box: neither the panel nor the
+  // dialog clips them. Below the box, or above it when there is no room below.
+  const shown = suggestions.length > 0
+  const [place, setPlace] = useState<{ left: number; width: number; top?: number; bottom?: number } | null>(null)
+  useLayoutEffect(() => {
+    if (!shown) return
+    const measure = () => {
+      const r = box.current?.getBoundingClientRect()
+      if (!r) return
+      const above = window.innerHeight - r.bottom < 240 && r.top > window.innerHeight - r.bottom
+      setPlace(above ? { left: r.left, width: r.width, bottom: window.innerHeight - r.top + 2 } : { left: r.left, width: r.width, top: r.bottom + 2 })
+    }
+    measure()
+    window.addEventListener('scroll', measure, true)
+    window.addEventListener('resize', measure)
+    return () => {
+      window.removeEventListener('scroll', measure, true)
+      window.removeEventListener('resize', measure)
+    }
+  }, [shown])
+
   function onInput(value: string) {
     setText(value)
     const caret = box.current?.selectionStart ?? value.length
@@ -162,25 +184,28 @@ function Composer({
           onKeyDown={onKey}
           onBlur={() => setTimeout(() => setQuery(null), 150)}
         />
-        {suggestions.length > 0 && (
-          <ul className="nt-suggest" role="listbox" aria-label="Mention">
-            {suggestions.map((p, i) => (
-              <li key={p.login}>
-                <button
-                  type="button"
-                  className={i === active ? 'active' : undefined}
-                  onMouseDown={(e) => {
-                    e.preventDefault()
-                    pick(p)
-                  }}
-                >
-                  <span className="nt-avatar sm">{initials(p.name)}</span>
-                  {p.name} <span className="ink-3">{p.login}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
+        {shown &&
+          place &&
+          createPortal(
+            <ul className="nt-suggest" role="listbox" aria-label="Mention" style={place}>
+              {suggestions.map((p, i) => (
+                <li key={p.login}>
+                  <button
+                    type="button"
+                    className={i === active ? 'active' : undefined}
+                    onMouseDown={(e) => {
+                      e.preventDefault()
+                      pick(p)
+                    }}
+                  >
+                    <span className="nt-avatar sm">{initials(p.name)}</span>
+                    {p.name} <span className="ink-3">{p.login}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>,
+            document.body,
+          )}
       </div>
       <div className="nt-compose-foot">
         {allowAssign && mentions.length > 0 ? (

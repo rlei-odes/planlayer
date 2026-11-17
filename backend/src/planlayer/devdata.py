@@ -8,9 +8,10 @@ second, disjoint department.
 """
 
 import random
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import date, timedelta
 from decimal import Decimal
+from typing import Literal
 
 from sqlalchemy import Engine, func, select
 
@@ -725,3 +726,218 @@ def seed_capex(engine: Engine, round_code: str) -> tuple[int, int]:
         decide(cc, item_id, how)
         lines += 1
     return projects, lines
+
+
+# --- Notes (TD-27) -------------------------------------------------------------------------------
+
+# Who writes a note: the line's cost center owner, its nearest approver, the controller, the CFO.
+Role = Literal["owner", "approver", "controller", "cfo"]
+
+
+@dataclass(frozen=True)
+class Say:
+    """A note: its author, its text (``{owner}`` and the like become the person's name), whom it
+    mentions and to whom it assigns the thread."""
+
+    who: Role
+    text: str
+    mention: tuple[Role, ...] = ()
+    assign: Role | None = None
+
+
+# Threads on the cost sheet: cost center, the line (its account row, counted from the top),
+# the notes, and who resolved it.
+PLAN_NOTES: tuple[tuple[str, int, tuple[Say, ...], Role | None], ...] = (
+    ("CH1010", 0, (
+        Say("owner", "Steel prices: our supplier announced +6 % from April. I planned last "
+                     "year's actuals plus that."),
+        Say("approver", "Makes sense. Please put the supplier's letter in the item list."),
+    ), None),
+    ("CH1010", 1, (
+        Say("controller", "@{owner} this line is well above last year. Can you explain it, or "
+                          "adjust before you submit?", ("owner",), "owner"),
+        Say("owner", "Two new customers on the forging line, volume up about 15 %. I'll trim "
+                     "the rest."),
+    ), None),
+    ("CH1010", 3, (
+        Say("owner", "Freight contract renewed at the same rate until 2027."),
+        Say("controller", "Thanks, noted for the forecast."),
+    ), "controller"),
+    ("DE1010", 0, (
+        Say("approver", "@{controller} should the cell's tooling go here or into the capex "
+                        "plan?", ("controller",), "controller"),
+    ), None),
+    ("DE1010", 2, (
+        Say("owner", "Includes the one-off calibration of the measuring machines in September."),
+    ), None),
+    ("DE1280", 0, (
+        Say("cfo", "@{owner} what drives the increase here? Hall 4 isn't running before "
+                   "next year.", ("owner",)),
+        Say("owner", "Maintenance contracts for the new cranes start with the handover in "
+                     "November."),
+        Say("cfo", "Fine, thanks."),
+    ), "cfo"),
+)  # fmt: skip
+
+# A gridnote: cost center, line, rows (text, amount).
+PLAN_GRIDNOTES: tuple[tuple[str, int, tuple[tuple[str, str | None], ...]], ...] = (
+    ("CH1010", 2, (
+        ("Supplier A, framework contract", "120000.00"),
+        ("Supplier B, spot purchases", "35000.00"),
+        ("Scrap credit", "-8000.00"),
+    )),
+)  # fmt: skip
+
+# Threads on the capacity sheet: cost center, the line (counted from the top), notes, resolved.
+CAPACITY_NOTES: tuple[tuple[str, int, tuple[Say, ...], Role | None], ...] = (
+    ("CH1010", 0, (
+        Say("owner", "Press 1 is down for maintenance two weeks in August: fewer hours there."),
+        Say("approver", "@{owner} does the rate still hold with the new maintenance contract?",
+            ("owner",), "owner"),
+    ), None),
+)  # fmt: skip
+
+# Threads on investments, by name.
+CAPEX_NOTES: tuple[tuple[str, tuple[Say, ...], Role | None], ...] = (
+    ("ERP upgrade", (
+        Say("controller", "@{cfo} above 1 million this needs the board. Can it go on the "
+                          "November agenda?", ("cfo",), "cfo"),
+        Say("cfo", "Yes, it's on the agenda for 24 November."),
+    ), None),
+    ("Induction furnace replacement", (
+        Say("owner", "Two quotes in; the cheaper one has 14 weeks delivery."),
+        Say("approver", "Plan the cooling water system before the furnace, it has to be "
+                        "there first."),
+        Say("owner", "Moved it to August."),
+    ), "approver"),
+    ("Forklifts (2)", (
+        Say("approver", "@{owner} could we lease these instead?", ("owner",), "owner"),
+        Say("owner", "Leasing quote requested, I'll update the line by Friday."),
+    ), None),
+    ("Overhead cranes (2)", (
+        Say("owner", "Ordered together with the hall to get the framework price."),
+    ), None),
+)  # fmt: skip
+
+
+def seed_notes(engine: Engine, round_code: str) -> int:
+    """Notes in a round, for demonstrations and screenshots (TD-27): threads with replies,
+    mentions, tasks and resolved ones on cost sheets, capacity sheets and investments, and a
+    gridnote. Lines come from the sheets as seeded (``seed-dev-plans``, ``seed-dev-capex``); a
+    line that isn't there is skipped, and so is a thread whose first note the line already has,
+    so running it again adds nothing new. Returns the threads created."""
+    from planlayer import capacity, capex  # capex builds on planning, which this imports
+
+    with engine.connect() as conn:
+        logins = set(conn.execute(select(app_user.c.login)).scalars())
+        if "controller@nordwerk.example" not in logins:
+            raise ValueError("the development users are missing: run seed-dev-users first")
+        controller = access.user_by_login(conn, "controller@nordwerk.example")
+        cfo = access.user_by_login(conn, "cfo@nordwerk.example")
+        owners = {
+            code: login
+            for code, login in conn.execute(
+                select(member.c.code, app_user.c.login)
+                .join(cost_center_owner, cost_center_owner.c.cost_center_id == member.c.member_id)
+                .join(app_user, app_user.c.user_id == cost_center_owner.c.user_id)
+            )
+        }
+        ids = dict(
+            conn.execute(
+                select(member.c.code, member.c.member_id).where(member.c.dim_id == COST_CENTER)
+            ).all()
+        )
+        users: dict[str, access.User] = {}
+
+        def user(login: str) -> access.User:
+            if login not in users:
+                users[login] = access.user_by_login(conn, login)
+            return users[login]
+
+        def people(cc: str) -> dict[Role, access.User]:
+            nearest = access.approvers(conn, [ids[cc]]).get(ids[cc], []) if cc in ids else []
+            return {
+                "owner": user(owners[cc]) if cc in owners else controller,
+                "approver": user(nearest[0][1]) if nearest else cfo,
+                "controller": controller,
+                "cfo": cfo,
+            }
+
+        cast_of = {cc: people(cc) for cc in ids}
+        names = dict(conn.execute(select(app_user.c.user_id, app_user.c.display_name)).all())
+
+    def thread(line: notes.LineRef, says: tuple[Say, ...], resolver: Role | None,
+               cast: dict[Role, access.User]) -> int:  # fmt: skip
+        """The thread on the line, unless the line has one starting with its first note."""
+        first = says[0]
+        reader = cast[first.who]
+        existing = notes.line_notes(engine, reader, round_code, line)
+        if any(t.notes and t.notes[0].body == _said(first, cast, names) for t in existing.threads):
+            return 0
+        thread_id: int | None = None
+        for say in says:
+            who = cast[say.who]
+            body = _said(say, cast, names)
+            mentions = [cast[r].login for r in say.mention]
+            assign = cast[say.assign].login if say.assign else None
+            if thread_id is None:
+                thread_id = notes.start_thread(
+                    engine, who, round_code, line, body, mentions, assign
+                )
+            else:
+                notes.reply(engine, who, round_code, thread_id, body, mentions, assign)
+        if resolver is not None and thread_id is not None:
+            notes.resolve(engine, cast[resolver], round_code, thread_id, True)
+        return 1
+
+    made = 0
+    grids: dict[str, list[str]] = {}
+
+    def accounts(cc: str) -> list[str]:
+        if cc not in grids:
+            try:
+                grid = planning.read_grid(engine, controller, round_code, cc)
+                grids[cc] = [r.code for r in grid.rows if r.kind == "account"]
+            except (access.AccessError, LookupError, ValueError):
+                grids[cc] = []
+        return grids[cc]
+
+    for cc, at, says, resolver in PLAN_NOTES:
+        codes = accounts(cc)
+        if cc in cast_of and at < len(codes):
+            line = notes.LineRef("cost_center", cc, account=codes[at])
+            made += thread(line, says, resolver, cast_of[cc])
+    for cc, at, rows in PLAN_GRIDNOTES:
+        codes = accounts(cc)
+        if cc in cast_of and at < len(codes):
+            line = notes.LineRef("cost_center", cc, account=codes[at])
+            if notes.line_notes(engine, controller, round_code, line).notepad is None:
+                notes.set_notepad(
+                    engine, cast_of[cc]["owner"], round_code, line, notes.parse_rows(list(rows))
+                )
+    for cc, at, says, resolver in CAPACITY_NOTES:
+        try:
+            sheet = capacity.read_sheet(engine, controller, round_code, cc)
+        except (access.AccessError, LookupError, ValueError):
+            continue
+        lines = [r for r in sheet.rows if r.kind == "line"]
+        if cc in cast_of and at < len(lines):
+            r = lines[at]
+            line = notes.LineRef(
+                "capacity", cc, work_center=r.work_center_code, activity_type=r.activity_type_code
+            )
+            made += thread(line, says, resolver, cast_of[cc])
+    view = capex.view_of(engine, controller, round_code)
+    by_name = {i.name: i for i in view.items}
+    for name, says, resolver in CAPEX_NOTES:
+        item = by_name.get(name)
+        if item is None or item.cost_center_code not in cast_of:
+            continue
+        line = notes.LineRef("capex", investment=item.item_id)
+        made += thread(line, says, resolver, cast_of[item.cost_center_code])
+    return made
+
+
+def _said(say: Say, cast: dict[Role, access.User], names: dict[int, str]) -> str:
+    """The note's text with the people's names."""
+    return say.text.format(**{role: names[u.user_id] for role, u in cast.items()})
