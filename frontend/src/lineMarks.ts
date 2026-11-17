@@ -7,9 +7,8 @@ import type { NotesMarker } from './api'
 // RevoGrid's hyperscript function, called with plain props and mixed children.
 export type H = (tag: string, props: Record<string, unknown> | null, children?: unknown) => unknown
 
-/** The notes marker: the count of open threads, accented when one is the user's task. Without
- * notes it shows only when the row is hovered, to add one. */
-export function noteMark(h: H, key: string, marker: NotesMarker | null | undefined): unknown {
+/** The notes marker's look: its classes, its title and the count of open threads it shows. */
+export function noteMarker(marker: NotesMarker | null | undefined): { className: string; title: string; count: string } {
   const open = marker?.open ?? 0
   const has = open > 0 || !!marker?.notepad || (marker?.resolved ?? 0) > 0
   const classes = ['pl-mark', 'note', has ? 'on' : 'empty', marker?.task_for_me ? 'task' : ''].filter(Boolean)
@@ -22,7 +21,14 @@ export function noteMark(h: H, key: string, marker: NotesMarker | null | undefin
       ]
         .filter(Boolean)
         .join(' · ')
-  return h('button', { type: 'button', class: classes.join(' '), 'data-notes': key, title, 'aria-label': title }, open > 0 ? String(open) : '')
+  return { className: classes.join(' '), title, count: open > 0 ? String(open) : '' }
+}
+
+/** The notes marker: the count of open threads, accented when one is the user's task. Without
+ * notes it shows only when the row is hovered, to add one. */
+export function noteMark(h: H, key: string, marker: NotesMarker | null | undefined): unknown {
+  const { className, title, count } = noteMarker(marker)
+  return h('button', { type: 'button', class: className, 'data-notes': key, title, 'aria-label': title }, count)
 }
 
 /** The item list marker: present when the line has a list the user can see; amber when the

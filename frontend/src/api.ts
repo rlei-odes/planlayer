@@ -89,7 +89,6 @@ export type CapexSettings = S.CapexSettingsIO
 export type CapexStatus = S.ItemOut['status']
 export type CapexNew = S.NewItemIn
 export type CapexChange = S.ItemChangeIn
-export type CapexComment = S.CommentOut
 export type CapexOverview = S.CapexOverviewOut
 export type CapexSums = S.SumsOut
 // Line notes and item lists (ADR 0017).
@@ -150,10 +149,10 @@ const cx = (round: string) => `/api/rounds/${encodeURIComponent(round)}/capex`
 
 /** A line as query parameters: only the fields it has. */
 function lineQuery(version: string, line: NoteLine): string {
-  const params: Record<string, string> = { version, module: line.module, cost_center: line.cost_center }
-  for (const key of ['account', 'work_center', 'activity_type'] as const) {
+  const params: Record<string, string> = { version, module: line.module }
+  for (const key of ['cost_center', 'account', 'work_center', 'activity_type', 'investment'] as const) {
     const value = line[key]
-    if (value) params[key] = value
+    if (value !== null && value !== undefined && value !== '') params[key] = String(value)
   }
   return new URLSearchParams(params).toString()
 }
@@ -217,12 +216,6 @@ export const api = {
     post(`${cx(round)}/status`, { item_ids: itemIds, status, comment }).then((res) => json<Capex>(res)),
   capexCashOut: (round: string, itemId: number, periods: { period: string; amount: string }[]) =>
     send('PUT', `${cx(round)}/items/${itemId}/cash-out`, { periods }).then((res) => json<Capex>(res)),
-  capexComments: (round: string, itemId: number) =>
-    fetch(`${cx(round)}/items/${itemId}/comments`).then((res) => json<CapexComment[]>(res)),
-  capexAddComment: (round: string, itemId: number, body: string) =>
-    post(`${cx(round)}/items/${itemId}/comments`, { body }).then((res) => json<CapexComment[]>(res)),
-  capexDeleteComment: (round: string, itemId: number, commentId: number) =>
-    send('DELETE', `${cx(round)}/items/${itemId}/comments/${commentId}`).then((res) => json<CapexComment[]>(res)),
   capexOverview: (round: string) => fetch(`${cx(round)}/overview`).then((res) => json<CapexOverview>(res)),
   capexTypes: () => fetch('/api/capex-types').then((res) => json<CapexType[]>(res)),
   saveCapexTypes: (types: CapexType[]) => send('PUT', '/api/capex-types', types).then((res) => json<CapexType[]>(res)),

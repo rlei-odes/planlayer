@@ -759,11 +759,18 @@ def _line() -> list[Column]:  # type: ignore[type-arg]
     ]
 
 
+# A thread of notes on a line of a sheet, or on an investment (module ``capex``, migration
+# 0028): an investment's thread keeps no cost center, as the investment moves between them.
 note_thread = Table(
     "note_thread",
     metadata,
     Column("thread_id", BigInteger, Identity(), primary_key=True),
-    *_line(),
+    Column("module", Text, nullable=False),
+    Column("cost_center_id", Integer, ForeignKey("member.member_id")),
+    Column("account_id", Integer, ForeignKey("member.member_id")),
+    Column("work_center_id", Integer, ForeignKey("member.member_id")),
+    Column("activity_type_id", Integer, ForeignKey("member.member_id")),
+    Column("capex_item_id", Integer, ForeignKey("capex_item.item_id", ondelete="CASCADE")),
     # The round it was last written in: it shows there, and while open in every later round.
     Column("round_id", SmallInteger, ForeignKey("planning_round.version_id"), nullable=False),
     Column("assignee_id", Integer, ForeignKey("app_user.user_id")),  # a task's assignee
@@ -1335,18 +1342,6 @@ capex_cash_out = Table(
     Column("period", Date, nullable=False),
     Column("amount", AMOUNT_TYPE, nullable=False),
     PrimaryKeyConstraint("item_id", "period"),
-)
-
-capex_comment = Table(
-    "capex_comment",
-    metadata,
-    Column("comment_id", BigInteger, Identity(), primary_key=True),
-    Column(
-        "item_id", Integer, ForeignKey("capex_item.item_id", ondelete="CASCADE"), nullable=False
-    ),
-    Column("author_id", Integer, ForeignKey("app_user.user_id"), nullable=False),
-    Column("body", Text, nullable=False),
-    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )
 
 capex_log = Table(

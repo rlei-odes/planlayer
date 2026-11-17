@@ -12,11 +12,11 @@ Planners explain why a value is what it is, leave to-dos for each other, and kee
 
 ### Notes belong to a line, not to a round
 
-- A **line** is a cost center × leaf account on the cost center sheet, or a cost center × work center × activity type on the capacity sheet. Account groups and nodes carry no notes.
+- A **line** is a cost center × leaf account on the cost center sheet, or a cost center × work center × activity type on the capacity sheet. Account groups and nodes carry no notes. An **investment** (ADR 0028) takes notes as a line does; it belongs to one round, and so do its threads, and it has no gridnote.
 - Notes come in **threads**: a first note, then replies, oldest first. Each note keeps its author and when it was written or last edited. Authors edit and delete their own notes. Deleting a thread's first note deletes the thread with its replies, as in a document's comment threads.
 - **Mentions:** a note can `@mention` users who may read the line. A mention can **assign** the thread as a task to one mentioned user; a later reply can assign it to someone else.
 - **Resolving:** a thread, task or not, can be resolved and reopened. Resolving records who and when.
-- **Rights:** everyone who may read the line may write notes and replies and resolve threads: planners, deputies, approvers, capacity planners, controllers and viewers. This holds in every round status, submitted and approved cost centers included, because a note is conversation, not a plan value. Row-level security on the threads follows the line's sheet (`cost_center_access` for cost lines, `capacity_access` for capacity lines).
+- **Rights:** everyone who may read the line may write notes and replies and resolve threads: planners, deputies, approvers, capacity planners, controllers and viewers. This holds in every round status, submitted and approved cost centers included, because a note is conversation, not a plan value. Row-level security on the threads follows the line's sheet (`cost_center_access` for cost lines, `capacity_access` for capacity lines), and an investment's threads follow the investment's own. An investment's thread keeps no cost center of its own, as the investment moves between cost centers; mentions go to those who read its cost center.
 
 ### Notes carry forward until resolved
 
@@ -69,6 +69,8 @@ Threads, notes, gridnotes, lists and items are logged by a trigger into `annotat
   - the visibility trigger on `item_list` and the audit trigger.
 - The grid and capacity sheet APIs return per line its open threads (and whether one is a task for the user), the gridnote, and the item list (total, visibility, owner).
 - New pages: *My notes* and *My item lists* in the Plan group. The sheets get a notes panel and an item list overlay.
+- The notes show in one of two displays of the same content: a **panel** beside the sheet, which keeps the line in view (the sheets), or a **dialog** in the middle of the page, over a list (investments). In the dialog, Escape closes from an empty field too, as nothing typed is lost.
+- Migration 0028: `note_thread.capex_item_id` (module `capex`), and the investments' former comments as their threads.
 - Open:
   - notes on groups and nodes;
   - e-mail notifications;

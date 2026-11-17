@@ -16,6 +16,7 @@ from typing import Literal, cast
 from sqlalchemy import Connection, Engine, delete, func, insert, select, update
 from sqlalchemy.exc import DBAPIError
 
+from planlayer import notes
 from planlayer.access import AccessError, User, cost_center_rights
 from planlayer.capex.common import (
     CapexSettings,
@@ -38,9 +39,7 @@ from planlayer.sheet import Conflict, ConflictError
 from planlayer.store.schema import (
     COST_CENTER,
     MODULE_COST_CENTER,
-    app_user,
     capex_cash_out,
-    capex_comment,
     capex_confirmer,
     capex_item,
     capex_type,
@@ -81,7 +80,7 @@ class Item:
     row_version: int
     can_write: bool
     can_confirm: bool
-    comments: int
+    notes: notes.Marker | None = None  # its notes in the round (ADR 0017)
     cash_out: dict[date, Decimal] = field(default_factory=dict)
     scheduled: Decimal = Decimal(0)
     above_threshold: bool = False
@@ -171,7 +170,18 @@ def view_of(engine: Engine, user: User, code: str) -> CapexView:
             key=lambda c: c.code,
         )
         confirmable = _confirms(conn, user)
-        items = _items(conn, r.version_id, rights, confirmable, settings) if settings else []
+        items = (
+            _items(
+                conn,
+                r.version_id,
+                rights,
+                confirmable,
+                settings,
+                notes.investment_markers(conn, user, r),
+            )
+            if settings
+            else []
+        )
         return CapexView(
             r,
             settings,
@@ -191,24 +201,18 @@ def _items(
     rights: dict[int, bool],
     confirmable: set[int],
     settings: CapexSettings,
+    markers: dict[int, notes.Marker] | None = None,
 ) -> list[Item]:
     i, cc = capex_item, member.alias("cc")
-    comments = (
-        select(capex_comment.c.item_id, func.count().label("n"))
-        .group_by(capex_comment.c.item_id)
-        .subquery()
-    )
     rows = conn.execute(
         select(
             i,
             cc.c.code.label("cc_code"),
             cc.c.name.label("cc_name"),
             capex_type.c.code.label("type_code"),
-            func.coalesce(comments.c.n, 0).label("comments"),
         )
         .join(cc, cc.c.member_id == i.c.cost_center_id)
         .outerjoin(capex_type, capex_type.c.type_id == i.c.type_id)
-        .outerjoin(comments, comments.c.item_id == i.c.item_id)
         .where(i.c.version_id == version_id)
         .order_by(i.c.item_id)
     ).all()
@@ -249,7 +253,7 @@ def _items(
             row_version=r["row_version"],
             can_write=rights.get(r["cost_center_id"], False),
             can_confirm=r["cost_center_id"] in confirmable,
-            comments=r["comments"],
+            notes=(markers or {}).get(r["item_id"]),
             cash_out=plan,
             scheduled=sum(plan.values(), Decimal(0)),
             above_threshold=r["kind"] == "line"
@@ -633,7 +637,7 @@ def set_status(
     comment: str | None = None,
 ) -> None:
     """Confirm, decline or reopen investments and large projects (a project's lines go with
-    it). A comment goes to each one's comments."""
+    it). A comment starts a note thread on each one."""
     text = (comment or "").strip()
     if status == "declined" and not text:
         raise CapexError("say why the investment is declined")
@@ -659,13 +663,8 @@ def set_status(
         )
         if text:
             label = {"open": "Reopened", "confirmed": "Confirmed", "declined": "Declined"}[status]
-            conn.execute(
-                insert(capex_comment),
-                [
-                    {"item_id": i, "author_id": user.user_id, "body": f"{label}: {text}"}
-                    for i in item_ids
-                ],
-            )
+            for item_id in item_ids:
+                notes.note_on_investment(conn, user, r, item_id, f"{label}: {text}")
 
 
 def set_cash_out(
@@ -686,78 +685,3 @@ def set_cash_out(
         periods, next_year = periods_of(conn, r)
         check_schedule(row["amount"], schedule, [*periods, next_year])
         _write_schedule(conn, item_id, schedule)
-
-
-# --- Comments ------------------------------------------------------------------------------------
-
-
-@dataclass
-class Comment:
-    comment_id: int
-    author: str
-    body: str
-    created_at: datetime
-    mine: bool
-
-
-def comments(engine: Engine, user: User, code: str, item_id: int) -> list[Comment]:
-    with unit_of_work(engine, user) as conn:
-        r = get_round(conn, code)
-        _visible(conn, r, item_id)
-        return [
-            Comment(c.comment_id, c.display_name, c.body, c.created_at, c.author_id == user.user_id)
-            for c in conn.execute(
-                select(
-                    capex_comment.c.comment_id,
-                    capex_comment.c.author_id,
-                    capex_comment.c.body,
-                    capex_comment.c.created_at,
-                    app_user.c.display_name,
-                )
-                .join(app_user, app_user.c.user_id == capex_comment.c.author_id)
-                .where(capex_comment.c.item_id == item_id)
-                .order_by(capex_comment.c.created_at, capex_comment.c.comment_id)
-            )
-        ]
-
-
-def _visible(conn: Connection, r: RoundRef, item_id: int) -> None:
-    found = conn.execute(
-        select(capex_item.c.item_id).where(
-            capex_item.c.item_id == item_id, capex_item.c.version_id == r.version_id
-        )
-    ).scalar()
-    if found is None:
-        raise CapexError(f"investment {item_id} not found")
-
-
-def add_comment(engine: Engine, user: User, code: str, item_id: int, body: str) -> None:
-    """Everyone who reads an investment comments on it, in any round status."""
-    text = body.strip()
-    if not text:
-        raise CapexError("a comment needs text")
-    try:
-        with unit_of_work(engine, user) as conn:
-            r = get_round(conn, code)
-            _visible(conn, r, item_id)
-            conn.execute(
-                insert(capex_comment).values(item_id=item_id, author_id=user.user_id, body=text)
-            )
-    except DBAPIError as e:
-        raise refusal(e) from None
-
-
-def delete_comment(engine: Engine, user: User, code: str, item_id: int, comment_id: int) -> None:
-    """Authors delete their own comments."""
-    with unit_of_work(engine, user) as conn:
-        r = get_round(conn, code)
-        _visible(conn, r, item_id)
-        gone = conn.execute(
-            delete(capex_comment).where(
-                capex_comment.c.comment_id == comment_id,
-                capex_comment.c.item_id == item_id,
-                capex_comment.c.author_id == user.user_id,
-            )
-        ).rowcount
-        if not gone:
-            raise CapexError("only a comment's author deletes it")

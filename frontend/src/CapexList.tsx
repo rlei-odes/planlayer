@@ -2,6 +2,7 @@ import { useMemo, useState, type ClipboardEvent, type KeyboardEvent, type ReactN
 import { format, parse, sum, toCents } from './amounts'
 import { type Capex, type CapexChange, type CapexItem, type CapexNew } from './api'
 import { monthLabel, parseMonth, scheduleState, STATUS_TEXT } from './capex'
+import { noteMarker } from './lineMarks'
 import MonthPicker from './MonthPicker'
 import Select, { type Option } from './Select'
 
@@ -27,7 +28,7 @@ export type ListActions = {
   openMenu: (item: CapexItem, anchor: DOMRect) => void
   openStatus: (item: CapexItem, anchor: DOMRect) => void
   openCashOut: (item: CapexItem) => void
-  openComments: (item: CapexItem) => void
+  openNotes: (item: CapexItem) => void
   error: (text: string) => void
 }
 
@@ -371,6 +372,7 @@ export default function CapexList({
           <span className="cx-marks" />
         </div>
       )
+    const mark = noteMarker(i.notes)
     return (
       <div className={`cx-name${i.kind === 'project' ? '' : ' cx-indent'}`}>
         {i.kind === 'project' && (
@@ -398,14 +400,8 @@ export default function CapexList({
               ⚠
             </span>
           )}
-          <button
-            type="button"
-            className={`pl-mark note ${i.comments ? 'on' : 'empty'}`}
-            onClick={() => actions.openComments(i)}
-            title={i.comments ? `${i.comments} comment${i.comments === 1 ? '' : 's'}` : 'Comment'}
-            aria-label="Comments"
-          >
-            {i.comments ? String(i.comments) : ''}
+          <button type="button" className={mark.className} onClick={() => actions.openNotes(i)} title={mark.title} aria-label={mark.title}>
+            {mark.count}
           </button>
           <button type="button" className="cx-more" onClick={(e) => actions.openMenu(i, e.currentTarget.getBoundingClientRect())} aria-label={`Actions for ${i.name}`} title="Actions">
             ⋯

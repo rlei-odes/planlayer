@@ -517,42 +517,6 @@ button.cx-cash:hover,
   color: var(--warn);
 }
 
-.cx-comments {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.cx-comments li {
-  padding: 8px 0;
-  border-bottom: 1px solid var(--line-2);
-}
-
-.cx-comments li:last-child {
-  border-bottom: none;
-}
-
-.cx-comments p {
-  margin: 4px 0 0;
-  white-space: pre-wrap;
-}
-
-.cx-comment-head {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  font-size: 12px;
-}
-
-.cx-comment-head .nt-link {
-  margin-left: auto;
-}
-
-.cx-comment-new textarea {
-  flex: 1;
-  resize: vertical;
-}
-
 /* --- Overview ----------------------------------------------------------------------------- */
 
 .cx-overview {

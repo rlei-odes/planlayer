@@ -144,8 +144,20 @@ revo-grid.pl-revo .rgCell:hover .pl-mark.empty,
   line-height: 1;
 }
 
-.nt-panel > .su-note {
+.nt-panel > .su-note,
+.nt-dialog > .su-note {
   margin: 10px 18px 0;
+}
+
+.nt-sub {
+  margin-top: 2px;
+  font-size: 12px;
+}
+
+/* The same notes as a dialog in the middle of the page (il-dialog). */
+.il-dialog.nt-dialog {
+  width: min(620px, 100%);
+  outline: none;
 }
 
 .nt-scroll {

@@ -213,18 +213,6 @@ export type CodeNameOut = {
   name: string
 }
 
-export type CommentIn = {
-  body: string
-}
-
-export type CommentOut = {
-  comment_id: number
-  author: string
-  body: string
-  created_at: string
-  mine: boolean
-}
-
 export type ComparisonIO = {
   kind: "prior_year_actuals" | "actuals" | "version"
   version_code?: string | null
@@ -495,7 +483,7 @@ export type ItemOut = {
   row_version: number
   can_write: boolean
   can_confirm: boolean
-  comments: number
+  notes: NotesMarkerOut | null
   cash_out: CashOutIO[]
   scheduled: string
   above_threshold: boolean
@@ -672,7 +660,7 @@ export type MyNotesOut = {
 export type MyThreadOut = {
   thread_id: number
   reason: "assigned" | "mentioned" | "started"
-  module: "cost_center" | "capacity"
+  module: "cost_center" | "capacity" | "capex"
   cost_center_code: string
   cost_center_name: string
   line_code: string
@@ -723,11 +711,12 @@ export type NoteIn = {
 }
 
 export type NoteLineIn = {
-  module: "cost_center" | "capacity"
-  cost_center: string
+  module: "cost_center" | "capacity" | "capex"
+  cost_center?: string | null
   account?: string | null
   work_center?: string | null
   activity_type?: string | null
+  investment?: number | null
 }
 
 export type NoteOut = {

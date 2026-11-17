@@ -1,5 +1,6 @@
 """Capex planning endpoints (ADR 0028): a round's investments as one list, changed all or
-nothing; large projects, confirmations, cash out, comments, the overview and investment types.
+nothing; large projects, confirmations, cash out, the overview and investment types. Notes on
+investments are line notes (``/api/notes``, module ``capex``).
 Amounts are decimal strings; every write returns the whole list."""
 
 from datetime import date, datetime
@@ -11,7 +12,15 @@ from pydantic import BaseModel, Field
 
 from planlayer import capex
 from planlayer.api.auth import CurrentUser, engine_of
-from planlayer.api.planning import HANDLED, Version, _errors, _s, version_out
+from planlayer.api.planning import (
+    HANDLED,
+    NotesMarkerOut,
+    Version,
+    _errors,
+    _s,
+    notes_marker,
+    version_out,
+)
 from planlayer.capex import CapexError
 from planlayer.capex.items import CapexView
 from planlayer.capex.overview import Sums
@@ -96,7 +105,7 @@ class ItemOut(BaseModel):
     row_version: int
     can_write: bool
     can_confirm: bool
-    comments: int
+    notes: NotesMarkerOut | None  # its notes in the round (ADR 0017)
     cash_out: list[CashOutIO]
     scheduled: str  # cash out scheduled; a project: its lines'
     above_threshold: bool  # a single investment better planned as a large project
@@ -170,18 +179,6 @@ class CashOutIn(BaseModel):
     periods: list[CashOutIO]
 
 
-class CommentOut(BaseModel):
-    comment_id: int
-    author: str
-    body: str
-    created_at: datetime
-    mine: bool
-
-
-class CommentIn(BaseModel):
-    body: Annotated[str, Field(min_length=1, max_length=4000)]
-
-
 class StatusSumsOut(BaseModel):
     open: str
     confirmed: str
@@ -250,8 +247,9 @@ def _out(v: CapexView, created: list[int] | None = None) -> CapexOut:
                 **{
                     k: getattr(i, k)
                     for k in ItemOut.model_fields
-                    if k not in ("amount", "cash_out", "scheduled")
+                    if k not in ("amount", "cash_out", "scheduled", "notes")
                 },
+                notes=notes_marker(i.notes),
                 amount=_s(i.amount),
                 cash_out=[
                     CashOutIO(period=p, amount=_money(a)) for p, a in sorted(i.cash_out.items())
@@ -365,41 +363,6 @@ def capex_cash_out(
             schedule[p.period] = amount
         capex.set_cash_out(engine_of(request), user, code, item_id, schedule)
         return _view(request, user, code)
-    except CAUGHT as e:
-        raise _http(e) from None
-
-
-@router.get("/rounds/{code}/capex/items/{item_id}/comments", responses=ERRORS)
-def capex_comments(
-    request: Request, user: CurrentUser, code: str, item_id: int
-) -> list[CommentOut]:
-    try:
-        return [
-            CommentOut.model_validate(c, from_attributes=True)
-            for c in capex.comments(engine_of(request), user, code, item_id)
-        ]
-    except CAUGHT as e:
-        raise _http(e) from None
-
-
-@router.post("/rounds/{code}/capex/items/{item_id}/comments", responses=ERRORS)
-def capex_add_comment(
-    request: Request, user: CurrentUser, code: str, item_id: int, body: CommentIn
-) -> list[CommentOut]:
-    try:
-        capex.add_comment(engine_of(request), user, code, item_id, body.body)
-        return capex_comments(request, user, code, item_id)
-    except CAUGHT as e:
-        raise _http(e) from None
-
-
-@router.delete("/rounds/{code}/capex/items/{item_id}/comments/{comment_id}", responses=ERRORS)
-def capex_delete_comment(
-    request: Request, user: CurrentUser, code: str, item_id: int, comment_id: int
-) -> list[CommentOut]:
-    try:
-        capex.delete_comment(engine_of(request), user, code, item_id, comment_id)
-        return capex_comments(request, user, code, item_id)
     except CAUGHT as e:
         raise _http(e) from None
 

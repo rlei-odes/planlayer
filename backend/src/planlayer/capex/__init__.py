@@ -1,5 +1,6 @@
 """Capex planning (ADR 0028): a round's investments as one list, large projects grouping their
-lines, confirmations by approvers and controllers, a cash-out schedule and comments.
+lines, confirmations by approvers and controllers, and a cash-out schedule. Notes on investments
+are line notes (ADR 0017, ``planlayer.notes``).
 
 Layered: ``common`` (settings, types, the module in setup, refusals), ``items`` (the list and
 its writes), ``overview`` (sums by area, type and period)."""
@@ -10,15 +11,11 @@ from planlayer.capex.common import save_types as save_types
 from planlayer.capex.common import settings_of as settings_of
 from planlayer.capex.common import switch as switch
 from planlayer.capex.common import types as types
-from planlayer.capex.items import Comment as Comment
 from planlayer.capex.items import CostCenterRef as CostCenterRef
 from planlayer.capex.items import Item as Item
 from planlayer.capex.items import ItemChange as ItemChange
 from planlayer.capex.items import NewItem as NewItem
-from planlayer.capex.items import add_comment as add_comment
 from planlayer.capex.items import apply as apply
-from planlayer.capex.items import comments as comments
-from planlayer.capex.items import delete_comment as delete_comment
 from planlayer.capex.items import delete_items as delete_items
 from planlayer.capex.items import make_project as make_project
 from planlayer.capex.items import move as move

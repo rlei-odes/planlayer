@@ -15,7 +15,7 @@ from planlayer.rounds import NotFoundError
 
 router = APIRouter(prefix="/api/notes")
 
-Module = Literal["cost_center", "capacity"]
+Module = Literal["cost_center", "capacity", "capex"]
 HANDLED = (AccessError, NotFoundError, notes.NoteError)
 
 
@@ -31,18 +31,24 @@ def _http(e: Exception) -> HTTPException:
 
 
 class NoteLineIn(BaseModel):
-    """A line: ``account`` on the cost sheet, ``work_center`` and ``activity_type`` on the
-    capacity sheet."""
+    """A line: ``cost_center`` with ``account`` on the cost sheet, or with ``work_center`` and
+    ``activity_type`` on the capacity sheet; ``investment`` (its id) for module ``capex``."""
 
     module: Module
-    cost_center: str
+    cost_center: str | None = None
     account: str | None = None
     work_center: str | None = None
     activity_type: str | None = None
+    investment: int | None = None
 
     def ref(self) -> notes.LineRef:
         return notes.LineRef(
-            self.module, self.cost_center, self.account, self.work_center, self.activity_type
+            self.module,
+            self.cost_center,
+            self.account,
+            self.work_center,
+            self.activity_type,
+            self.investment,
         )
 
 
@@ -190,10 +196,11 @@ def line_notes(
     user: CurrentUser,
     version: str,
     module: Module,
-    cost_center: str,
+    cost_center: str | None = None,
     account: str | None = None,
     work_center: str | None = None,
     activity_type: str | None = None,
+    investment: int | None = None,
 ) -> LineNotesOut:
     """The line's threads in the round (its own, and open ones carried from earlier rounds)
     and its notepad."""
@@ -204,6 +211,7 @@ def line_notes(
             account=account,
             work_center=work_center,
             activity_type=activity_type,
+            investment=investment,
         )
         return _read(request, user, version, line)
     except HANDLED as e:

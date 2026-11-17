@@ -149,7 +149,7 @@ export default function App() {
   // The cost center shown on the capacity and planning pages: switching pages keeps it.
   const [costCenter, setCostCenter] = useState(() => remembered('planlayer.costCenter') ?? '')
   // A line whose notes a sheet opens once loaded (from Home), and the open tasks for the badge.
-  const [focus, setFocus] = useState<{ account?: string; key?: string; thread: number } | null>(null)
+  const [focus, setFocus] = useState<{ account?: string; key?: string; investment?: number; thread: number } | null>(null)
   const [tasks, setTasks] = useState(0)
 
   const checkHealth = useCallback(() => {
@@ -215,9 +215,15 @@ export default function App() {
     go(target)
   }
 
-  /** Open a thread from Home: its round, its sheet, its cost center, then its line's notes. */
+  /** Open a thread from Home: its round, its sheet, its cost center, then its line's notes; an
+   * investment's in the investments list. */
   function openThread(t: MyThread) {
     setVersion(t.round_code)
+    if (t.module === 'capex') {
+      setFocus({ investment: Number(t.line_code), thread: t.thread_id })
+      go('capex')
+      return
+    }
     setCostCenter(t.cost_center_code)
     setFocus(
       t.module === 'capacity'
@@ -424,7 +430,15 @@ export default function App() {
               onFocused={() => setFocus(null)}
             />
           )}
-          {version && current === 'capex' && <CapexPage key={`${me.login}/${version}`} version={version} me={me} />}
+          {version && current === 'capex' && (
+            <CapexPage
+              key={`${me.login}/${version}`}
+              version={version}
+              me={me}
+              focus={focus?.investment ? { investment: focus.investment, thread: focus.thread } : null}
+              onFocused={() => setFocus(null)}
+            />
+          )}
           {version && current === 'status' && (
             <StatusPage key={`${me.login}/${version}`} version={version} me={me} onRoundChanged={loadVersions} />
           )}

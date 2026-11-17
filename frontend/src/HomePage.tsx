@@ -325,6 +325,7 @@ function ThreadLine({ t }: { t: MyThread }) {
         <span className="pl-code">{t.line_code}</span>
         {t.line_name}
         {t.module === 'capacity' && <span className="su-pill neutral">Capacity</span>}
+        {t.module === 'capex' && <span className="su-pill neutral">Investment</span>}
       </span>
       <span className="mn-first">{t.first}</span>
       <span className="mn-meta ink-3">

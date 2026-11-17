@@ -16,6 +16,7 @@ from sqlalchemy.exc import DBAPIError
 from planlayer import access, capex
 from planlayer.config import Settings
 from planlayer.domain import capex as rules
+from planlayer.store import migrate
 from planlayer.store.db import create_app_engine
 from planlayer.store.output import (
     create_output_engine,
@@ -23,7 +24,7 @@ from planlayer.store.output import (
     fact_plan_capex,
     fact_plan_cash_out,
 )
-from planlayer.store.schema import capex_item, capex_log
+from planlayer.store.schema import capex_item, capex_log, note, note_thread
 from planlayer.store.uow import unit_of_work
 
 from .conftest import APPROVER, CONTROLLER, NOBODY, OWNER, VIEWER, login
@@ -154,12 +155,12 @@ def test_approvers_confirm_and_planners_dont(on: TestClient) -> None:
     assert response.status_code == 200, response.text
     confirmed = _item(on, item["item_id"])
     assert (confirmed["status"], confirmed["status_by"]) == ("confirmed", APPROVER)
-    # A viewer reads and comments, but doesn't confirm.
+    # A viewer reads and writes notes, but doesn't confirm.
     login(on, VIEWER)
     assert _item(on, item["item_id"])["can_confirm"] is False
-    response = on.post(f"{BASE}/items/{item['item_id']}/comments", json={"body": "Why now?"})
-    assert response.status_code == 200
-    assert response.json()[0]["author"] == "View"
+    response = _note(on, item["item_id"], "Why now?")
+    assert response.status_code == 200, response.text
+    assert response.json()["threads"][0]["notes"][0]["author"]["name"] == "View"
 
 
 def test_the_database_refuses_a_planners_confirmation(migrated: Settings, on: TestClient) -> None:
@@ -349,17 +350,97 @@ def test_capex_goes_off_only_without_investments(on: TestClient) -> None:
     assert on.get(BASE).json()["on"] is False
 
 
-def test_comments_are_deleted_by_their_author_only(on: TestClient) -> None:
+# --- Notes on investments (line notes, ADR 0017) ------------------------------------------------
+
+
+def _note(client: TestClient, item_id: int, body: str, **extra: object) -> Any:
+    line = {"module": "capex", "investment": item_id}
+    return client.post(
+        "/api/notes/threads", json={"version": R, "line": line, "body": body, **extra}
+    )
+
+
+def test_notes_on_an_investment(on: TestClient) -> None:
     login(on, OWNER)
     item = _add(on, name="Lathe", cost_center="CC1", amount="1000")
-    url = f"{BASE}/items/{item['item_id']}/comments"
-    comment = on.post(url, json={"body": "Quote from supplier A"}).json()[0]
+    item_id = item["item_id"]
+    assert item["notes"] is None
+    # Mentions and tasks go to those who read the investment.
+    refused = _note(on, item_id, "Bob?", mentions=[NOBODY])
+    assert refused.status_code == 422 and "can't read this line" in refused.text
+    made = _note(on, item_id, "Quote from A: @Appr", mentions=[APPROVER], assign=APPROVER)
+    assert made.status_code == 200, made.text
+    assert made.json()["notepad"] is None
     login(on, APPROVER)
-    assert on.delete(f"{url}/{comment['comment_id']}").status_code == 422
-    assert on.get(url).json()[0]["mine"] is False
+    assert _item(on, item_id)["notes"] == {
+        "open": 1,
+        "resolved": 0,
+        "task_for_me": True,
+        "notepad": False,
+    }
+    (mine,) = on.get("/api/notes/mine").json()["threads"]
+    assert (mine["module"], mine["line_code"], mine["line_name"]) == (
+        "capex",
+        str(item_id),
+        "Lathe",
+    )
+    assert (mine["cost_center_code"], mine["round_code"]) == ("CC1", R)
+    # An investment has no notepad.
+    pad = on.put(
+        "/api/notes/notepad",
+        json={"version": R, "line": {"module": "capex", "investment": item_id}, "rows": []},
+    )
+    assert pad.status_code == 422
+    # Who doesn't read the investment doesn't find its notes.
+    login(on, NOBODY)
+    response = on.get(
+        "/api/notes/line", params={"version": R, "module": "capex", "investment": item_id}
+    )
+    assert response.status_code == 404
+
+
+def test_notes_survive_a_downgrade_and_upgrade(migrated: Settings, on: TestClient) -> None:
+    """Migration 0028 turns comments into notes and back."""
     login(on, OWNER)
-    assert on.delete(f"{url}/{comment['comment_id']}").json() == []
-    assert _item(on, item["item_id"])["comments"] == 0
+    item = _add(on, name="Lathe", cost_center="CC1", amount="1000")
+    _note(on, item["item_id"], "Quote from A")
+    migrate.downgrade(migrated, "0027")
+    migrate.upgrade(migrated)
+    engine = create_app_engine(migrated)
+    try:
+        with engine.connect() as conn:
+            owner = access.user_by_login(conn, OWNER)
+        with unit_of_work(engine, owner) as conn:
+            bodies = conn.execute(
+                select(note.c.body)
+                .join(note_thread, note_thread.c.thread_id == note.c.thread_id)
+                .where(note_thread.c.capex_item_id == item["item_id"])
+            ).scalars()
+            assert list(bodies) == ["Quote from A"]
+    finally:
+        engine.dispose()
+
+
+def test_a_decision_with_a_reason_starts_a_note(on: TestClient) -> None:
+    login(on, OWNER)
+    item = _add(on, name="Lathe", cost_center="CC1", amount="1000")
+    login(on, APPROVER)
+    response = on.post(
+        f"{BASE}/status",
+        json={"item_ids": [item["item_id"]], "status": "declined", "comment": "No budget"},
+    )
+    assert response.status_code == 200, response.text
+    notes = on.get(
+        "/api/notes/line", params={"version": R, "module": "capex", "investment": item["item_id"]}
+    ).json()
+    assert notes["threads"][0]["notes"][0]["body"] == "Declined: No budget"
+    # Deleting the investment deletes its notes.
+    login(on, OWNER)
+    assert on.post(f"{BASE}/delete", json={"item_ids": [item["item_id"]]}).status_code == 200
+    gone = on.get(
+        "/api/notes/line", params={"version": R, "module": "capex", "investment": item["item_id"]}
+    )
+    assert gone.status_code == 404
 
 
 def test_view_lists_planned_cost_centers_the_user_reads(on: TestClient) -> None:

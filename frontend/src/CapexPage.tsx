@@ -3,11 +3,11 @@ import { format, sum } from './amounts'
 import { api, type Capex, type CapexChange, type CapexItem, type CapexNew, type CapexStatus, type Me } from './api'
 import { STATUS_TEXT } from './capex'
 import CapexCashOut from './CapexCashOut'
-import CapexComments from './CapexComments'
 import CapexList from './CapexList'
 import CapexOverview from './CapexOverview'
 import CapexTypes from './CapexTypes'
 import FilterBar, { FilterSearch } from './FilterBar'
+import NotesPanel from './NotesPanel'
 import PageHeader from './PageHeader'
 import Select, { type Option } from './Select'
 
@@ -23,7 +23,18 @@ function errorText(e: unknown): string {
   return e instanceof Error ? e.message : String(e)
 }
 
-export default function CapexPage({ version, me }: { version: string; me: Me }) {
+export default function CapexPage({
+  version,
+  me,
+  focus,
+  onFocused,
+}: {
+  version: string
+  me: Me
+  /** An investment's notes to open once the list is loaded (from Home), at a thread. */
+  focus?: { investment: number; thread: number } | null
+  onFocused?: () => void
+}) {
   const [view, setView] = useState<Capex | null>(null)
   const [tab, setTab] = useState<Tab>('list')
   const [message, setMessage] = useState<Message | null>(null)
@@ -36,7 +47,7 @@ export default function CapexPage({ version, me }: { version: string; me: Me }) 
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [menu, setMenu] = useState<{ item: CapexItem; anchor: DOMRect; kind: 'row' | 'status' | 'move' } | null>(null)
   const [cashFor, setCashFor] = useState<CapexItem | null>(null)
-  const [commentsFor, setCommentsFor] = useState<CapexItem | null>(null)
+  const [notesFor, setNotesFor] = useState<{ item: CapexItem; thread: number | null } | null>(null)
   const [ask, setAsk] = useState<Ask | null>(null)
   const [lastCostCenter, setLastCostCenter] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -86,6 +97,10 @@ export default function CapexPage({ version, me }: { version: string; me: Me }) 
 
   if (message?.kind === 'error' && !view) return <div className="su-note error">{message.text}</div>
   if (!view) return null
+
+  // The notes shown: those opened here, or the investment's Home opened the page for.
+  const focused = focus ? view.items.find((i) => i.item_id === focus.investment) : undefined
+  const notesOpen = notesFor ?? (focus && focused ? { item: focused, thread: focus.thread } : null)
 
   const locked = view.lock_reason !== null
   const writable = view.cost_centers.filter((c) => c.can_write)
@@ -345,7 +360,7 @@ export default function CapexPage({ version, me }: { version: string; me: Me }) 
               openMenu: (item, anchor) => setMenu({ item, anchor, kind: 'row' }),
               openStatus: (item, anchor) => setMenu({ item, anchor, kind: 'status' }),
               openCashOut: setCashFor,
-              openComments: setCommentsFor,
+              openNotes: (item) => setNotesFor({ item, thread: null }),
               error: (text) => setMessage({ kind: 'error', text }),
             }}
           />
@@ -406,7 +421,22 @@ export default function CapexPage({ version, me }: { version: string; me: Me }) 
           onClose={() => setCashFor(null)}
         />
       )}
-      {commentsFor && <CapexComments version={version} item={commentsFor} onChanged={load} onClose={() => setCommentsFor(null)} />}
+      {notesOpen && (
+        <NotesPanel
+          display="dialog"
+          notepad={false}
+          version={version}
+          line={{ module: 'capex', investment: notesOpen.item.item_id, cost_center: notesOpen.item.cost_center_code }}
+          title={`${notesOpen.item.item_id} · ${notesOpen.item.name}`}
+          sub={`${notesOpen.item.cost_center_code} ${notesOpen.item.cost_center_name} · ${STATUS_TEXT[notesOpen.item.status]}${notesOpen.item.status_by ? ` by ${notesOpen.item.status_by}` : ''}`}
+          focusThread={notesOpen.thread}
+          onChanged={load}
+          onClose={() => {
+            setNotesFor(null)
+            onFocused?.()
+          }}
+        />
+      )}
     </div>
   )
 }

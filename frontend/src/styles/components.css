@@ -717,7 +717,10 @@ button.tile:hover,
 }
 
 /* --- Dialog: an overlay with a head, a body and a foot (item lists, transfers) ------------ */
-.il-backdrop {
+/* Rendered inside a page, it keeps out of the page rhythm (.su > *), which would move it down. */
+.il-backdrop,
+.su > .il-backdrop {
+  margin: 0;
   position: fixed;
   inset: 0;
   z-index: 50;

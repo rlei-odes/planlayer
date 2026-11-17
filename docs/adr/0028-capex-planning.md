@@ -30,7 +30,7 @@ Investments later feed depreciation into the cost center plans (K-5). Depreciati
 
 ### Confirmation
 
-- Each investment and each large project is **open, confirmed or declined**; a project's lines take its state. Declining needs a reason, which goes to the investment's comments.
+- Each investment and each large project is **open, confirmed or declined**; a project's lines take its state. Declining needs a reason, which starts a note thread on the investment.
 - **Confirmers** are controllers and the approvers assigned to a node above the cost center (ADR 0008), at any level, so a division manager and the CFO above them both confirm, except an approver who plans the cost center as owner or deputy.
 - A change of **what was confirmed** opens the investment again: its amount, start, type, cost center or project. A change of a project's lines opens the project. Name and priority keep the confirmation.
 - The cost center's workflow status (ADR 0008) doesn't lock investments: their confirmation is their own. The round does: open, or in setup for controllers (ADR 0014); closed, nothing changes. The cost center must be planned in the round.
@@ -44,17 +44,17 @@ Investments later feed depreciation into the cost center plans (K-5). Depreciati
 
 | | Who |
 |---|---|
-| read an investment, comment | everyone who reads its cost center (ADR 0009) |
+| read an investment, write notes on it | everyone who reads its cost center (ADR 0009) |
 | add, change, delete, schedule cash out | its owner and deputies, controllers |
 | confirm, decline, reopen | its confirmers |
 
-Forced row-level security over `cost_center_access` filters reads and writes; confirmers may update rows of cost centers they don't plan, and a trigger lets them change the confirmation only. The trigger also refuses a confirmation by anyone else, opens what changed, and keeps lines in projects. A lock trigger refuses writes outside an open round. Every change of investments, schedules and comments is logged with actor and change batch (`capex_log`).
+Forced row-level security over `cost_center_access` filters reads and writes; confirmers may update rows of cost centers they don't plan, and a trigger lets them change the confirmation only. The trigger also refuses a confirmation by anyone else, opens what changed, and keeps lines in projects. A lock trigger refuses writes outside an open round. Every change of investments and schedules is logged with actor and change batch (`capex_log`); notes are logged as all notes are (ADR 0017).
 
 ### The page
 
 *Investments* (Plan in the sidebar, after Planning) has three tabs:
 
-- **List:** every investment the user reads, in a table of records rather than the planning grid (ADR 0006): its rows are investments with fields to pick, not lines with a value per period, so they take ordinary form controls. Large projects are group rows, collapsible, with a row of their own that adds a line; their tag stands in the type column, which a project leaves empty. Name and amount are typed, committed when the field is left; Enter and the up and down arrows move within a column, Escape takes the typed value back. Cost center, type, priority and start are buttons that open a list, or a month picker for start. A block pasted from Excel into a field fills the columns from that field rightwards, in the order the columns show, and rows onto an add row or past the end add investments, in one request. A last row adds an investment once its name is typed; its cost center is the filter's, or the last one used. Filters by text, cost center, priority, confirmation and type, and *To confirm* for confirmers; several investments are confirmed or declined at once. Each row has its comments and, with the schedule on, its cash out: a dialog with a field per period, where Enter moves down a period and from the last to Save, and Escape closes without saving.
+- **List:** every investment the user reads, in a table of records rather than the planning grid (ADR 0006): its rows are investments with fields to pick, not lines with a value per period, so they take ordinary form controls. Large projects are group rows, collapsible, with a row of their own that adds a line; their tag stands in the type column, which a project leaves empty. Name and amount are typed, committed when the field is left; Enter and the up and down arrows move within a column, Escape takes the typed value back. Cost center, type, priority and start are buttons that open a list, or a month picker for start. A block pasted from Excel into a field fills the columns from that field rightwards, in the order the columns show, and rows onto an add row or past the end add investments, in one request. A last row adds an investment once its name is typed; its cost center is the filter's, or the last one used. Filters by text, cost center, priority, confirmation and type, and *To confirm* for confirmers; several investments are confirmed or declined at once. Each row has its notes (line notes, ADR 0017: threads, mentions, tasks, resolving, on *Home*), shown as a dialog over the list, and, with the schedule on, its cash out: a dialog with a field per period, where Enter moves down a period and from the last to Save, and Escape closes without saving.
 - **Overview:** amounts by priority and confirmation, rolled up the cost center hierarchy (or by type), over what the user reads: an approver sees their area, the CFO and controllers the whole round. Declined investments are shown apart and left out of the totals. With the schedule on, cash out per period, cumulated, and what isn't scheduled.
 - **Types:** the investment types (controllers).
 
@@ -78,7 +78,8 @@ A publish run (ADR 0011) writes the round's investments to `fact_plan_capex` and
 
 ## Consequences
 
-- Migration 0027: tables `capex_type`, `capex_setting`, `capex_item` (investments and projects, with a composite foreign key keeping lines on their project's cost center), `capex_cash_out`, `capex_comment`, `capex_log`; view `capex_confirmer`; module `capex` in `round_module`.
+- Migration 0027: tables `capex_type`, `capex_setting`, `capex_item` (investments and projects, with a composite foreign key keeping lines on their project's cost center), `capex_cash_out`, `capex_log`; view `capex_confirmer`; module `capex` in `round_module`.
+- Migration 0028: an investment's comments become line notes (ADR 0017); `capex_comment` goes.
 - Package `planlayer.capex` (`common`, `items`, `overview`), rules in `planlayer.domain.capex`, endpoints under `/api/rounds/{code}/capex` and `/api/capex-types`.
 - `planlayer seed-dev-capex --round CODE` (development, TD-26).
 - Output tables `fact_plan_capex`, `fact_plan_cash_out`, `dim_capex_type` and views `v_plan_capex`, `v_plan_cash_out` in `planlayer_out`.

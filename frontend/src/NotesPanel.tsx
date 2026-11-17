@@ -4,10 +4,13 @@ import { api, type LineNotes, type NoteEntry, type NoteLine, type NotepadRow, ty
 import { initials } from './names'
 import Select from './Select'
 
-// The notes of one line (ADR 0017), in a panel beside the sheet: the line's gridnote, then its
-// threads, open ones first. Everyone who reads the line writes notes; a note can @mention people
-// who read it and assign the thread to one of them as a task. Threads carried from an earlier
-// round show its name until someone writes to them in this round.
+// The notes of one line (ADR 0017): the line's gridnote, then its threads, open ones first.
+// Everyone who reads the line writes notes; a note can @mention people who read it and assign
+// the thread to one of them as a task. Threads carried from an earlier round show its name until
+// someone writes to them in this round.
+//
+// Two displays of the same notes: a panel beside the sheet, which leaves the line in view (the
+// sheets), or a dialog in the middle of the page, over a list (investments).
 
 const WHEN = new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeStyle: 'short' })
 
@@ -131,6 +134,7 @@ function Composer({
         return
       }
       if (e.key === 'Escape') {
+        e.preventDefault() // taken here: the dialog stays open
         setQuery(null)
         return
       }
@@ -139,7 +143,10 @@ function Composer({
       e.preventDefault()
       void submit()
     }
-    if (e.key === 'Escape' && onCancel) onCancel()
+    if (e.key === 'Escape' && onCancel) {
+      e.preventDefault()
+      onCancel()
+    }
   }
 
   return (
@@ -539,7 +546,10 @@ export default function NotesPanel({
   version,
   line,
   title,
-  canInsert,
+  sub,
+  display = 'panel',
+  notepad = true,
+  canInsert = false,
   focusThread,
   onInsertTotal,
   onChanged,
@@ -548,11 +558,16 @@ export default function NotesPanel({
   version: string
   line: NoteLine
   title: string
+  /** A line below the title. */
+  sub?: string
+  display?: 'panel' | 'dialog'
+  /** The line takes a gridnote (an investment doesn't). */
+  notepad?: boolean
   /** The line's year total is editable here: the gridnote's total can be inserted. */
-  canInsert: boolean
+  canInsert?: boolean
   focusThread?: number | null
-  onInsertTotal: (total: string) => Promise<void>
-  /** Notes changed: the sheet reloads its markers. */
+  onInsertTotal?: (total: string) => Promise<void>
+  /** Notes changed: the page reloads its markers. */
   onChanged: () => void
   onClose: () => void
 }) {
@@ -562,14 +577,15 @@ export default function NotesPanel({
   const [showResolved, setShowResolved] = useState(false)
 
   // The line by its fields: the sheet passes a new object on every render.
-  const { module, cost_center: costCenter, account, work_center: workCenter, activity_type: activityType } = line
+  const { module, cost_center: costCenter, account, work_center: workCenter, activity_type: activityType, investment } = line
   const load = useCallback(() => {
-    const ref = { module, cost_center: costCenter, account, work_center: workCenter, activity_type: activityType }
+    const ref = { module, cost_center: costCenter, account, work_center: workCenter, activity_type: activityType, investment }
     api.lineNotes(version, ref).then(setData, (e: unknown) => setError(errorText(e)))
-  }, [version, module, costCenter, account, workCenter, activityType])
+  }, [version, module, costCenter, account, workCenter, activityType, investment])
   useEffect(load, [load])
   useEffect(() => {
-    api.people(costCenter, module).then(setPeople, (e: unknown) => setError(errorText(e)))
+    // Who can be mentioned: those who read the cost center (an investment's, too).
+    if (costCenter) api.people(costCenter, module).then(setPeople, (e: unknown) => setError(errorText(e)))
   }, [costCenter, module])
 
 
@@ -598,21 +614,13 @@ export default function NotesPanel({
   const resolved = data?.threads.filter((t) => t.resolved_at !== null) ?? []
   const focusedResolved = resolved.some((t) => t.thread_id === focusThread)
 
-  return (
-    // Keys stay in the panel: the sheet's grid listens on the whole page and would take Tab and
-    // the arrows away from the fields. Escape closes it, unless a field uses it.
-    <aside
-      className="nt-panel"
-      aria-label={`Notes on ${title}`}
-      onKeyDown={(e) => {
-        e.stopPropagation()
-        if (e.key === 'Escape' && !(e.target as HTMLElement).closest('textarea, input')) onClose()
-      }}
-    >
+  const content = (
+    <>
       <header className="nt-head">
         <div>
           <div className="su-eyebrow">Notes</div>
           <h3>{title}</h3>
+          {sub && <div className="nt-sub ink-3">{sub}</div>}
         </div>
         <button type="button" className="su-icon" aria-label="Close notes" title="Close (Esc)" onClick={onClose}>
           ×
@@ -621,20 +629,22 @@ export default function NotesPanel({
       {error && <div className="su-note error">{error}</div>}
       {data && (
         <div className="nt-scroll">
-          <NotepadView
-            data={data}
-            canInsert={canInsert && data.can_write}
-            onSave={(rows) => run(() => api.saveNotepad(version, line, rows))}
-            onInsert={(total) =>
-              onInsertTotal(total).catch((e: unknown) => {
-                setError(errorText(e))
-              })
-            }
-          />
+          {notepad && (
+            <NotepadView
+              data={data}
+              canInsert={canInsert && data.can_write && !!onInsertTotal}
+              onSave={(rows) => run(() => api.saveNotepad(version, line, rows))}
+              onInsert={(total) =>
+                (onInsertTotal?.(total) ?? Promise.resolve()).catch((e: unknown) => {
+                  setError(errorText(e))
+                })
+              }
+            />
+          )}
           {open.map((t) => (
             <ThreadView key={t.thread_id} thread={t} people={people} focused={t.thread_id === focusThread} act={act} />
           ))}
-          {open.length === 0 && <p className="ink-3 nt-empty">No open notes on this line.</p>}
+          {open.length === 0 && <p className="ink-3 nt-empty">No open notes on this {module === 'capex' ? 'investment' : 'line'}.</p>}
           <Composer
             people={people}
             placeholder="New note: an explanation, a question, a to-do…"
@@ -654,6 +664,30 @@ export default function NotesPanel({
           )}
         </div>
       )}
+    </>
+  )
+  // Keys stay in the notes: the sheet's grid listens on the whole page and would take Tab and the
+  // arrows away from the fields. Escape closes them, unless a field uses it; the dialog also
+  // closes from an empty field, as nothing typed is lost.
+  const onKeyDown = (e: ReactKeyboardEvent) => {
+    e.stopPropagation()
+    if (e.key !== 'Escape' || e.defaultPrevented) return
+    const field = (e.target as HTMLElement).closest<HTMLInputElement | HTMLTextAreaElement>('textarea, input')
+    if (!field || (display === 'dialog' && field.value === '')) onClose()
+  }
+
+  if (display === 'dialog')
+    return (
+      <div className="il-backdrop" role="presentation" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+        {/* The dialog takes the focus when it opens, so Escape reaches it. */}
+        <div className="il-dialog nt-dialog" role="dialog" aria-modal="true" aria-label={`Notes on ${title}`} tabIndex={-1} autoFocus onKeyDown={onKeyDown}>
+          {content}
+        </div>
+      </div>
+    )
+  return (
+    <aside className="nt-panel" aria-label={`Notes on ${title}`} onKeyDown={onKeyDown}>
+      {content}
     </aside>
   )
 }

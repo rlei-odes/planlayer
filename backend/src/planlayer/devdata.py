@@ -14,7 +14,7 @@ from decimal import Decimal
 
 from sqlalchemy import Engine, func, select
 
-from planlayer import access, planning, workflow
+from planlayer import access, notes, planning, workflow
 from planlayer.domain.workflow import Status
 from planlayer.rounds import fiscal_periods, get_round
 from planlayer.sheet import MONTHS, EditError
@@ -683,6 +683,14 @@ def seed_capex(engine: Engine, round_code: str) -> tuple[int, int]:
     def add(who: access.User, item: "capex.NewItem") -> int:
         return capex.apply(engine, who, round_code, [item], [])[0]
 
+    def note(who: access.User, item_id: int, text: str, thread: int | None = None) -> int:
+        """A note on the investment: a new thread, or a reply to one."""
+        if thread is not None:
+            notes.reply(engine, who, round_code, thread, text, [])
+            return thread
+        line = notes.LineRef("capex", investment=item_id)
+        return notes.start_thread(engine, who, round_code, line, text, [])
+
     projects = lines = 0
     for cc, name, priority, how, parts in CAPEX_PROJECTS:
         if cc not in planned:
@@ -699,9 +707,9 @@ def seed_capex(engine: Engine, round_code: str) -> tuple[int, int]:
             lines += 1
         decide(cc, project, how)
         if name in CAPEX_REPLIES:
-            capex.add_comment(engine, approvers[cc], round_code, project, CAPEX_REPLIES[name])
+            note(approvers[cc], project, CAPEX_REPLIES[name])
         projects += 1
-    for cc, name, kind, priority, month, amount, pattern, how, note in CAPEX_LINES:
+    for cc, name, kind, priority, month, amount, pattern, how, text in CAPEX_LINES:
         if cc not in planned:
             continue
         item_id = add(
@@ -711,10 +719,9 @@ def seed_capex(engine: Engine, round_code: str) -> tuple[int, int]:
             ),
         )
         schedule(cc, item_id, pattern, month, amount)
-        if note:
-            capex.add_comment(engine, planner[cc], round_code, item_id, note)
+        thread = note(planner[cc], item_id, text) if text else None
         if name in CAPEX_REPLIES:
-            capex.add_comment(engine, approvers[cc], round_code, item_id, CAPEX_REPLIES[name])
+            note(approvers[cc], item_id, CAPEX_REPLIES[name], thread)
         decide(cc, item_id, how)
         lines += 1
     return projects, lines

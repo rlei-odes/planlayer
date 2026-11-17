@@ -1,10 +1,11 @@
 """Line notes (ADR 0017): threads of notes on a line, with mentions, tasks and resolving; one
 notepad per line; and the notes a user should look at.
 
-A line is a cost center x leaf account (module ``cost_center``) or a cost center x work center x
-activity type (module ``capacity``). Threads live outside rounds: each remembers the round it was
-last written in, shows there, and while open in every later round. Writing to a thread moves it
-to the round it is written from.
+A line is a cost center x leaf account (module ``cost_center``), a cost center x work center x
+activity type (module ``capacity``), or an investment (module ``capex``, ADR 0028). Threads live
+outside rounds: each remembers the round it was last written in, shows there, and while open in
+every later round. Writing to a thread moves it to the round it is written from. An investment
+belongs to one round, and so do its threads; it has no notepad.
 
 Row-level security lets everyone who reads a line read and write its threads; authors change
 their own notes; whoever writes the line changes its notepad.
@@ -38,10 +39,12 @@ from planlayer.store.schema import (
     ACTIVITY_TYPE,
     COST_CENTER,
     MODULE_CAPACITY,
+    MODULE_CAPEX,
     MODULE_COST_CENTER,
     WORK_CENTER,
     app_user,
     capacity_access,
+    capex_item,
     cost_center_access,
     member,
     note,
@@ -54,7 +57,7 @@ from planlayer.store.schema import (
 )
 from planlayer.store.uow import unit_of_work
 
-Module = Literal["cost_center", "capacity"]
+Module = Literal["cost_center", "capacity", "capex"]
 MAX_BODY = 10_000
 MAX_GRID_ROWS = 200
 
@@ -65,26 +68,30 @@ class NoteError(ValueError):
 
 @dataclass(frozen=True)
 class LineRef:
-    """A line, by codes: an account on the cost sheet, or a work center and activity type on the
-    capacity sheet."""
+    """A line, by codes: a cost center with an account on the cost sheet, or with a work center
+    and activity type on the capacity sheet; or an investment by its id."""
 
     module: Module
-    cost_center: str
+    cost_center: str | None = None
     account: str | None = None
     work_center: str | None = None
     activity_type: str | None = None
+    investment: int | None = None
 
 
 @dataclass(frozen=True)
 class _Line:
     module: Module
-    cost_center_id: int
+    cost_center_id: int  # an investment's: where it is now, for who may be mentioned
     account_id: int | None
     work_center_id: int | None
     activity_type_id: int | None
     can_write: bool  # may write the line itself (its notepad), not only its notes
+    capex_item_id: int | None = None
 
     def where(self, t: Table) -> list[ColumnElement[bool]]:
+        if self.module == MODULE_CAPEX:
+            return [t.c.capex_item_id == self.capex_item_id]
         return [
             t.c.cost_center_id == self.cost_center_id,
             _is(t.c.account_id, self.account_id),
@@ -93,6 +100,8 @@ class _Line:
         ]
 
     def values(self) -> dict[str, object]:
+        if self.module == MODULE_CAPEX:
+            return {"module": self.module, "capex_item_id": self.capex_item_id}
         return {
             "module": self.module,
             "cost_center_id": self.cost_center_id,
@@ -119,12 +128,31 @@ def _leaf(conn: Connection, dim: int, code: str | None, what: str) -> int:
     return int(found)
 
 
+def _rights(conn: Connection, user: User, module: str) -> dict[int, bool]:
+    """The cost centers whose lines of the module the user reads, and whether they write them:
+    the capacity sheet's, or the cost sheet's, which investments follow."""
+    return (capacity_rights if module == MODULE_CAPACITY else cost_center_rights)(conn, user)
+
+
+def _investment(conn: Connection, user: User, item_id: int | None) -> _Line:
+    """An investment as a line, if the user may read it (its row-level security)."""
+    if item_id is None:
+        raise NoteError("the line needs its investment")
+    cc = conn.execute(
+        select(capex_item.c.cost_center_id).where(capex_item.c.item_id == item_id)
+    ).scalar()
+    if cc is None:
+        raise NotFoundError(f"investment {item_id} not found")
+    can_write = _rights(conn, user, MODULE_CAPEX).get(cc, False)
+    return _Line("capex", cc, None, None, None, can_write, item_id)
+
+
 def _line(conn: Connection, user: User, ref: LineRef) -> _Line:
     """The line's ids, if the user may read it; a line they may not read is not found."""
+    if ref.module == MODULE_CAPEX:
+        return _investment(conn, user, ref.investment)
     cc = _leaf(conn, COST_CENTER, ref.cost_center, "cost center")
-    rights = (cost_center_rights if ref.module == MODULE_COST_CENTER else capacity_rights)(
-        conn, user
-    )
+    rights = _rights(conn, user, ref.module)
     if cc not in rights:
         raise NotFoundError(f"cost center {ref.cost_center} not found")
     if ref.module == MODULE_COST_CENTER:
@@ -250,7 +278,11 @@ def _read(conn: Connection, user: User, r: RoundRef, line: _Line) -> LineNotes:
         )
     ):
         mentions.setdefault(note_id, []).append(uid)
-    grid = conn.execute(select(note_grid).where(*line.where(note_grid))).first()
+    grid = (
+        None
+        if line.module == MODULE_CAPEX
+        else conn.execute(select(note_grid).where(*line.where(note_grid))).first()
+    )
     people = _people(
         conn,
         {n.author_id for n in notes}
@@ -355,6 +387,24 @@ def markers(
     return out
 
 
+def investment_markers(conn: Connection, user: User, r: RoundRef) -> dict[int, Marker]:
+    """Per investment of the round, by its id."""
+    t = note_thread
+    out: dict[int, Marker] = {}
+    for item_id, resolved, assignee in conn.execute(
+        select(t.c.capex_item_id, t.c.resolved_at, t.c.assignee_id).where(
+            t.c.module == MODULE_CAPEX, _shown_in(r)
+        )
+    ):
+        m = out.setdefault(item_id, Marker())
+        if resolved is None:
+            m.open += 1
+            m.task_for_me |= assignee == user.user_id
+        else:
+            m.resolved += 1
+    return out
+
+
 # --- Writing -----------------------------------------------------------------------------------
 
 
@@ -382,7 +432,7 @@ def _mentioned(conn: Connection, line: _Line, logins: list[str]) -> dict[str, in
     missing = wanted - set(found)
     if missing:
         raise NoteError(f"unknown user(s): {', '.join(sorted(missing))}")
-    view = cost_center_access if line.module == MODULE_COST_CENTER else capacity_access
+    view = capacity_access if line.module == MODULE_CAPACITY else cost_center_access
     readers = set(
         conn.execute(
             select(view.c.user_id).where(
@@ -443,13 +493,24 @@ def start_thread(
         return thread_id
 
 
+def note_on_investment(conn: Connection, user: User, r: RoundRef, item_id: int, body: str) -> None:
+    """A thread on an investment, within a change of it (a reason given when deciding on it)."""
+    line = _investment(conn, user, item_id)
+    thread_id = conn.execute(
+        insert(note_thread)
+        .values(**line.values(), round_id=r.version_id, created_by=user.user_id)
+        .returning(note_thread.c.thread_id)
+    ).scalar_one()
+    _add_note(conn, user, int(thread_id), line, body, [], None)
+
+
 def _thread(conn: Connection, user: User, thread_id: int) -> tuple[object, _Line]:
     th = conn.execute(select(note_thread).where(note_thread.c.thread_id == thread_id)).first()
     if th is None:
         raise NotFoundError(f"note thread {thread_id} not found")
-    rights = (cost_center_rights if th.module == MODULE_COST_CENTER else capacity_rights)(
-        conn, user
-    )
+    if th.module == MODULE_CAPEX:
+        return th, _investment(conn, user, th.capex_item_id)
+    rights = _rights(conn, user, th.module)
     line = _Line(
         th.module,
         th.cost_center_id,
@@ -548,6 +609,8 @@ def set_notepad(
     engine: Engine, user: User, version_code: str, ref: LineRef, rows: list[GridRow]
 ) -> None:
     """Replace the line's notepad; without rows it is removed."""
+    if ref.module == MODULE_CAPEX:
+        raise NoteError("an investment has no notepad")
     if len(rows) > MAX_GRID_ROWS:
         raise NoteError(f"a notepad has at most {MAX_GRID_ROWS} rows")
     kept = [
@@ -583,15 +646,13 @@ def parse_rows(rows: list[tuple[str, str | None]]) -> list[GridRow]:
 
 
 def people(engine: Engine, user: User, module: Module, cost_center: str) -> list[Person]:
-    """Users who may read the cost center's lines: those a note there can mention."""
+    """Users who may read the cost center's lines (or investments): those a note there can
+    mention."""
     with unit_of_work(engine, user) as conn:
         cc = _leaf(conn, COST_CENTER, cost_center, "cost center")
-        rights = (cost_center_rights if module == MODULE_COST_CENTER else capacity_rights)(
-            conn, user
-        )
-        if cc not in rights:
+        if cc not in _rights(conn, user, module):
             raise NotFoundError(f"cost center {cost_center} not found")
-        view = cost_center_access if module == MODULE_COST_CENTER else capacity_access
+        view = capacity_access if module == MODULE_CAPACITY else cost_center_access
         return [
             Person(login, name)
             for login, name in conn.execute(
@@ -615,7 +676,7 @@ class MyThread:
     module: Module
     cost_center_code: str
     cost_center_name: str
-    line_code: str  # the account, or "work center / activity type"
+    line_code: str  # the account, "work center / activity type", or the investment's id
     line_name: str
     round_code: str  # the round to open it in: the latest that shows it and plans the line
     first: str  # the thread's first note
@@ -636,7 +697,8 @@ class MyNotes:
 
 def my_notes(engine: Engine, user: User) -> MyNotes:
     """Open threads assigned to the user, mentioning them, or started by them; most recent first.
-    Each opens in the latest round that shows it and plans its cost center."""
+    Each opens in the latest round that shows it and plans its cost center; an investment's in
+    its round."""
     t = note_thread
     with unit_of_work(engine, user) as conn:
         mentioned = set(
@@ -664,6 +726,27 @@ def my_notes(engine: Engine, user: User) -> MyNotes:
             .where(note.c.thread_id.in_(ids))
             .order_by(note.c.created_at, note.c.note_id)
         ).all()
+        # Investments the user reads, with their cost center and round.
+        place = member.alias("cc")
+        investments = {
+            i.item_id: i
+            for i in conn.execute(
+                select(
+                    capex_item.c.item_id,
+                    capex_item.c.name,
+                    place.c.code.label("cc_code"),
+                    place.c.name.label("cc_name"),
+                    version.c.code.label("round_code"),
+                )
+                .join(place, place.c.member_id == capex_item.c.cost_center_id)
+                .join(version, version.c.version_id == capex_item.c.version_id)
+                .where(
+                    capex_item.c.item_id.in_(
+                        {th.capex_item_id for th in threads if th.capex_item_id is not None}
+                    )
+                )
+            )
+        }
         members = {
             m.member_id: m
             for m in conn.execute(
@@ -709,18 +792,31 @@ def my_notes(engine: Engine, user: User) -> MyNotes:
         ns = by_thread.get(th.thread_id, [])
         if not ns:
             continue
-        cc = members[th.cost_center_id]
-        if th.module == MODULE_COST_CENTER:
-            acc = members[th.account_id]
-            code, name = acc.code, acc.name
+        if th.module == MODULE_CAPEX:
+            # An investment's threads open in its round.
+            inv = investments.get(th.capex_item_id)
+            if inv is None:
+                continue
+            cc_code, cc_name = inv.cc_code, inv.cc_name
+            code, name, target = str(inv.item_id), inv.name, inv.round_code
         else:
-            wc, at = members[th.work_center_id], members[th.activity_type_id]
-            code, name = f"{wc.code} / {at.code}", f"{wc.name} · {at.name}"
-        module_key = MODULE_COST_CENTER if th.module == MODULE_COST_CENTER else MODULE_CAPACITY
-        target = next(
-            (c for v, c in rounds if v >= th.round_id and (v, module_key, cc.member_id) in planned),
-            next(c for v, c in rounds if v == th.round_id),
-        )
+            cc = members[th.cost_center_id]
+            cc_code, cc_name = cc.code, cc.name
+            if th.module == MODULE_COST_CENTER:
+                acc = members[th.account_id]
+                code, name = acc.code, acc.name
+            else:
+                wc, at = members[th.work_center_id], members[th.activity_type_id]
+                code, name = f"{wc.code} / {at.code}", f"{wc.name} · {at.name}"
+            module_key = MODULE_COST_CENTER if th.module == MODULE_COST_CENTER else MODULE_CAPACITY
+            target = next(
+                (
+                    c
+                    for v, c in rounds
+                    if v >= th.round_id and (v, module_key, cc.member_id) in planned
+                ),
+                next(c for v, c in rounds if v == th.round_id),
+            )
         last = ns[-1]
         out.threads.append(
             MyThread(
@@ -731,8 +827,8 @@ def my_notes(engine: Engine, user: User) -> MyNotes:
                 if th.thread_id in mentioned
                 else "started",
                 th.module,
-                cc.code,
-                cc.name,
+                cc_code,
+                cc_name,
                 code,
                 name,
                 target,

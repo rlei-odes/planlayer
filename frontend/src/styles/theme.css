@@ -53,6 +53,13 @@
   box-sizing: border-box;
 }
 
+/* The scrollbar's room is kept when a page doesn't scroll, so switching between a short and a
+   long page doesn't move the top bar. */
+html {
+  scrollbar-gutter: stable;
+  background: var(--canvas); /* the kept room takes the page's colour */
+}
+
 body {
   margin: 0;
   background: var(--canvas);
