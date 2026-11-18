@@ -23,6 +23,10 @@ const ADMIN = 'admin@nordwerk.example'
 const OWNER = 'anna.keller@nordwerk.example' // plans DE1010 Machining and DE1020 Quality Assurance
 const HR = 'hr@nordwerk.example'
 
+// The number format every screenshot shows, whatever the user chose: each user's own choice is
+// set for the shot and put back afterwards.
+const NUMBER_FORMAT = { separators: 'comma_dot', decimals: false, scale: 'full', units: true }
+
 // One entry per screenshot: the user who sees the page, its route in App.tsx (the hash) and,
 // for pages that work on a round, the round to show (stored the way the app remembers it).
 const shots = [
@@ -115,23 +119,33 @@ try {
       const context = await browser.newContext({ viewport: { ...viewport, width: shot.width ?? viewport.width }, colorScheme })
       const res = await context.request.post(`${base}/api/auth/dev-login`, { data: { login: shot.user } })
       if (!res.ok()) throw new Error(`Dev login as ${shot.user} failed: ${res.status()}`)
-      await context.addInitScript(([round, unit]) => {
-        if (round) localStorage.setItem('planlayer.round', round)
-        if (unit) localStorage.setItem('planlayer.costCenter', unit)
-      }, [shot.round, shot.unit])
-      const page = await context.newPage()
-      await page.goto(`${base}/#${shot.page}`)
-      await page.waitForLoadState('networkidle')
-      await page.waitForTimeout(500) // the grids lay out after their data arrives
-      if (shot.prepare) {
-        await shot.prepare(page)
-        await page.waitForLoadState('networkidle')
-        await page.waitForTimeout(500)
+      const own = (await (await context.request.get(`${base}/api/me`)).json()).number_own
+      const setFormat = async (data) => {
+        const r = await context.request.put(`${base}/api/me/number-format`, { data })
+        if (!r.ok()) throw new Error(`Setting the number format of ${shot.user} failed: ${r.status()}`)
       }
-      const file = website ? `${shot.name}-${colorScheme}.png` : `${shot.name}.png`
-      await page.screenshot({ path: `${out}${file}` })
-      console.log(file)
-      await context.close()
+      await setFormat(NUMBER_FORMAT)
+      try {
+        await context.addInitScript(([round, unit]) => {
+          if (round) localStorage.setItem('planlayer.round', round)
+          if (unit) localStorage.setItem('planlayer.costCenter', unit)
+        }, [shot.round, shot.unit])
+        const page = await context.newPage()
+        await page.goto(`${base}/#${shot.page}`)
+        await page.waitForLoadState('networkidle')
+        await page.waitForTimeout(500) // the grids lay out after their data arrives
+        if (shot.prepare) {
+          await shot.prepare(page)
+          await page.waitForLoadState('networkidle')
+          await page.waitForTimeout(500)
+        }
+        const file = website ? `${shot.name}-${colorScheme}.png` : `${shot.name}.png`
+        await page.screenshot({ path: `${out}${file}` })
+        console.log(file)
+      } finally {
+        await setFormat(own)
+        await context.close()
+      }
     }
   }
 } finally {
