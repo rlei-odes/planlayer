@@ -1,14 +1,14 @@
-"""Installation settings (E-12) for the admin: so far the sign convention of published amounts
-(ADR 0019)."""
+"""Installation settings (E-12) for the admin: the sign convention of published amounts
+(ADR 0019) and the default number format."""
 
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
-from planlayer import signs
+from planlayer import number_format, signs
 from planlayer.access import AccessError
-from planlayer.api.auth import CurrentUser, engine_of
+from planlayer.api.auth import CurrentUser, NumberFormatIO, engine_of, format_io
 
 router = APIRouter(prefix="/api")
 
@@ -60,3 +60,15 @@ def put_signs(request: Request, user: CurrentUser, body: SignsIn) -> SignsOut:
         raise HTTPException(403, str(e)) from None
     except signs.SignsError as e:
         raise HTTPException(422, str(e)) from None
+
+
+@router.put("/settings/number-format", responses={403: {}, 422: {}})
+def put_number_format(request: Request, user: CurrentUser, body: NumberFormatIO) -> NumberFormatIO:
+    """The installation's number format, for every user without choices of their own."""
+    engine = engine_of(request)
+    value = number_format.NumberFormat(body.separators, body.decimals, body.scale)
+    try:
+        number_format.set_default(engine, user, value)
+    except AccessError as e:
+        raise HTTPException(403, str(e)) from None
+    return format_io(number_format.default(engine, user))

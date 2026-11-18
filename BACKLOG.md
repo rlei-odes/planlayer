@@ -276,11 +276,11 @@ Mid-size manufacturer of industrial pumps and valves, ~400 employees.
     - [x] Status page: counts per status, progress, filters with counts, a status bar per hierarchy node, actions per row, comments for reject and reopen.
     - [x] Master data page: sources as cards with column pickers, the sync preview as tiles, the member tree with a filter and inline parent pickers.
     - [x] Responsibilities and Users pages: planner overrides, deputies and approvers as chips; roles as switches.
-    - [ ] Number display for amounts: a choice of how plan and comparison amounts are shown, in the grid, the status and publish pages and the setup preview.
-        - Scales: full, in thousands, in millions; and decimals shown or hidden. Display only: values are still entered, stored and published exactly (T-12), and a typed value means the unit shown, or the full amount (to decide).
-        - Applies to amounts only; not to percentages (D-05), factors, quantities, or headcount in later modules, which keep their own format.
-        - Regional settings for display and entry: thousands and decimal separator (e.g. 1,234.56 / 1.234,56 / 1'234.56), so paste and typing follow the same convention.
-        - To decide: an installation default (setup page, E-12) with a per-user override, and where the choice sits on the planning page.
+    - [x] Number format for amounts (`planlayer/number_format.py`, `frontend/src/amounts.ts`): separators (1,234.56 / 1.234,56 / 1'234.56 / 1 234,56), cents shown or hidden, and a scale of full, thousands or millions. The admin sets the installation's default on the settings page; each user overrides any part of it from the top bar, and the planning sheet has its own 1 · k · M toggle. Display only: the cell editor and a copy carry the exact amount, a typed value is the full amount whatever the scale, and values are stored and published exactly (T-12).
+        - Thousands and millions show three significant digits and drop trailing zeros (10.5k, 123k, 1.23M) without rounding away digits of the whole part (1,235k).
+        - Typing and paste follow the separators: a lone `1.234` is 1,234 to a user of 1.234,56 and refused to a user of 1,234.56; a value with both separators reads the later one as the decimal.
+        - Applies to amounts only; not to percentages (D-05), factors, quantities, or headcount, which keep their own format.
+        - [ ] The scale on the other pages with amounts (capacity credits, workforce, investments, item lists); today the planning sheet scales, and every page follows the separators.
     - [ ] Real users' walkthroughs (R-4).
 - [ ] **E-11** Self-host packaging: container image on GHCR, the DBA install script and checklist (D-25), upgrade/migration procedure, the scheduled backup and restore (D-30), install docs.
     - [ ] A guided installation in the app for the admin: connections, the first sync, the first users and roles (an HR user among them), and the encryption key for pay (W-18), generated in the app and shown once for HR to keep in a password manager, with a check that it was saved before going on.

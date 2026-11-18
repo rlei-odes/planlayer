@@ -53,6 +53,9 @@ FTE, HEADCOUNT = 3, 4  # workforce planning (ADR 0020)
 
 AMOUNT_TYPE = Numeric(18, 2)  # T-12
 
+NUMBER_SEPARATORS = "{} IN ('comma_dot', 'dot_comma', 'apostrophe_dot', 'space_comma')"
+NUMBER_SCALE = "{} IN ('full', 'k', 'M')"
+
 # One row per installation: settings that hold for the whole installation.
 installation = Table(
     "installation",
@@ -65,9 +68,15 @@ installation = Table(
     # Whether the sync reads HR's salaries from the dataset ``staff`` (ADR 0025); off, HR
     # uploads them on the personnel costs page.
     Column("pay_from_source", Boolean, nullable=False, server_default="false"),
+    # How amounts are shown and typed, unless a user overrides it (planlayer.number_format).
+    Column("number_separators", Text, nullable=False, server_default="comma_dot"),
+    Column("number_decimals", Boolean, nullable=False, server_default="true"),
+    Column("number_scale", Text, nullable=False, server_default="full"),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     CheckConstraint("id = 1", name="single_row"),
     CheckConstraint("fiscal_year_start_month BETWEEN 1 AND 12", name="fiscal_month"),
+    CheckConstraint(NUMBER_SEPARATORS.format("number_separators"), name="number_separators"),
+    CheckConstraint(NUMBER_SCALE.format("number_scale"), name="number_scale"),
 )
 
 dimension = Table(
@@ -375,7 +384,13 @@ app_user = Table(
     Column("is_hr", Boolean, nullable=False, server_default="false"),  # reads pay (ADR 0022)
     Column("is_system", Boolean, nullable=False, server_default="false"),
     Column("disabled", Boolean, nullable=False, server_default="false"),
+    # The user's own number format; NULL takes the installation's (planlayer.number_format).
+    Column("number_separators", Text),
+    Column("number_decimals", Boolean),
+    Column("number_scale", Text),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    CheckConstraint(NUMBER_SEPARATORS.format("number_separators"), name="number_separators"),
+    CheckConstraint(NUMBER_SCALE.format("number_scale"), name="number_scale"),
 )
 
 # Login sessions; only a hash of the token is stored.

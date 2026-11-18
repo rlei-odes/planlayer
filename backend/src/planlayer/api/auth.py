@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 from sqlalchemy import Engine
 
-from planlayer import access
+from planlayer import access, number_format
 from planlayer.api.limits import Code
 from planlayer.config import Settings
 
@@ -41,6 +41,20 @@ def current_user(request: Request) -> access.User:
 CurrentUser = Annotated[access.User, Depends(current_user)]
 
 
+class NumberFormatIO(BaseModel):
+    separators: number_format.Separators
+    decimals: bool  # cents on full amounts; thousands and millions round on their own
+    scale: number_format.Scale
+
+
+class NumberOverrideIO(BaseModel):
+    """A user's own choices; null takes the installation's."""
+
+    separators: number_format.Separators | None = None
+    decimals: bool | None = None
+    scale: number_format.Scale | None = None
+
+
 class Me(BaseModel):
     login: str
     display_name: str
@@ -53,6 +67,10 @@ class Me(BaseModel):
     reads_cost_centers: bool
     # HR, or the owner the source names on a cost center: the personnel costs page (ADR 0022).
     reads_pay: bool
+    # How amounts are shown and typed: the user's own choices over the installation's.
+    number_format: NumberFormatIO
+    number_default: NumberFormatIO
+    number_own: NumberOverrideIO
 
 
 class LoginOptions(BaseModel):
@@ -68,7 +86,12 @@ class DevLoginIn(BaseModel):
     login: Code
 
 
+def format_io(f: number_format.NumberFormat) -> NumberFormatIO:
+    return NumberFormatIO(separators=f.separators, decimals=f.decimals, scale=f.scale)
+
+
 def me_of(engine: Engine, user: access.User) -> Me:
+    numbers = number_format.of_user(engine, user)
     return Me(
         reads_cost_centers=access.reads_cost_centers(engine, user),
         login=user.login,
@@ -79,12 +102,29 @@ def me_of(engine: Engine, user: access.User) -> Me:
         is_viewer=user.is_viewer,
         is_hr=user.is_hr,
         reads_pay=access.reads_pay(engine, user),
+        number_format=format_io(numbers.effective),
+        number_default=format_io(numbers.default),
+        number_own=NumberOverrideIO(
+            separators=numbers.own.separators,
+            decimals=numbers.own.decimals,
+            scale=numbers.own.scale,
+        ),
     )
 
 
 @router.get("/me", responses={401: {}})
 def me(request: Request, user: CurrentUser) -> Me:
     return me_of(engine_of(request), user)
+
+
+@router.put("/me/number-format", responses={401: {}, 422: {}})
+def put_number_format(request: Request, user: CurrentUser, body: NumberOverrideIO) -> Me:
+    """The user's own number format, for themselves."""
+    engine = engine_of(request)
+    number_format.set_own(
+        engine, user, number_format.Override(body.separators, body.decimals, body.scale)
+    )
+    return me_of(engine, user)
 
 
 @router.get("/auth/options")

@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
 import { api, type Signs } from './api'
+import { example, type NumberFormat } from './amounts'
+import { NumberFormatFields } from './NumberFormat'
 import PageHeader from './PageHeader'
 
-// Installation settings (E-12), for the admin. So far: the sign convention of published amounts
-// (ADR 0019). Plan values stay natural-positive in Planlayer and in `amount`; `amount_signed`
+// Installation settings (E-12), for the admin: the sign convention of published amounts
+// (ADR 0019), and the number format of users without one of their own. Plan values stay natural-positive in Planlayer and in `amount`; `amount_signed`
 // follows the convention chosen here, by each account's role.
 
 type Convention = Signs['convention']
@@ -57,6 +59,8 @@ export default function SettingsPage() {
   return (
     <div className="su st-settings">
       <PageHeader title="Settings" />
+
+      <NumberDefault />
 
       <div className="su-card">
         <h3>Published signs</h3>
@@ -125,6 +129,51 @@ export default function SettingsPage() {
             Save
           </button>
         </div>
+      </div>
+    </div>
+  )
+}
+
+/** The installation's number format; a user's own choice in the top bar overrides it. */
+function NumberDefault() {
+  const [saved, setSaved] = useState<NumberFormat | null>(null)
+  const [draft, setDraft] = useState<NumberFormat | null>(null)
+  const [note, setNote] = useState<Note | null>(null)
+
+  useEffect(() => {
+    api.me().then(
+      (m) => {
+        setSaved(m.number_default)
+        setDraft(m.number_default)
+      },
+      (e: unknown) => setNote({ kind: 'error', text: e instanceof Error ? e.message : String(e) }),
+    )
+  }, [])
+
+  if (!saved || !draft) return note ? <div className="su-note error">{note.text}</div> : null
+  const changed = JSON.stringify(saved) !== JSON.stringify(draft)
+
+  async function save() {
+    if (!draft) return
+    try {
+      setSaved(await api.setDefaultNumberFormat(draft))
+      setNote({ kind: 'ok', text: 'Saved. Users without a choice of their own see it on their next page load.' })
+    } catch (e) {
+      setNote({ kind: 'error', text: e instanceof Error ? e.message : String(e) })
+    }
+  }
+
+  return (
+    <div className="su-card">
+      <h3>Number format</h3>
+      <p className="su-hint">The default for every user; each user may choose their own in the top bar. Display only.</p>
+      <NumberFormatFields value={draft} onChange={setDraft} />
+      <p className="nf-example">{example(draft)}</p>
+      {note && <div className={`su-note ${note.kind} fw-gap`}>{note.text}</div>}
+      <div className="fw-buttons">
+        <button type="button" className="su-btn primary" disabled={!changed} onClick={() => void save()}>
+          Save
+        </button>
       </div>
     </div>
   )

@@ -590,6 +590,9 @@ export type Me = {
   is_hr: boolean
   reads_cost_centers: boolean
   reads_pay: boolean
+  number_format: NumberFormatIO
+  number_default: NumberFormatIO
+  number_own: NumberOverrideIO
 }
 
 export type MemberChange = {
@@ -748,6 +751,18 @@ export type NotesMarkerOut = {
   resolved: number
   task_for_me: boolean
   notepad: boolean
+}
+
+export type NumberFormatIO = {
+  separators: "comma_dot" | "dot_comma" | "apostrophe_dot" | "space_comma"
+  decimals: boolean
+  scale: "full" | "k" | "M"
+}
+
+export type NumberOverrideIO = {
+  separators?: "comma_dot" | "dot_comma" | "apostrophe_dot" | "space_comma" | null
+  decimals?: boolean | null
+  scale?: "full" | "k" | "M" | null
 }
 
 export type OverviewOut = {

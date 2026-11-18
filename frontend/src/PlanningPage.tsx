@@ -1,7 +1,8 @@
 import { RevoGrid } from '@revolist/react-datagrid'
 import type { HyperFunc, VNode } from '@revolist/revogrid'
 import { useCallback, useEffect, useEffectEvent, useMemo, useState } from 'react'
-import { format, parse, sum, toCents } from './amounts'
+import { display, format, numberFormat, parse, sum, toCents, type Scale } from './amounts'
+import { ScaleToggle } from './NumberFormat'
 import {
   api,
   ConflictError,
@@ -186,6 +187,8 @@ export default function PlanningPage({
   unit: chosen,
   onUnit,
   onWidth,
+  scale,
+  onScale,
   focus,
   onFocused,
 }: {
@@ -195,6 +198,9 @@ export default function PlanningPage({
   onUnit: (code: string) => void
   /** Reports the sheet's width, so the app widens its content area for wide sheets. */
   onWidth: (px: number | null) => void
+  /** How amounts are shown: full, in thousands or in millions (the user's number format). */
+  scale: Scale
+  onScale: (scale: Scale) => void
   /** A line whose notes to open once the sheet is loaded (from Home). */
   focus?: { account: string; thread: number } | null
   onFocused?: () => void
@@ -261,6 +267,10 @@ export default function PlanningPage({
         if (prop === comparisonProp(nComp - 1)) classes.push('pl-cmp-last')
         return { class: classes.join(' ') }
       }
+    // Cells hold the exact amount, which the editor opens with and a copy takes; they show it
+    // in the user's scale and cents.
+    const shown = { ...numberFormat(), scale }
+    const exact = scale === 'full' && shown.decimals
     const column = (prop: string, name: string, size: number, headerClass = '', title?: string) => ({
       prop,
       name,
@@ -268,6 +278,7 @@ export default function PlanningPage({
       columnProperties: () => ({ class: `pl-head ${headerClass}${title ? ' pl-head-noted' : ''}`, title }),
       readonly: ({ rowIndex }: { rowIndex: number }) => !editable(grid?.rows[rowIndex], prop, layout),
       cellProperties: cellProperties(prop),
+      ...(exact ? {} : { cellTemplate: (_h: unknown, { value }: { value?: unknown }) => display(parse(String(value ?? '')) ?? null, shown) }),
     })
     const periodCols = periodColumns(periods, layout).map((c) =>
       column(c.prop, c.label, layout.quarters ? 112 : 92, c.closed ? 'pl-head-act' : ''),
@@ -290,7 +301,7 @@ export default function PlanningPage({
       column(COL_FY, `${forecast ? 'Forecast' : 'Plan'} ${grid?.fiscal_year ?? ''}`, 124, 'pl-head-plan', yearTitle),
       ...periodCols,
     ]
-  }, [grid, locked, profiles, layout, forecast])
+  }, [grid, locked, profiles, layout, forecast, scale])
 
   // The page is as wide as its columns (plus the sheet's border), so nothing stretches past them.
   const sheetWidth = columns.reduce((n, c) => n + c.size, 0) + 2 + SCROLLBAR
@@ -549,6 +560,7 @@ export default function PlanningPage({
         }
         actions={
           <>
+            {grid && accountRows > 0 && <ScaleToggle value={scale} onChange={onScale} />}
             {grid && <span className={`su-pill ${grid.status}`}>{STATUS_LABEL[grid.status]}</span>}
             {grid?.deadline && <span className="su-pill neutral">Due {grid.deadline}</span>}
             {open && accountRows > 0 && (

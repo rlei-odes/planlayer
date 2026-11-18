@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { format } from './amounts'
 import type { Version } from './api'
 import PageHeader from './PageHeader'
 import type * as S from './schema'
@@ -12,9 +13,8 @@ type Scope = S.PublishRunIn['scope']
 type Preview = S.PublishPreviewOut
 type Run = S.PublishRunOut
 
-const FMT = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const MONTH = new Intl.DateTimeFormat('en', { month: 'short', year: 'numeric', timeZone: 'UTC' })
-const amount = (v: string | null) => (v === null ? '–' : FMT.format(Number(v)))
+const amount = (v: string | null) => (v === null ? '–' : format(v))
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, { headers: { 'Content-Type': 'application/json' }, ...init })

@@ -1,4 +1,5 @@
 import { Fragment } from 'react'
+import { display, numberFormat } from './amounts'
 import type { EntryForm, MemberRow } from './api'
 import { closedCount, quarterly } from './periods'
 import type { Profile, SetupDraft } from './setupTypes'
@@ -9,9 +10,8 @@ import type { Profile, SetupDraft } from './setupTypes'
 // planned by quarter shows Q1–Q4; a forecast's closed months show actuals (ADR 0015).
 
 // Example values in thousands, so the account column, comparisons, plan and all twelve months fit
-// beside the settings.
-const K = new Intl.NumberFormat('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
-const FMT = { format: (v: number) => K.format(v / 1000) }
+// beside the settings, in the user's separators.
+const FMT = { format: (v: number) => display(v.toFixed(2), { ...numberFormat(), scale: 'k' }, false) }
 const MONTH = new Intl.DateTimeFormat('en', { month: 'short', timeZone: 'UTC' })
 
 type Props = {

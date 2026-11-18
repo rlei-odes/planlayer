@@ -159,6 +159,7 @@ function lineQuery(version: string, line: NoteLine): string {
 
 export const api = {
   me: () => fetch('/api/me').then((res) => json<Me>(res)),
+  setOwnNumberFormat: (own: S.NumberOverrideIO) => send('PUT', '/api/me/number-format', own).then((res) => json<Me>(res)),
   loginOptions: () => fetch('/api/auth/options').then((res) => json<S.LoginOptions>(res)),
   devUsers: () => fetch('/api/auth/dev-users').then((res) => json<S.DevUser[]>(res)),
   devLogin: (login: string) => post('/api/auth/dev-login', { login }).then((res) => json<Me>(res)),
@@ -197,6 +198,8 @@ export const api = {
   signs: () => fetch('/api/settings/signs').then((res) => json<Signs>(res)),
   setSigns: (convention: Signs['convention']) =>
     send('PUT', '/api/settings/signs', { convention }).then((res) => json<Signs>(res)),
+  setDefaultNumberFormat: (f: S.NumberFormatIO) =>
+    send('PUT', '/api/settings/number-format', f).then((res) => json<S.NumberFormatIO>(res)),
   forwarding: (version: string) => fetch(fw(version)).then((res) => json<ForwardingPage>(res)),
   createForwarding: (version: string, f: ForwardingIn) => post(fw(version), f).then((res) => json<ForwardingPage>(res)),
   changeForwarding: (version: string, code: string, f: ForwardingIn) =>

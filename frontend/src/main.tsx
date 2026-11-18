@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 // Styles: tokens, shared components, then each page's own. The order is the cascade's.
 import './styles/theme.css'
 import './styles/components.css'
+import './styles/numberformat.css'
 import './styles/setup.css'
 import './styles/preview.css'
 import './styles/publish.css'

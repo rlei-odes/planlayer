@@ -1,0 +1,83 @@
+/* The number format (E-13): its fields, the top bar's menu, the sheet's scale toggle. */
+
+.nf-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px 20px;
+  align-items: flex-end;
+}
+
+.nf-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.nf-field > span {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.nf-field .sel {
+  min-width: 140px;
+}
+
+.nf-example {
+  margin: 12px 0 0;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.nf-scale button {
+  min-width: 36px;
+  padding: 4px 10px;
+  min-height: 28px;
+}
+
+.nf-menu {
+  position: relative;
+}
+
+.nf-trigger {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink-2);
+  border-radius: var(--radius-s);
+  padding: 3px 8px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.nf-trigger:hover,
+.nf-trigger[aria-expanded='true'] {
+  color: var(--ink);
+  background: var(--canvas);
+}
+
+.nf-pop {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 900;
+  width: min(360px, calc(100vw - 32px));
+  padding: 16px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 32px rgb(16 24 40 / 14%), 0 2px 6px rgb(16 24 40 / 6%);
+  animation: sel-in 0.12s ease-out;
+}
+
+.nf-pop h4 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.nf-pop .su-hint {
+  margin: 4px 0 14px;
+}
+
+.nf-pop .su-btn {
+  margin-top: 14px;
+}

@@ -34,6 +34,7 @@ from planlayer.domain.capex import (
     check_schedule,
     trimmed,
 )
+from planlayer.notes import Marker
 from planlayer.rounds import RoundRef, get_round, not_open
 from planlayer.sheet import Conflict, ConflictError
 from planlayer.store.schema import (
@@ -80,7 +81,9 @@ class Item:
     row_version: int
     can_write: bool
     can_confirm: bool
-    notes: notes.Marker | None = None  # its notes in the round (ADR 0017)
+    # Not `notes.Marker`: the field's default would shadow the module while Python 3.13 evaluates
+    # the annotation.
+    notes: Marker | None = None  # its notes in the round (ADR 0017)
     cash_out: dict[date, Decimal] = field(default_factory=dict)
     scheduled: Decimal = Decimal(0)
     above_threshold: bool = False

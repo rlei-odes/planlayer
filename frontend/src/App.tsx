@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import { api, type Me, type MyThread, type Version } from './api'
+import { setNumberFormat } from './amounts'
 import HomePage, { type HomeTarget, type Sheet } from './HomePage'
 import CapacityPage from './CapacityPage'
 import CapexPage from './CapexPage'
@@ -34,6 +35,7 @@ import Select from './Select'
 import { applyTheme, resolvedTheme, savedTheme, saveTheme, type ThemeChoice } from './theme'
 import MasterDataPage from './MasterDataPage'
 import PersonnelPage from './PersonnelPage'
+import { NumberFormatMenu } from './NumberFormat'
 import PlanningPage from './PlanningPage'
 import PublishPage from './PublishPage'
 import ResponsibilitiesPage from './ResponsibilitiesPage'
@@ -283,6 +285,8 @@ export default function App() {
   }
   if (me === null) return <LoginPage onLogin={setMe} />
   if (!me || !health) return null
+  // Before the pages render: every amount follows the user's number format (amounts.ts).
+  setNumberFormat(me.number_format)
 
   const groups = groupsFor(me)
   const pages = groups.flatMap((g) => g.pages)
@@ -373,6 +377,7 @@ export default function App() {
               </div>
             )}
             <div className="tb-user">
+              <NumberFormatMenu me={me} onMe={setMe} />
               <button
                 type="button"
                 className="su-icon tb-theme"
@@ -398,7 +403,8 @@ export default function App() {
           </div>
         </header>
 
-        <main className="page">
+        {/* A new number format redraws every page; the scale alone only the sheet that shows it. */}
+        <main className="page" key={`${me.number_format.separators}/${me.number_format.decimals}`}>
           {error && <div className="su-note error">{error}</div>}
           {!current && (
             <div className="su-card empty-state">
@@ -456,6 +462,8 @@ export default function App() {
               unit={costCenter}
               onUnit={setCostCenter}
               onWidth={setSheetWidth}
+              scale={me.number_format.scale}
+              onScale={(scale) => api.setOwnNumberFormat({ ...me.number_own, scale }).then(setMe, (e: unknown) => setError(e instanceof Error ? e.message : String(e)))}
               focus={focus?.account ? { account: focus.account, thread: focus.thread } : null}
               onFocused={() => setFocus(null)}
             />
