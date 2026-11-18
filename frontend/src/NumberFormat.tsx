@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { api, type Me } from './api'
 import { example, SEPARATORS, type NumberFormat, type Scale, type Separators } from './amounts'
+import { useScale } from './numberContext'
 import Select from './Select'
 
-// The number format (E-13): separators, cents and scale. The admin sets the installation's on the
+// The number format (E-13): separators, cents, scale and units. The admin sets the installation's on the
 // settings page; each user may choose their own from the top bar.
 
 const SCALES: { value: Scale; label: string; hint: string }[] = [
@@ -17,7 +18,13 @@ const SEPARATOR_OPTIONS = (Object.keys(SEPARATORS) as Separators[]).map((s) => (
   label: SEPARATORS[s].example,
 }))
 
-/** A segmented choice of scale; on the planning sheet too. */
+/** The sheets' and overviews' scale toggle: changes the user's own scale. */
+export function SheetScale() {
+  const { scale, setScale } = useScale()
+  return <ScaleToggle value={scale} onChange={setScale} />
+}
+
+/** A segmented choice of scale. */
 export function ScaleToggle({ value, onChange }: { value: Scale; onChange: (s: Scale) => void }) {
   return (
     <div className="seg nf-scale" role="group" aria-label="Scale">
@@ -30,7 +37,19 @@ export function ScaleToggle({ value, onChange }: { value: Scale; onChange: (s: S
   )
 }
 
-/** Separators, cents and scale, with an example of each. */
+function OnOff({ label, value, onChange }: { label: string; value: boolean; onChange: (on: boolean) => void }) {
+  return (
+    <div className="seg" role="group" aria-label={label}>
+      {[true, false].map((on) => (
+        <button key={String(on)} type="button" aria-pressed={value === on} onClick={() => onChange(on)}>
+          {on ? 'Shown' : 'Hidden'}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+/** Separators, cents, scale and units. */
 export function NumberFormatFields({ value, onChange }: { value: NumberFormat; onChange: (f: NumberFormat) => void }) {
   return (
     <div className="nf-fields">
@@ -45,17 +64,15 @@ export function NumberFormatFields({ value, onChange }: { value: NumberFormat; o
       </div>
       <div className="nf-field">
         <span>Cents</span>
-        <div className="seg" role="group" aria-label="Cents">
-          {[true, false].map((on) => (
-            <button key={String(on)} type="button" aria-pressed={value.decimals === on} onClick={() => onChange({ ...value, decimals: on })}>
-              {on ? 'Shown' : 'Hidden'}
-            </button>
-          ))}
-        </div>
+        <OnOff label="Cents" value={value.decimals} onChange={(decimals) => onChange({ ...value, decimals })} />
       </div>
       <div className="nf-field">
         <span>Scale</span>
         <ScaleToggle value={value.scale} onChange={(scale) => onChange({ ...value, scale })} />
+      </div>
+      <div className="nf-field" title="The k or M after amounts in thousands or millions">
+        <span>Units</span>
+        <OnOff label="Units" value={value.units} onChange={(units) => onChange({ ...value, units })} />
       </div>
     </div>
   )
@@ -82,7 +99,7 @@ export function NumberFormatMenu({ me, onMe }: { me: Me; onMe: (me: Me) => void 
   }, [open])
 
   const own = me.number_own
-  const custom = own.separators != null || own.decimals != null || own.scale != null
+  const custom = own.separators != null || own.decimals != null || own.scale != null || own.units != null
 
   /** Only what was changed becomes the user's own; the rest keeps following the default. */
   function save(next: NumberFormat | null) {
@@ -92,8 +109,9 @@ export function NumberFormatMenu({ me, onMe }: { me: Me; onMe: (me: Me) => void 
           separators: next.separators !== shown.separators ? next.separators : own.separators,
           decimals: next.decimals !== shown.decimals ? next.decimals : own.decimals,
           scale: next.scale !== shown.scale ? next.scale : own.scale,
+          units: next.units !== shown.units ? next.units : own.units,
         }
-      : { separators: null, decimals: null, scale: null }
+      : { separators: null, decimals: null, scale: null, units: null }
     api.setOwnNumberFormat(body).then(
       (m) => {
         setError(null)

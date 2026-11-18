@@ -1,15 +1,9 @@
 // Helpers for the setup page's Cost centers and Accounts tabs (ADR 0014).
 
-import { display, numberFormat } from './amounts'
 import type * as S from './schema'
 
 export type ScopeRow = S.ScopeRowOut
 export type AccountSet = S.AccountSetIO
-
-/** An amount in thousands, in the user's separators, for display only; blank stays blank. */
-export function thousands(value: string | null): string {
-  return display(value, { ...numberFormat(), scale: 'k' }, false)
-}
 
 /** The set assigned to a member, and the one it inherits from the nearest node above. */
 export function setOf(

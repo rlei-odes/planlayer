@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api, type Signs } from './api'
-import { example, type NumberFormat } from './amounts'
+import { detail, example, type NumberFormat } from './amounts'
 import { NumberFormatFields } from './NumberFormat'
 import PageHeader from './PageHeader'
 
@@ -49,7 +49,7 @@ export default function SettingsPage() {
     }
   }
 
-  const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2 })
+  const fmt = (n: number) => detail(n.toFixed(2))
   const roles = [
     { role: 'cost' as const, label: 'Cost', count: signs.cost_accounts },
     { role: 'revenue' as const, label: 'Revenue', count: signs.revenue_accounts },

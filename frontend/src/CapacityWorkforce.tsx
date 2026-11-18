@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { format, sum } from './amounts'
+import { detail, format, number, sum } from './amounts'
 import { api, type LineRef, type Staff, type StaffPosition } from './api'
 import Select, { type Option } from './Select'
 import { LIMIT } from './limits'
@@ -12,7 +12,7 @@ type Message = { kind: 'error' | 'ok'; text: string }
 
 /** A percentage without trailing zeros: "80.00" is "80", "62.50" is "62.5". */
 function pct(value: string | null): string {
-  return value === null ? '' : value.includes('.') ? value.replace(/\.?0+$/, '') : value
+  return value === null ? '' : number(Number(value), 2)
 }
 
 const lineKey = (wc: string | null, at: string | null) => (wc && at ? `${wc}|${at}` : '')
@@ -253,14 +253,14 @@ export default function CapacityWorkforce({
                         onChange={(key) => savePosition(p, { line: lineOf(key) })}
                       />
                     </td>
-                    <td className="num">{p.hours === null ? '' : format(p.hours)}</td>
+                    <td className="num">{detail(p.hours)}</td>
                   </tr>
                 ))}
               </tbody>
               <tfoot>
                 <tr>
                   <td colSpan={6}>Total</td>
-                  <td className="num">{format(sum(view.positions.map((p) => p.hours)))}</td>
+                  <td className="num">{detail(sum(view.positions.map((p) => p.hours)))}</td>
                 </tr>
               </tfoot>
             </table>
@@ -287,8 +287,8 @@ export default function CapacityWorkforce({
                     <td>
                       <span className="pl-code">{l.work_center_code}</span> {l.work_center_name} · {l.activity_type_name}
                     </td>
-                    <td className="num">{l.rate}</td>
-                    <td className="num">{format(l.hours)}</td>
+                    <td className="num">{l.rate === null ? '' : format(l.rate)}</td>
+                    <td className="num">{detail(l.hours)}</td>
                   </tr>
                 ))}
               </tbody>

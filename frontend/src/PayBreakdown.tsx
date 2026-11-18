@@ -1,4 +1,4 @@
-import { format } from './amounts'
+import { detail } from './amounts'
 import type { PayPage, PayPosition, PayRuleRef } from './api'
 
 // A position's costs over the year by where they come from (ADR 0026): its salary or typed
@@ -27,7 +27,7 @@ export default function PayBreakdown({
 }) {
   const part = (source: 'pay' | 'bonus' | 'rule', rule: number | null = null) =>
     p.parts.find((x) => x.source === source && x.rule_id === rule)?.year ?? null
-  const amount = (v: string | null) => (v === null ? <span className="muted">–</span> : format(v))
+  const amount = (v: string | null) => (v === null ? <span className="muted">–</span> : detail(v))
 
   if (p.typed === null) {
     return <p className="su-hint">Not costed: its staff type has no account in the rules.</p>
@@ -103,7 +103,7 @@ export default function PayBreakdown({
             </td>
             <td />
             <td className="num">
-              <strong>{format(p.year_cost)}</strong>
+              <strong>{detail(p.year_cost)}</strong>
             </td>
             {onExclude && !p.typed && <td />}
           </tr>

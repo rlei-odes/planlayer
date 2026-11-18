@@ -66,7 +66,7 @@ def put_signs(request: Request, user: CurrentUser, body: SignsIn) -> SignsOut:
 def put_number_format(request: Request, user: CurrentUser, body: NumberFormatIO) -> NumberFormatIO:
     """The installation's number format, for every user without choices of their own."""
     engine = engine_of(request)
-    value = number_format.NumberFormat(body.separators, body.decimals, body.scale)
+    value = number_format.NumberFormat(body.separators, body.decimals, body.scale, body.units)
     try:
         number_format.set_default(engine, user, value)
     except AccessError as e:

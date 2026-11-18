@@ -1,5 +1,5 @@
 import { useMemo, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from 'react'
-import { format, parse, sum, toCents } from './amounts'
+import { detail, display, format, fromCents, parse, sum, toCents } from './amounts'
 import { type Capex, type CapexChange, type CapexItem, type CapexNew } from './api'
 import { monthLabel, parseMonth, scheduleState, STATUS_TEXT } from './capex'
 import { noteMarker } from './lineMarks'
@@ -397,7 +397,7 @@ export default function CapexList({
         )}
         <span className="cx-marks">
           {i.above_threshold && (
-            <span className="cx-warn" title={`Above ${format(view.settings.project_threshold ?? null)}: break it down into a large project`}>
+            <span className="cx-warn" title={`Above ${detail(view.settings.project_threshold ?? null)}: break it down into a large project`}>
               ⚠
             </span>
           )}
@@ -455,7 +455,7 @@ export default function CapexList({
         </td>
         <td className="num">
           {i?.kind === 'project' ? (
-            <span className="cx-sum">{format(i.amount)}</span>
+            <span className="cx-sum">{detail(i.amount)}</span>
           ) : can(row, 'amount') ? (
             <CellInput
               key={i?.row_version}
@@ -468,7 +468,7 @@ export default function CapexList({
               onPasteBlock={(b) => paste(rowIndex, 'amount', b)}
             />
           ) : (
-            format(i?.amount ?? null)
+            detail(i?.amount ?? null)
           )}
         </td>
         {cashOut && <td className="cx-center">{i && cashCell(i)}</td>}
@@ -480,7 +480,7 @@ export default function CapexList({
   function cashCell(i: CapexItem) {
     const state = scheduleState(i)
     if (state === null) return null
-    const rest = format(String(Number(toCents(i.amount ?? '0') - toCents(i.scheduled)) / 100))
+    const rest = detail(fromCents(toCents(i.amount ?? '0') - toCents(i.scheduled)))
     const label = state === 'full' ? 'Scheduled' : state === 'none' ? 'Not scheduled' : `Rest ${rest}`
     return i.kind === 'project' ? (
       <span className={`cx-cash ${state}`} title="The lines’ cash out">
@@ -590,7 +590,7 @@ export default function CapexList({
       </div>
       <div className="pl-foot">
         <span>
-          {lines.length} investment{lines.length === 1 ? '' : 's'} · <strong>{format(total) || '0.00'}</strong> planned
+          {lines.length} investment{lines.length === 1 ? '' : 's'} · <strong>{display(total ?? '0')}</strong> planned
         </span>
         <span className="pv-key">
           <i className="k-edit" /> entered

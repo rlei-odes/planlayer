@@ -37,7 +37,7 @@ export const SEPARATORS: Record<Separators, { group: string; decimal: string; ex
   space_comma: { group: '\u00a0', decimal: ',', example: '1 234,56' },
 }
 
-let current: NumberFormat = { separators: 'comma_dot', decimals: true, scale: 'full' }
+let current: NumberFormat = { separators: 'comma_dot', decimals: false, scale: 'full', units: true }
 
 export function setNumberFormat(f: NumberFormat) {
   current = f
@@ -69,12 +69,13 @@ export function format(value: Amount, f: NumberFormat = current): string {
 }
 
 /**
- * An amount as the user chose to see it: full, with or without cents, or in thousands or
- * millions. Thousands and millions show three significant digits and drop trailing zeros
- * (10.5k, 123k, 1.23M), but never round away digits of the whole part (1,235k). Without `unit`,
- * the k or M is left to a column's heading.
+ * An amount as the user chose to see it, on sheets, overviews and totals: full, with or without
+ * cents, or in thousands or millions. Thousands and millions show three significant digits and
+ * drop trailing zeros (10.5k, 123k, 1.23M), but never round away digits of the whole part
+ * (1,235k). The user's choice to hide the k or M holds only beside the scale toggle, which says
+ * it instead (a sheet passes `numberFormat()`); elsewhere they show.
  */
-export function display(value: Amount, f: NumberFormat = current, unit = true): string {
+export function display(value: Amount, f: NumberFormat = { ...current, units: true }): string {
   if (value === null) return ''
   const scale = f.scale
   const cents = toCents(value)
@@ -93,7 +94,27 @@ export function display(value: Amount, f: NumberFormat = current, unit = true): 
   }
   const zero = /^0*$/.test(whole + frac)
   const text = `${grouped(whole, f)}${frac ? SEPARATORS[f.separators].decimal + frac : ''}`
-  return `${cents < 0n && !zero ? '-' : ''}${text}${scale === 'full' || !unit ? '' : scale}`
+  return `${cents < 0n && !zero ? '-' : ''}${text}${scale === 'full' || !f.units ? '' : scale}`
+}
+
+/** A single amount in a detail (a line of an item list, a salary, a cash-out): full, with or
+ * without cents as the user chose. */
+export function detail(value: Amount): string {
+  return display(value, { ...current, scale: 'full' })
+}
+
+/** An amount in thousands without a unit, for a column headed "k". */
+export function thousands(value: Amount): string {
+  return display(value, { ...current, scale: 'k', units: false })
+}
+
+/** A number that isn't an amount (a count, FTE, a percentage, a factor) in the user's separators,
+ * with its own decimals: never scaled, its decimals not hidden. */
+export function number(n: number, maxDecimals = 0, minDecimals = 0): string {
+  const { group, decimal } = SEPARATORS[current.separators]
+  return n
+    .toLocaleString('en-US', { minimumFractionDigits: minDecimals, maximumFractionDigits: maxDecimals })
+    .replace(/[,.]/g, (c) => (c === ',' ? group : decimal))
 }
 
 /** Example amounts in a format, for choosing one. */

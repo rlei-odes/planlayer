@@ -45,6 +45,7 @@ class NumberFormatIO(BaseModel):
     separators: number_format.Separators
     decimals: bool  # cents on full amounts; thousands and millions round on their own
     scale: number_format.Scale
+    units: bool  # the k or M after a value in thousands or millions
 
 
 class NumberOverrideIO(BaseModel):
@@ -53,6 +54,7 @@ class NumberOverrideIO(BaseModel):
     separators: number_format.Separators | None = None
     decimals: bool | None = None
     scale: number_format.Scale | None = None
+    units: bool | None = None
 
 
 class Me(BaseModel):
@@ -87,7 +89,9 @@ class DevLoginIn(BaseModel):
 
 
 def format_io(f: number_format.NumberFormat) -> NumberFormatIO:
-    return NumberFormatIO(separators=f.separators, decimals=f.decimals, scale=f.scale)
+    return NumberFormatIO(
+        separators=f.separators, decimals=f.decimals, scale=f.scale, units=f.units
+    )
 
 
 def me_of(engine: Engine, user: access.User) -> Me:
@@ -108,6 +112,7 @@ def me_of(engine: Engine, user: access.User) -> Me:
             separators=numbers.own.separators,
             decimals=numbers.own.decimals,
             scale=numbers.own.scale,
+            units=numbers.own.units,
         ),
     )
 
@@ -122,7 +127,7 @@ def put_number_format(request: Request, user: CurrentUser, body: NumberOverrideI
     """The user's own number format, for themselves."""
     engine = engine_of(request)
     number_format.set_own(
-        engine, user, number_format.Override(body.separators, body.decimals, body.scale)
+        engine, user, number_format.Override(body.separators, body.decimals, body.scale, body.units)
     )
     return me_of(engine, user)
 

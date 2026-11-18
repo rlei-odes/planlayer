@@ -10,16 +10,16 @@ from planlayer.config import Settings
 from planlayer.store.db import create_app_engine
 from tests.conftest import CONTROLLER, OWNER, login
 
-FULL = {"separators": "comma_dot", "decimals": True, "scale": "full"}
+FULL = {"separators": "comma_dot", "decimals": False, "scale": "full", "units": True}
 
 
 def test_default_and_own_choices(client: TestClient, migrated: Settings) -> None:
     me = client.get("/api/me").json()
     assert me["number_format"] == me["number_default"] == FULL
-    assert me["number_own"] == {"separators": None, "decimals": None, "scale": None}
+    assert me["number_own"] == {"separators": None, "decimals": None, "scale": None, "units": None}
 
     # Only an admin sets the default.
-    swiss = {"separators": "apostrophe_dot", "decimals": False, "scale": "k"}
+    swiss = {"separators": "apostrophe_dot", "decimals": True, "scale": "k", "units": False}
     assert client.put("/api/settings/number-format", json=swiss).status_code == 403
     engine = create_app_engine(migrated)
     system = access.system_user(engine)

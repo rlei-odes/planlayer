@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { number } from './amounts'
 import { api, type SyncPlan, type Version } from './api'
 import { closable, closedCount, fiscalPeriods, fitThrough, monthName, type Grain } from './periods'
 import type { LatestActualsOut } from './schema'
@@ -36,8 +37,8 @@ export function CreatedFrom({ view, sourceName }: { view: SetupView; sourceName:
               {c.key === 'values' && on && (
                 <span className="ink-3">
                   {' '}
-                  · {uplift ? `${uplift > 0 ? '+' : ''}${uplift} %` : 'unchanged'}, {(created.cells ?? 0).toLocaleString('en-US')} cells
-                  {created.hours ? `, ${created.hours.toLocaleString('en-US')} hour cells (no uplift)` : ''}
+                  · {uplift ? `${uplift > 0 ? '+' : ''}${uplift} %` : 'unchanged'}, {number(created.cells ?? 0)} cells
+                  {created.hours ? `, ${number(created.hours)} hour cells (no uplift)` : ''}
                 </span>
               )}
               {!on && <span className="ink-3"> · not carried</span>}
@@ -178,7 +179,7 @@ export function ForecastActuals({
     try {
       const done = await api.syncRun(null, [], years)
       setPlan(null)
-      setNote({ kind: 'ok', text: `Actuals of ${year} refreshed: ${done.actual_rows.toLocaleString('en-US')} rows in ${done.seconds} s. The sheets show them on their next load.` })
+      setNote({ kind: 'ok', text: `Actuals of ${year} refreshed: ${number(done.actual_rows)} rows in ${done.seconds} s. The sheets show them on their next load.` })
       onRefreshed()
     } catch (e) {
       setNote({ kind: 'error', text: e instanceof Error ? e.message : String(e) })
@@ -207,7 +208,7 @@ export function ForecastActuals({
           <>
             <span className="su-hint">
               {counts
-                ? `The source delivers ${counts.delivered.toLocaleString('en-US')} actual cells for ${year}; ${counts.stored.toLocaleString('en-US')} are stored now.`
+                ? `The source delivers ${number(counts.delivered)} actual cells for ${year}; ${number(counts.stored)} are stored now.`
                 : `No actuals for ${year} in the source.`}
               {plan.new.length > 0 && ` New members: ${plan.new.length}.`}
               {plan.changed.length > 0 && ` Changed members: ${plan.changed.length}.`}
@@ -387,7 +388,7 @@ export function NewRoundCard({
                     />
                     %
                     <span className="ink-3">
-                      {source.fiscal_year} → {r.fiscal_year}: 1,000 becomes {(1000 * (1 + uplift / 100)).toLocaleString('en-US', { maximumFractionDigits: 2 })}
+                      {source.fiscal_year} → {r.fiscal_year}: {number(1000)} becomes {number(1000 * (1 + uplift / 100), 2)}
                       {closedCount(periods, r.actuals_through) > 0 && ' · into the open months only'}
                     </span>
                   </label>

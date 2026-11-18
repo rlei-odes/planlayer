@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { number } from './amounts'
 import {
   api,
   type Dataset,
@@ -519,7 +520,7 @@ function Sync() {
     ...(years?.years ?? []).map((y) => ({
       value: String(y.fiscal_year),
       label: String(y.fiscal_year),
-      hint: y.stored ? `${y.stored.toLocaleString('en-US')} cells stored` : 'none stored',
+      hint: y.stored ? `${number(y.stored)} cells stored` : 'none stored',
     })),
   ]
 
@@ -553,7 +554,7 @@ function Sync() {
     setWorking({
       text:
         `Syncing: reading the source again, then writing members` +
-        (cells ? ` and ${cells.toLocaleString('en-US')} actual cells` : '') +
+        (cells ? ` and ${number(cells)} actual cells` : '') +
         ' in one transaction. Nothing changes until it is done.',
       since: Date.now(),
     })
@@ -562,7 +563,7 @@ function Sync() {
       const r = await api.syncRun(entity || null, [...confirmed], plan?.years ?? null)
       setNote({
         kind: 'ok',
-        text: `Synced ${r.members.toLocaleString('en-US')} members and ${r.actual_rows.toLocaleString('en-US')} actual cells in ${Math.max(1, Math.round(r.seconds))} s.`,
+        text: `Synced ${number(r.members)} members and ${number(r.actual_rows)} actual cells in ${Math.max(1, Math.round(r.seconds))} s.`,
       })
       setPlan(null)
     } catch (e) {
@@ -639,10 +640,10 @@ function Sync() {
           <p className="su-hint">Datasets: {plan.datasets.join(', ') || 'none mapped'}</p>
           <div className="su-body">
             <div className="tiles md-tiles">
-              <Tile label="new" value={plan.new.length.toLocaleString('en-US')} tone="add" />
-              <Tile label="changed" value={plan.changed.length.toLocaleString('en-US')} tone="chg" />
-              <Tile label="no longer delivered" value={plan.gone.length.toLocaleString('en-US')} tone="rem" />
-              <Tile label="actual cells" value={(plan.actual_cells ?? 0).toLocaleString('en-US')} tone="same" />
+              <Tile label="new" value={number(plan.new.length)} tone="add" />
+              <Tile label="changed" value={number(plan.changed.length)} tone="chg" />
+              <Tile label="no longer delivered" value={number(plan.gone.length)} tone="rem" />
+              <Tile label="actual cells" value={number(plan.actual_cells ?? 0)} tone="same" />
             </div>
             {plan.actual_cells !== null && <ActualYears plan={plan} />}
             {plan.problems.length > 0 && (
@@ -709,7 +710,7 @@ function Sync() {
 /** Actual cells per fiscal year of the window: stored now and delivered, with years the run would empty. */
 function ActualYears({ plan }: { plan: SyncPlan }) {
   const emptied = plan.actual_years.filter((y) => y.stored > 0 && y.delivered === 0)
-  const fmt = (n: number) => n.toLocaleString('en-US')
+  const fmt = (n: number) => number(n)
   return (
     <div className="md-gap">
       <p className="md-window">

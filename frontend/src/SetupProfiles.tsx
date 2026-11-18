@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { number } from './amounts'
 import { Bars } from './PlannerPreview'
 import Select from './Select'
 import type { Profile } from './setupTypes'
@@ -203,7 +204,7 @@ export function Profiles({
               <span className="su-row">
                 <Bars values={numbers.map((n) => (Number.isFinite(n) && n > 0 ? n : 0))} height={22} />
                 <span className={`su-sum ${enteredAs === 'percent' ? (Math.abs(total - 100) < 1e-9 ? 'good' : 'bad') : ''}`}>
-                  sum {Number.isFinite(total) ? total.toLocaleString('en-US', { maximumFractionDigits: 4 }) : '–'}
+                  sum {Number.isFinite(total) ? number(total, 4) : '–'}
                   {enteredAs === 'percent' && ' of 100'}
                 </span>
               </span>

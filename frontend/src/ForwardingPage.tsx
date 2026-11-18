@@ -1,5 +1,5 @@
 import { type ClipboardEvent, type KeyboardEvent, useCallback, useEffect, useRef, useState } from 'react'
-import { format } from './amounts'
+import { detail, display, format, number as shownNumber } from './amounts'
 import { api, type Forwarding, type ForwardingIn, type ForwardingPage as Page } from './api'
 import PageHeader from './PageHeader'
 import Select, { type Option } from './Select'
@@ -137,10 +137,10 @@ function value(raw: string): number {
   return Number.isFinite(n) ? n : 0
 }
 function money(n: number): string {
-  return format(n.toFixed(2))
+  return detail(n.toFixed(2))
 }
 function pct(n: number): string {
-  return `${n.toLocaleString('en-US', { maximumFractionDigits: 2 })} %`
+  return `${shownNumber(n, 2)} %`
 }
 
 /** What each receiver gets in the year, as far as the page can tell before saving. */
@@ -280,7 +280,7 @@ export default function ForwardingPage({ version }: { version: string }) {
                             : 'portions'}
                     </td>
                     <td className="num">{f.receivers.length}</td>
-                    <td className="num">{format(f.passed_on) || '–'}</td>
+                    <td className="num">{display(f.passed_on) || '–'}</td>
                     <td className="ink-3">
                       {f.charge_account.code} / {f.credit_account.code}
                     </td>
@@ -335,11 +335,11 @@ export default function ForwardingPage({ version }: { version: string }) {
                       <span className="code">{s.cost_center_code}</span>
                       {s.cost_center_name}
                     </td>
-                    <td className="num">{format(s.costs) || '–'}</td>
-                    <td className="num">{format(s.other_credits) || '–'}</td>
-                    <td className="num">{format(s.passed_on) || '–'}</td>
+                    <td className="num">{display(s.costs) || '–'}</td>
+                    <td className="num">{display(s.other_credits) || '–'}</td>
+                    <td className="num">{display(s.passed_on) || '–'}</td>
                     <td className={`num${s.remaining && s.remaining.startsWith('-') ? ' fw-over' : ''}`}>
-                      {format(s.remaining) || '–'}
+                      {display(s.remaining) || '–'}
                     </td>
                   </tr>
                 ))}
@@ -591,7 +591,7 @@ function Editor(p: {
                     {share !== null && <td className="num ink-2">{pct(share)}</td>}
                     <td className="num">
                       {unchanged && stored.year !== null && saved?.method === d.method
-                        ? format(stored.year)
+                        ? detail(stored.year)
                         : preview[i] === null
                           ? '–'
                           : `≈ ${money(preview[i] ?? 0)}`}
@@ -629,7 +629,7 @@ function Editor(p: {
                 <tr>
                   <td>Total</td>
                   <td className={`num${over ? ' fw-over' : ''}`}>
-                    {d.method === 'rate' ? `${total.toLocaleString('en-US')} ${d.unit}` : d.shares === 'percent' ? pct(total) : total.toLocaleString('en-US')}
+                    {d.method === 'rate' ? `${shownNumber(total, 4)} ${d.unit}` : d.shares === 'percent' ? pct(total) : shownNumber(total, 4)}
                   </td>
                   {d.method !== 'rate' && (
                     <td className="num ink-2">
@@ -637,7 +637,7 @@ function Editor(p: {
                     </td>
                   )}
                   <td className="num">
-                    {unchanged ? format(saved.passed_on) || '–' : passedTotal === null ? '–' : `≈ ${money(passedTotal)}`}
+                    {unchanged ? detail(saved.passed_on) || '–' : passedTotal === null ? '–' : `≈ ${money(passedTotal)}`}
                   </td>
                   <td colSpan={2} />
                 </tr>

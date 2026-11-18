@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { format } from './amounts'
+import { detail, number } from './amounts'
 import type { Version } from './api'
 import PageHeader from './PageHeader'
 import type * as S from './schema'
@@ -14,7 +14,7 @@ type Preview = S.PublishPreviewOut
 type Run = S.PublishRunOut
 
 const MONTH = new Intl.DateTimeFormat('en', { month: 'short', year: 'numeric', timeZone: 'UTC' })
-const amount = (v: string | null) => (v === null ? '–' : format(v))
+const amount = (v: string | null) => (v === null ? '–' : detail(v))
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, { headers: { 'Content-Type': 'application/json' }, ...init })
@@ -186,10 +186,10 @@ export default function PublishPage({ round }: { round: Version }) {
           {preview && (
             <>
               <div className="tiles pb-tiles">
-                <Tile label="added" value={preview.added.toLocaleString('en-US')} tone="add" />
-                <Tile label="changed" value={preview.changed.toLocaleString('en-US')} tone="chg" />
-                <Tile label="removed" value={preview.removed.toLocaleString('en-US')} tone="rem" />
-                <Tile label="unchanged" value={preview.unchanged.toLocaleString('en-US')} tone="same" />
+                <Tile label="added" value={number(preview.added)} tone="add" />
+                <Tile label="changed" value={number(preview.changed)} tone="chg" />
+                <Tile label="removed" value={number(preview.removed)} tone="rem" />
+                <Tile label="unchanged" value={number(preview.unchanged)} tone="same" />
               </div>
               <div className="pv-notes">
                 {nothing && <div className="su-note ok">The output already holds exactly these rows. Nothing to publish.</div>}
@@ -197,12 +197,12 @@ export default function PublishPage({ round }: { round: Version }) {
                   <div className="su-hint">
                     With them:{' '}
                     {[
-                      preview.hours_rows > 0 && `${preview.hours_rows.toLocaleString('en-US')} rows of planned hours`,
+                      preview.hours_rows > 0 && `${number(preview.hours_rows)} rows of planned hours`,
                       preview.workforce_rows > 0 &&
-                        `${preview.workforce_rows.toLocaleString('en-US')} rows of FTE and headcount (no names)`,
+                        `${number(preview.workforce_rows)} rows of FTE and headcount (no names)`,
                       preview.capex_rows > 0 &&
-                        `${preview.capex_rows.toLocaleString('en-US')} investments${preview.capex_changed ? ' (changed)' : ''}`,
-                      preview.cash_out_rows > 0 && `${preview.cash_out_rows.toLocaleString('en-US')} rows of cash out`,
+                        `${number(preview.capex_rows)} investments${preview.capex_changed ? ' (changed)' : ''}`,
+                      preview.cash_out_rows > 0 && `${number(preview.cash_out_rows)} rows of cash out`,
                     ]
                       .filter(Boolean)
                       .join(' · ')}

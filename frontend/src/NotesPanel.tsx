@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { createPortal } from 'react-dom'
-import { format, parse, sum } from './amounts'
+import { detail, format, parse, sum } from './amounts'
 import { api, type LineNotes, type NoteEntry, type NoteLine, type NotepadRow, type Person, type Thread } from './api'
 import { initials } from './names'
 import Select from './Select'
@@ -494,7 +494,7 @@ function NotepadView({
                     onKeyDown={onEnter(i)}
                   />
                 ) : (
-                  format(r.amount)
+                  detail(r.amount)
                 )}
               </td>
               {editing && (
@@ -515,7 +515,7 @@ function NotepadView({
         <tfoot>
           <tr>
             <td>Total</td>
-            <td className="num">{editing ? format(total ?? '0') : format(pad?.total ?? null)}</td>
+            <td className="num">{editing ? format(total ?? '0') : detail(pad?.total ?? null)}</td>
             {editing && <td />}
           </tr>
         </tfoot>

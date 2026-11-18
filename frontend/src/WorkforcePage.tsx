@@ -1,7 +1,7 @@
 import { RevoGrid } from '@revolist/react-datagrid'
 import type { HyperFunc, VNode } from '@revolist/revogrid'
 import { useCallback, useEffect, useEffectEvent, useMemo, useState } from 'react'
-import { format, parse } from './amounts'
+import { format, numberFormat, parse, SEPARATORS } from './amounts'
 import {
   api,
   ConflictError,
@@ -51,8 +51,10 @@ const last = (xs: (string | null)[]) => xs[xs.length - 1] ?? null
 /** Headcount reads as whole heads where it is whole; FTE keeps two decimals. */
 function shownValue(value: string | null, measure: WorkforceRow['measure']): string {
   if (value === null) return ''
+  // Exact in the user's separators, never scaled or rounded: FTE and headcount aren't amounts.
   const text = format(value)
-  return measure === 'headcount' && text.endsWith('.00') ? text.slice(0, -3) : text
+  const zero = `${SEPARATORS[numberFormat().separators].decimal}00`
+  return measure === 'headcount' && text.endsWith(zero) ? text.slice(0, -3) : text
 }
 
 function editable(row: Shown | undefined, prop: string, layout: Layout): boolean {

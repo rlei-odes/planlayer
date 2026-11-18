@@ -70,8 +70,9 @@ installation = Table(
     Column("pay_from_source", Boolean, nullable=False, server_default="false"),
     # How amounts are shown and typed, unless a user overrides it (planlayer.number_format).
     Column("number_separators", Text, nullable=False, server_default="comma_dot"),
-    Column("number_decimals", Boolean, nullable=False, server_default="true"),
+    Column("number_decimals", Boolean, nullable=False, server_default="false"),
     Column("number_scale", Text, nullable=False, server_default="full"),
+    Column("number_units", Boolean, nullable=False, server_default="true"),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     CheckConstraint("id = 1", name="single_row"),
     CheckConstraint("fiscal_year_start_month BETWEEN 1 AND 12", name="fiscal_month"),
@@ -388,6 +389,7 @@ app_user = Table(
     Column("number_separators", Text),
     Column("number_decimals", Boolean),
     Column("number_scale", Text),
+    Column("number_units", Boolean),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     CheckConstraint(NUMBER_SEPARATORS.format("number_separators"), name="number_separators"),
     CheckConstraint(NUMBER_SCALE.format("number_scale"), name="number_scale"),

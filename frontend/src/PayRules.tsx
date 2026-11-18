@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { format, parse } from './amounts'
+import { format, number, parse } from './amounts'
 import { api, type Me, type PayRule, type PayRules as Rules, type PayRulesPage } from './api'
 import Select from './Select'
 import { LIMIT } from './limits'
@@ -29,12 +29,12 @@ function terms(r: PayRule): string {
   switch (r.kind) {
     case 'extra': {
       const n = Number(r.salaries)
-      return `${n} salar${n === 1 ? 'y' : 'ies'} a year (${((n * 100) / 12).toFixed(2)} % of base pay)`
+      return `${n} salar${n === 1 ? 'y' : 'ies'} a year (${number((n * 100) / 12, 2, 2)} % of base pay)`
     }
     case 'raise':
-      return `${Number(r.percent)} % from ${r.starts ? MONTH_YEAR.format(new Date(r.starts)) : '–'}`
+      return `${number(Number(r.percent), 4)} % from ${r.starts ? MONTH_YEAR.format(new Date(r.starts)) : '–'}`
     case 'contribution':
-      return `${Number(r.percent)} %${r.ceiling ? ` up to ${format(r.ceiling)} a month` : ', no ceiling'}`
+      return `${number(Number(r.percent), 4)} %${r.ceiling ? ` up to ${format(r.ceiling)} a month` : ', no ceiling'}`
     case 'award':
       return r.steps
         .map((s) => `${s.years} y: ${s.salaries ? `${Number(s.salaries)} salar${Number(s.salaries) === 1 ? 'y' : 'ies'}` : format(s.amount ?? null)}`)

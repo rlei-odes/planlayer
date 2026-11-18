@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { format, parse, sum } from './amounts'
+import { detail, display, format, parse, sum } from './amounts'
 import { api, STATUS_LABEL, type Me, type PayIn, type PayPage, type PayPosition, type PayUnit } from './api'
 import PageHeader from './PageHeader'
 import PayAccess from './PayAccess'
@@ -24,7 +24,7 @@ function errorText(e: unknown): string {
   return e instanceof Error ? e.message : String(e)
 }
 
-const money = (v: string | null) => (v === null ? '' : format(v))
+const money = (v: string | null) => detail(v)
 
 export default function PersonnelPage({
   version,
@@ -350,7 +350,7 @@ export default function PersonnelPage({
           <div className="fw-card-head">
             <h3>Totals</h3>
             <span className="su-hint">
-              Written to the cost center’s sheet, read only, by the round’s rules · {format(total) || '0.00'} for the year
+              Written to the cost center’s sheet, read only, by the round’s rules · {display(total ?? '0')} for the year
             </span>
           </div>
           {page.accounts.length === 0 ? (
@@ -382,11 +382,11 @@ export default function PersonnelPage({
                       </td>
                       {a.months.map((v, i) => (
                         <td key={i} className={`num${v === null ? ' muted' : ''}`}>
-                          {v === null ? '·' : format(v)}
+                          {v === null ? '·' : display(v)}
                         </td>
                       ))}
                       <td className="num">
-                        <strong>{format(sum(a.months))}</strong>
+                        <strong>{display(sum(a.months))}</strong>
                       </td>
                     </tr>
                   ))}
@@ -657,7 +657,7 @@ function PayDialog({
             ) : (
               <div>
                 <span className="su-eyebrow">HR salary / month</span>
-                <strong>{p.hr_salary ? format(p.hr_salary) : '–'}</strong>
+                <strong>{p.hr_salary ? detail(p.hr_salary) : '–'}</strong>
                 <small>{p.hr_salary ? 'what the person earns today; only HR changes it' : 'none from HR'}</small>
               </div>
             )}

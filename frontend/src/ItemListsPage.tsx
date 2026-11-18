@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { format } from './amounts'
+import { display } from './amounts'
 import { api, type ItemList, type ListSummary } from './api'
 import ItemListEditor from './ItemListEditor'
 import { VISIBILITY } from './itemLists'
@@ -72,7 +72,7 @@ export default function ItemListsPage() {
                       </span>
                     </td>
                     <td className="num">{l.items}</td>
-                    <td className="num">{format(l.total)}</td>
+                    <td className="num">{display(l.total)}</td>
                     <td className="ink-3">
                       {WHEN.format(new Date(l.changed_at))} · {l.changed_by}
                     </td>

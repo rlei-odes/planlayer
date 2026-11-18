@@ -1,8 +1,9 @@
 import { RevoGrid } from '@revolist/react-datagrid'
 import type { HyperFunc, VNode } from '@revolist/revogrid'
 import { useCallback, useEffect, useEffectEvent, useMemo, useState } from 'react'
-import { display, format, numberFormat, parse, sum, toCents, type Scale } from './amounts'
-import { ScaleToggle } from './NumberFormat'
+import { display, format, numberFormat, parse, sum, toCents } from './amounts'
+import { useScale } from './numberContext'
+import { SheetScale } from './NumberFormat'
 import {
   api,
   ConflictError,
@@ -187,8 +188,6 @@ export default function PlanningPage({
   unit: chosen,
   onUnit,
   onWidth,
-  scale,
-  onScale,
   focus,
   onFocused,
 }: {
@@ -198,13 +197,11 @@ export default function PlanningPage({
   onUnit: (code: string) => void
   /** Reports the sheet's width, so the app widens its content area for wide sheets. */
   onWidth: (px: number | null) => void
-  /** How amounts are shown: full, in thousands or in millions (the user's number format). */
-  scale: Scale
-  onScale: (scale: Scale) => void
   /** A line whose notes to open once the sheet is loaded (from Home). */
   focus?: { account: string; thread: number } | null
   onFocused?: () => void
 }) {
+  const { scale } = useScale()
   const [units, setUnits] = useState<PlanningUnit[] | null>(null)
   const unit = units ? pickUnit(units, chosen) : ''
   const [grid, setGrid] = useState<Grid | null>(null)
@@ -269,7 +266,7 @@ export default function PlanningPage({
       }
     // Cells hold the exact amount, which the editor opens with and a copy takes; they show it
     // in the user's scale and cents.
-    const shown = { ...numberFormat(), scale }
+    const shown = numberFormat()
     const exact = scale === 'full' && shown.decimals
     const column = (prop: string, name: string, size: number, headerClass = '', title?: string) => ({
       prop,
@@ -560,7 +557,7 @@ export default function PlanningPage({
         }
         actions={
           <>
-            {grid && accountRows > 0 && <ScaleToggle value={scale} onChange={onScale} />}
+            {grid && accountRows > 0 && <SheetScale />}
             {grid && <span className={`su-pill ${grid.status}`}>{STATUS_LABEL[grid.status]}</span>}
             {grid?.deadline && <span className="su-pill neutral">Due {grid.deadline}</span>}
             {open && accountRows > 0 && (

@@ -1,5 +1,5 @@
 import { Fragment } from 'react'
-import { display, numberFormat } from './amounts'
+import { thousands } from './amounts'
 import type { EntryForm, MemberRow } from './api'
 import { closedCount, quarterly } from './periods'
 import type { Profile, SetupDraft } from './setupTypes'
@@ -11,7 +11,7 @@ import type { Profile, SetupDraft } from './setupTypes'
 
 // Example values in thousands, so the account column, comparisons, plan and all twelve months fit
 // beside the settings, in the user's separators.
-const FMT = { format: (v: number) => display(v.toFixed(2), { ...numberFormat(), scale: 'k' }, false) }
+const FMT = { format: (v: number) => thousands(v.toFixed(2)) }
 const MONTH = new Intl.DateTimeFormat('en', { month: 'short', timeZone: 'UTC' })
 
 type Props = {

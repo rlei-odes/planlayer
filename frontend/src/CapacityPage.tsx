@@ -1,7 +1,9 @@
 import { RevoGrid } from '@revolist/react-datagrid'
 import type { HyperFunc, VNode } from '@revolist/revogrid'
 import { useCallback, useEffect, useEffectEvent, useMemo, useState } from 'react'
-import { format, parse, sum } from './amounts'
+import { display, format, numberFormat, parse, sum } from './amounts'
+import { useScale } from './numberContext'
+import { SheetScale } from './NumberFormat'
 import {
   api,
   ConflictError,
@@ -181,6 +183,7 @@ export default function CapacityPage({
   focus?: { key: string; thread: number } | null
   onFocused?: () => void
 }) {
+  const { scale } = useScale()
   const [units, setUnits] = useState<CapacityUnit[] | null>(null)
   const [planning, setPlanning] = useState<PlanningUnit[]>([])
   const [sheet, setSheet] = useState<CapacitySheet | null>(null)
@@ -241,6 +244,10 @@ export default function CapacityPage({
   const columns = useMemo(() => {
     const periods = sheet?.periods ?? []
     const nComp = sheet?.comparisons.length ?? 0
+    // Cells hold the exact hours, which the editor opens with and a copy takes; they show them in
+    // the user's scale and decimals. The rate stays exact.
+    const shown = numberFormat()
+    const exact = scale === 'full' && shown.decimals
     const column = (prop: string, name: string, size: number, headerClass = '', title?: string) => ({
       prop,
       name,
@@ -250,6 +257,9 @@ export default function CapacityPage({
       cellProperties: ({ rowIndex }: { rowIndex: number }) => ({
         class: [prop === COL_LINE ? 'pl-acc' : 'pl-num', cellKind(sheet?.rows[rowIndex], prop, layout, nComp, typed)].join(' '),
       }),
+      ...(exact || prop === COL_RATE
+        ? {}
+        : { cellTemplate: (_h: unknown, { value }: { value?: unknown }) => display(parse(String(value ?? '')) ?? null, shown) }),
     })
     const yearTitle =
       layout.closed > 0 && periods.length === 12
@@ -270,7 +280,7 @@ export default function CapacityPage({
         column(c.prop, c.label, layout.quarters ? 112 : 92, c.closed ? 'pl-head-act' : ''),
       ),
     ]
-  }, [sheet, profiles, layout, forecast, typed])
+  }, [sheet, profiles, layout, forecast, typed, scale])
 
   const sheetWidth = columns.reduce((n, c) => n + c.size, 0) + 2 + SCROLLBAR
   const staffTab = tab === 'workforce' && units?.find((u) => u.code === unit)?.staff_hours === true
@@ -285,7 +295,7 @@ export default function CapacityPage({
       (sheet?.rows ?? []).map((row) => {
         const out: GridRow = {
           [COL_LINE]: row.work_center_name ?? row.activity_type_name,
-          [COL_RATE]: row.rate ?? '',
+          [COL_RATE]: row.rate === null ? '' : format(row.rate),
           [COL_FY]: format(sum(row.plan.map((c) => c.value))),
         }
         row.comparisons.forEach((values, i) => (out[comparisonProp(i)] = format(sum(values))))
@@ -554,6 +564,7 @@ export default function CapacityPage({
         tabs={tabs}
         actions={
           <>
+            {sheet && !staffTab && <SheetScale />}
             {current && <span className={`su-pill ${current.status}`}>{STATUS_LABEL[current.status]}</span>}
             {sheet?.deadline && <span className="su-pill neutral">Due {sheet.deadline}</span>}
             {open && !staffTab && (

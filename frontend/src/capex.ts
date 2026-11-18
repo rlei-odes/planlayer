@@ -49,10 +49,3 @@ export function scheduleState(i: CapexItem): 'none' | 'part' | 'full' | null {
   if (scheduled === 0n) return 'none'
   return scheduled >= toCents(i.amount) ? 'full' : 'part'
 }
-
-/** Amounts rounded to thousands for overviews: "1,234k". */
-export function thousands(value: string): string {
-  const k = Number(toCents(value) / 100n) / 1000
-  if (k === 0) return '–'
-  return `${Math.round(k).toLocaleString('en')}k`
-}

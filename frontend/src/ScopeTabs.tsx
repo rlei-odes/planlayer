@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { assign, filterTree, inSet, setOf, thousands, type AccountSet, type ScopeRow } from './scope'
+import { assign, filterTree, inSet, setOf, type AccountSet, type ScopeRow } from './scope'
+import { thousands } from './amounts'
 import Select from './Select'
 import type { SetupDraft } from './setupTypes'
 import { LIMIT } from './limits'

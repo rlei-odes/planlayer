@@ -757,12 +757,14 @@ export type NumberFormatIO = {
   separators: "comma_dot" | "dot_comma" | "apostrophe_dot" | "space_comma"
   decimals: boolean
   scale: "full" | "k" | "M"
+  units: boolean
 }
 
 export type NumberOverrideIO = {
   separators?: "comma_dot" | "dot_comma" | "apostrophe_dot" | "space_comma" | null
   decimals?: boolean | null
   scale?: "full" | "k" | "M" | null
+  units?: boolean | null
 }
 
 export type OverviewOut = {

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { format, sum } from './amounts'
+import { detail, display, sum } from './amounts'
 import { api, type Capex, type CapexChange, type CapexItem, type CapexNew, type CapexStatus, type Me } from './api'
 import { STATUS_TEXT } from './capex'
 import CapexCashOut from './CapexCashOut'
@@ -197,8 +197,8 @@ export default function CapexPage({
           <>
             {view.on ? (
               <>
-                {lines.length} investments · {format(planned) || '0.00'} planned · {format(confirmed) || '0.00'} confirmed
-                {view.settings.project_threshold && ` · large project from ${format(view.settings.project_threshold)}`}
+                {lines.length} investments · {display(planned ?? '0')} planned · {display(confirmed ?? '0')} confirmed
+                {view.settings.project_threshold && ` · large project from ${detail(view.settings.project_threshold)}`}
               </>
             ) : (
               'Not planned in this round'

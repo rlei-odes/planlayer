@@ -1,7 +1,8 @@
 import { Fragment, useEffect, useState } from 'react'
-import { format, fromCents, toCents } from './amounts'
+import { display, fromCents, numberFormat, toCents } from './amounts'
 import { api, type CapexOverview as Overview, type CapexSums } from './api'
-import { monthLabel, thousands } from './capex'
+import { monthLabel } from './capex'
+import { SheetScale } from './NumberFormat'
 import Tile from './Tile'
 
 // The overview of a round's investments (ADR 0028): amounts by priority and confirmation, per
@@ -9,7 +10,6 @@ import Tile from './Tile'
 // what the user reads: an approver sees their area, a controller or the CFO the whole round.
 
 type By = 'area' | 'type'
-type Scale = 'full' | 'k'
 
 const PRIORITIES = [1, 2, 3] as const
 
@@ -78,7 +78,6 @@ export default function CapexOverview({ version, onWaiting }: { version: string;
   const [o, setO] = useState<Overview | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [by, setBy] = useState<By>('area')
-  const [scale, setScale] = useState<Scale>('k')
   // Nodes whose rows below are hidden; by default the areas show down to departments.
   const [closed, setClosed] = useState<Set<string> | null>(null)
 
@@ -94,7 +93,7 @@ export default function CapexOverview({ version, onWaiting }: { version: string;
 
   if (error) return <div className="su-note error">{error}</div>
   if (!o || !closed) return null
-  const show = scale === 'k' ? thousands : (v: string) => (toCents(v) === 0n ? '–' : format(v))
+  const show = (v: string) => (toCents(v) === 0n ? '–' : display(v, numberFormat()))
   const t = totals(o.total)
 
   // An area row shows while no node above it is closed.
@@ -120,10 +119,10 @@ export default function CapexOverview({ version, onWaiting }: { version: string;
   return (
     <div className="cx-overview">
       <div className="tiles cx-tiles">
-        <Tile label="Planned" value={format(t.total)} hint={`${o.total.count} investments, declined left out`} />
-        <Tile label="Confirmed" value={format(t.confirmed)} tone="ok" />
-        <Tile label="Open" value={format(t.open)} />
-        <Tile label="Declined" value={format(t.declined)} tone="same" />
+        <Tile label="Planned" value={display(t.total)} hint={`${o.total.count} investments, declined left out`} />
+        <Tile label="Confirmed" value={display(t.confirmed)} tone="ok" />
+        <Tile label="Open" value={display(t.open)} />
+        <Tile label="Declined" value={display(t.declined)} tone="same" />
         {o.waiting > 0 && <Tile label="Waiting for you" value={o.waiting} hint="open investments you confirm" tone="waiting" onClick={onWaiting} />}
       </div>
 
@@ -137,18 +136,7 @@ export default function CapexOverview({ version, onWaiting }: { version: string;
               </button>
             ))}
           </div>
-          <div className="seg" role="group" aria-label="Amounts">
-            {(
-              [
-                ['k', 'Thousands'],
-                ['full', 'Full'],
-              ] as const
-            ).map(([value, label]) => (
-              <button key={value} type="button" aria-pressed={scale === value} onClick={() => setScale(value)}>
-                {label}
-              </button>
-            ))}
-          </div>
+          <SheetScale />
         </div>
         <div className="tbl-scroll">
           <table className="tbl cx-sums">

@@ -22,6 +22,7 @@ class NumberFormat:
     separators: Separators
     decimals: bool  # cents shown on full amounts; thousands and millions round on their own
     scale: Scale
+    units: bool  # the k or M after a value in thousands or millions
 
 
 @dataclass(frozen=True)
@@ -31,6 +32,7 @@ class Override:
     separators: Separators | None = None
     decimals: bool | None = None
     scale: Scale | None = None
+    units: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -42,30 +44,35 @@ class UserFormat:
 
 def default(engine: Engine, user: User) -> NumberFormat:
     with unit_of_work(engine, user) as conn:
-        separators, decimals, scale = conn.execute(
+        separators, decimals, scale, units = conn.execute(
             select(
                 installation.c.number_separators,
                 installation.c.number_decimals,
                 installation.c.number_scale,
+                installation.c.number_units,
             )
         ).one()
-    return NumberFormat(cast(Separators, separators), decimals, cast(Scale, scale))
+    return NumberFormat(cast(Separators, separators), decimals, cast(Scale, scale), units)
 
 
 def of_user(engine: Engine, user: User) -> UserFormat:
     base = default(engine, user)
     with unit_of_work(engine, user) as conn:
-        separators, decimals, scale = conn.execute(
+        separators, decimals, scale, units = conn.execute(
             select(
-                app_user.c.number_separators, app_user.c.number_decimals, app_user.c.number_scale
+                app_user.c.number_separators,
+                app_user.c.number_decimals,
+                app_user.c.number_scale,
+                app_user.c.number_units,
             ).where(app_user.c.user_id == user.user_id)
         ).one()
-    own = Override(cast(Separators | None, separators), decimals, cast(Scale | None, scale))
+    own = Override(cast(Separators | None, separators), decimals, cast(Scale | None, scale), units)
     return UserFormat(
         NumberFormat(
             own.separators or base.separators,
             base.decimals if own.decimals is None else own.decimals,
             own.scale or base.scale,
+            base.units if own.units is None else own.units,
         ),
         base,
         own,
@@ -80,6 +87,7 @@ def set_default(engine: Engine, user: User, value: NumberFormat) -> None:
                 number_separators=value.separators,
                 number_decimals=value.decimals,
                 number_scale=value.scale,
+                number_units=value.units,
             )
         )
 
@@ -94,5 +102,6 @@ def set_own(engine: Engine, user: User, value: Override) -> None:
                 number_separators=value.separators,
                 number_decimals=value.decimals,
                 number_scale=value.scale,
+                number_units=value.units,
             )
         )
