@@ -30,7 +30,7 @@ type Props = {
 type Resolved = { form: EntryForm; profile: string | null; reference: string | null }
 
 /** The planning sheet's badge: how a line is entered, then what a year total does there. */
-function badge(r: Resolved, fallback: boolean): { full: string; short: string } {
+function badge(r: Resolved, fallback: boolean, quarters: boolean): { full: string; short: string } {
   if (r.form === 'annual') return { full: 'Year only', short: 'Year' }
   const spread =
     fallback || r.form === 'annual_even'
@@ -39,7 +39,7 @@ function badge(r: Resolved, fallback: boolean): { full: string; short: string } 
         ? 'season'
         : (r.reference ?? 'actuals')
   const warn = fallback ? ' ⚠' : ''
-  const entry = r.form === 'monthly' ? ['Monthly', 'M'] : ['Year', 'Y']
+  const entry = r.form === 'monthly' ? (quarters ? ['Quarterly', 'Q'] : ['Monthly', 'M']) : ['Year', 'Y']
   return { full: `${entry[0]} · ${spread}${warn}`, short: `${entry[1]} · ${spread}${warn}` }
 }
 
@@ -302,7 +302,7 @@ export default function PlannerPreview(p: Props) {
   function renderRow(l: Line) {
     const prof = l.r.form === 'annual_profile' ? profileOf(l.r.profile) : undefined
     const ref = l.r.reference ? (p.versionNames[l.r.reference] ?? l.r.reference) : 'last year’s actuals'
-    const { full, short } = badge(l.r, l.fallback)
+    const { full, short } = badge(l.r, l.fallback, quarters)
     const monthlyBasis = l.r.profile
       ? `spreads by the profile ${profileOf(l.r.profile)?.name ?? l.r.profile}`
       : `spreads like ${ref}`

@@ -45,7 +45,7 @@ Planned hours of productive cost centers ([ADR 0016](adr/0016-capacity-in-rounds
 | `amount` | numeric(18,2) | hours |
 | `status`, `origin`, `published_at`, `publish_run_id` | | as in `fact_plan_cost_center`; `actual` rows are a forecast's closed months, the actual hours of the cost centers productive in the round |
 
-Key: `version_code, period, entity_code, cost_center_code, work_center_code, activity_type_code, measure`. The credits that hours × rates give a cost center are in `fact_plan_cost_center`, as amounts on the activity type's account. The file downloads hold the amounts only.
+Key: `version_code, period, entity_code, cost_center_code, work_center_code, activity_type_code, measure`. The credits that hours × rates give a cost center are in `fact_plan_cost_center`, as amounts on the activity type's account. The Publish page downloads it as its own file, as it does `fact_plan_capex` and `fact_plan_cash_out`.
 
 ## `fact_plan_workforce`
 

@@ -41,7 +41,7 @@ The documentation of these objects is published as `docs/output.md` with the fir
 
 ### Files
 
-The same rows, for the same scope, can be downloaded as **CSV** (UTF-8, comma-separated, dot decimal, header row, amounts as plain decimals, blank cells omitted) or **Parquet** (amounts as `decimal(18,2)`). A download writes nothing and records nothing.
+The same rows, for the same scope, can be downloaded as **CSV** (UTF-8, comma-separated, dot decimal, header row, amounts as plain decimals, blank cells omitted) or **Parquet** (amounts as `decimal(18,2)`). Each published table of plan values downloads as its own file with that table's columns, the run's time and id left out: the amounts, planned hours, investments and their cash out. A download writes nothing and records nothing.
 
 ## Reasons
 

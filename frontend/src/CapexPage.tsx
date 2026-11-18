@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { detail, display, sum } from './amounts'
+import { SheetScale } from './NumberFormat'
 import { api, type Capex, type CapexChange, type CapexItem, type CapexNew, type CapexStatus, type Me } from './api'
 import { STATUS_TEXT } from './capex'
 import CapexCashOut from './CapexCashOut'
@@ -274,6 +275,7 @@ export default function CapexPage({
               </label>
             )}
             <span className="cp-grow" />
+            <SheetScale />
             {!locked && writable.length > 0 && (
               <button type="button" className="su-btn" onClick={() => void addProject()}>
                 + Large project

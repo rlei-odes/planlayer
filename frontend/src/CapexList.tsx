@@ -1,5 +1,5 @@
 import { useMemo, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from 'react'
-import { detail, display, format, fromCents, parse, sum, toCents } from './amounts'
+import { detail, display, format, fromCents, numberFormat, parse, sum, toCents } from './amounts'
 import { type Capex, type CapexChange, type CapexItem, type CapexNew } from './api'
 import { monthLabel, parseMonth, scheduleState, STATUS_TEXT } from './capex'
 import { noteMarker } from './lineMarks'
@@ -117,6 +117,7 @@ function CellInput({
   placeholder,
   numeric,
   clearOnCommit,
+  display,
 }: {
   value: string
   onCommit: (raw: string) => void
@@ -128,8 +129,12 @@ function CellInput({
   numeric?: boolean
   /** An add row's field: empty again once its value is taken. */
   clearOnCommit?: boolean
+  /** Shown while the field isn't being edited (an amount in the user's format); editing shows
+   * the exact value. */
+  display?: string
 }) {
   const [text, setText] = useState(value)
+  const [editing, setEditing] = useState(false)
   // A new value from the server replaces what is shown.
   const [shown, setShown] = useState(value)
   if (shown !== value) {
@@ -143,9 +148,11 @@ function CellInput({
       data-row={row}
       aria-label={label}
       placeholder={placeholder}
-      value={text}
+      value={editing || display === undefined || text !== value ? text : display}
       onChange={(e) => setText(e.target.value)}
+      onFocus={() => setEditing(true)}
       onBlur={() => {
+        setEditing(false)
         if (text === value) return
         onCommit(text)
         if (clearOnCommit) setText(value)
@@ -455,11 +462,12 @@ export default function CapexList({
         </td>
         <td className="num">
           {i?.kind === 'project' ? (
-            <span className="cx-sum">{detail(i.amount)}</span>
+            <span className="cx-sum">{display(i.amount, numberFormat())}</span>
           ) : can(row, 'amount') ? (
             <CellInput
               key={i?.row_version}
               value={format(i ? i.amount : (d.amount ?? null))}
+              display={display(i ? i.amount : (d.amount ?? null), numberFormat())}
               col="amount"
               row={rowIndex}
               label={`Amount of ${name}`}
@@ -468,7 +476,7 @@ export default function CapexList({
               onPasteBlock={(b) => paste(rowIndex, 'amount', b)}
             />
           ) : (
-            detail(i?.amount ?? null)
+            display(i?.amount ?? null, numberFormat())
           )}
         </td>
         {cashOut && <td className="cx-center">{i && cashCell(i)}</td>}

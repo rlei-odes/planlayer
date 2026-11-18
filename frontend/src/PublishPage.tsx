@@ -12,6 +12,14 @@ import Tile from './Tile'
 type Scope = S.PublishRunIn['scope']
 type Preview = S.PublishPreviewOut
 type Run = S.PublishRunOut
+type Download = 'amounts' | 'hours' | 'investments' | 'cash_out'
+
+const TABLES: { value: Download; label: string; hint: string }[] = [
+  { value: 'amounts', label: 'Amounts', hint: 'fact_plan_cost_center' },
+  { value: 'hours', label: 'Hours', hint: 'fact_plan_capacity: planned hours' },
+  { value: 'investments', label: 'Investments', hint: 'fact_plan_capex' },
+  { value: 'cash_out', label: 'Cash out', hint: 'fact_plan_cash_out' },
+]
 
 const MONTH = new Intl.DateTimeFormat('en', { month: 'short', year: 'numeric', timeZone: 'UTC' })
 const amount = (v: string | null) => (v === null ? '–' : detail(v))
@@ -28,6 +36,7 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 export default function PublishPage({ round }: { round: Version }) {
   const code = round.code
   const [scope, setScope] = useState<Scope>('approved')
+  const [table, setTable] = useState<Download>('amounts')
   const [preview, setPreview] = useState<Preview | null>(null)
   const [runs, setRuns] = useState<Run[]>([])
   const [busy, setBusy] = useState(false)
@@ -80,7 +89,8 @@ export default function PublishPage({ round }: { round: Version }) {
 
   // Investments change apart from the plan values (ADR 0028).
   const nothing = preview && preview.added + preview.changed + preview.removed === 0 && !preview.capex_changed
-  const file = (fmt: string) => `/api/rounds/${encodeURIComponent(code)}/export.${fmt}?scope=${scope}`
+  const file = (fmt: string) =>
+    `/api/rounds/${encodeURIComponent(code)}/export.${fmt}?scope=${scope}${table === 'amounts' ? '' : `&table=${table}`}`
   return (
     <div className="su">
       <PageHeader eyebrow="Publishing" title={round.name} />
@@ -117,8 +127,15 @@ export default function PublishPage({ round }: { round: Version }) {
             <h3>
               <span className="su-step">2</span> Download
             </h3>
-            <p className="su-hint">The same rows as a file. Writes nothing.</p>
+            <p className="su-hint">The rows of one published table as a file, in the scope above. Writes nothing.</p>
             <div className="su-body su-row">
+              <div className="seg" role="group" aria-label="Table">
+                {TABLES.map((t) => (
+                  <button key={t.value} type="button" aria-pressed={table === t.value} title={t.hint} onClick={() => setTable(t.value)}>
+                    {t.label}
+                  </button>
+                ))}
+              </div>
               <a className="su-btn" href={file('csv')} download>
                 CSV
               </a>

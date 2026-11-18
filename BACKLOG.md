@@ -201,7 +201,7 @@ Mid-size manufacturer of industrial pumps and valves, ~400 employees.
     - [x] The system user writes syncs, so an admin without cost centers can sync; the run records who asked.
     - [x] Members no longer delivered keep their place in the hierarchy and are marked since when.
     - [x] Sources grouped by the module that needs them; "Work center actual hours".
-    - [ ] The Members page shows *no longer delivered* (`missing_since`) next to each member.
+    - [x] The Members page shows *no longer delivered* (`missing_since`) next to each member.
 - [ ] **E-12** Setup pages (admin): one place for the settings a new installation needs before planning starts. It covers:
   - **Sign rules (T-7):** how the source delivers signs (natural or ledger) and how the export target expects them. The flip is defined per account type or account group, with per-account overrides. A preview shows sample accounts with their raw source value, the stored value and the exported value.
     - [x] Export side: the *Settings* page (admin) chooses the convention of `amount_signed`, by account role ([ADR 0019](docs/adr/0019-published-signs.md)).
@@ -227,13 +227,13 @@ Mid-size manufacturer of industrial pumps and valves, ~400 employees.
     - [x] *Refresh actuals* on a forecast's setup: the actuals sync for its fiscal year, with the sync's preview.
     - [x] The capacity sheet follows the round ([ADR 0016](docs/adr/0016-capacity-in-rounds-and-forecasts.md)): prepared by the controller in setup, actual hours in a forecast's closed months, a full-year total, quarters, the round's comparison columns.
     - [x] A walkthrough of `docs/scenarios/forecast-2026.md` with the user (quarter run; publish not yet walked).
-    - [ ] Setup page redesign: in quarter grain, the entry-form defaults in step 3 speak of months ("Monthly" form, "planners type each month"): grey them out or present them as quarters.
+    - [x] In quarter grain, the entry forms speak of quarters: "Quarterly" for the monthly form, in step 3, the setup preview and the sheet's badges (ADR 0015).
     - [x] Account sets per round, assigned to cost center nodes or cost centers (nearest wins): sheets list the set's accounts, "add account" offers only them, the store refuses values outside ([ADR 0014](docs/adr/0014-preparing-a-round.md)).
     - [x] The setup page's *Cost centers* tab: planned, account set, productive (by work centers, by workforce), prior-year actuals and the source round's plan per cost center; new and no longer delivered marked.
     - [x] New rounds carry over by a checklist from a chosen round (default: the latest of the same kind), plan values optionally with an uplift, as one change batch; controllers prepare a round in setup without moving its workflow status.
     - [ ] Uplift per account group (today one percentage for all carried values).
     - [x] Carry planned hours (capacity) with the values: no uplift, credits recomputed from the new round's rates (ADR 0016).
-    - [ ] Planned hours in the file downloads of the Publish page (today: amounts only; hours go to `fact_plan_capacity`).
+    - [x] Planned hours in the file downloads of the Publish page: one download per published table (amounts, hours, investments, cash out), each with the table's columns.
     - [x] A line whose reference has no values reads "even" with no warning; its tooltip says why.
     - [x] Creating a round is a step of its own; the round then shows how it was created (from which round, by whom, what it carried, plan values with uplift and cell count).
     - [x] A note per comparison column, shown to planners as the column's tooltip; actuals columns say how far their actuals go when the year is partial.
@@ -278,12 +278,12 @@ Mid-size manufacturer of industrial pumps and valves, ~400 employees.
     - [x] Responsibilities and Users pages: planner overrides, deputies and approvers as chips; roles as switches.
     - [x] Number format for amounts (`planlayer/number_format.py`, `frontend/src/amounts.ts`): separators (1,234.56 / 1.234,56 / 1'234.56 / 1 234,56), cents shown or hidden, a scale of full, thousands or millions, and the k or M shown or hidden. The admin sets the installation's default on the settings page (full amounts, cents hidden); each user overrides any part of it from the top bar. Display only: a typed value is the full amount whatever the scale, and values are stored and published exactly (T-12).
         - Thousands and millions show three significant digits and drop trailing zeros (10.5k, 123k, 1.23M) without rounding away digits of the whole part (1,235k).
-        - Sheets and overviews follow the whole format and carry the 1 · k · M toggle: cost center planning, capacity (hours too), the investments overview. The k or M is hidden only there, where the toggle says the scale; elsewhere it shows.
-        - Totals and summaries (investments, forwarding, personnel costs, item lists) follow the scale and cents; single amounts in details (an investment, a salary, a published row, a note's calculation) show full, with cents as chosen.
+        - Sheets and overviews follow the whole format and carry the 1 · k · M toggle: cost center planning, capacity (hours too), the investments list and overview. A field shows the amount in that format until it is edited, then the exact value. The k or M is hidden only there, where the toggle says the scale; elsewhere it shows.
+        - Totals and summaries (investments, forwarding, personnel costs, item lists) follow the scale and cents; single amounts in details (a salary, a published row, a note's calculation) show full, with cents as chosen.
         - Exact, in the user's separators: what a field or a grid cell's editor holds and a copy takes, rates and thresholds, and dialogs where values are typed (an item list, a cash-out schedule, a note's calculation being edited), where cents decide whether a sum matches.
         - Not amounts, never scaled and with their own decimals, in the user's separators: FTE and headcount, percentages (D-05), factors, counts.
         - Typing and paste follow the separators: a lone `1.234` is 1,234 to a user of 1.234,56 and refused to a user of 1,234.56; a value with both separators reads the later one as the decimal.
-        - [ ] The forwarding page's own reading of typed quantities and rates (`ForwardingPage.tsx`, `number`) by the user's separators.
+        - [x] Typed quantities and rates (the forwarding page) are read by the user's separators too (`parseNumber`), and its fields start in them.
     - [ ] Real users' walkthroughs (R-4).
 - [ ] **E-11** Self-host packaging: container image on GHCR, the DBA install script and checklist (D-25), upgrade/migration procedure, the scheduled backup and restore (D-30), install docs.
     - [ ] A guided installation in the app for the admin: connections, the first sync, the first users and roles (an HR user among them), and the encryption key for pay (W-18), generated in the app and shown once for HR to keep in a password manager, with a check that it was saved before going on.
@@ -331,7 +331,7 @@ German terms in parentheses, as controllers know them.
   - [ ] Depreciation from investments into the cost center plans: by type's useful life from the start month, with a per-investment override, onto a depreciation account per type.
   - [ ] Existing assets and their remaining depreciation (a source dataset from the asset register, or entered by finance), so the depreciation plan is complete.
   - [x] Publishing investments and their cash out to `planlayer_out` (`fact_plan_capex`, `fact_plan_cash_out`, `dim_capex_type`): confirmed ones with the scope "approved", all with "whole round"; compared in the preview ([docs/output.md](docs/output.md)).
-  - [ ] Investments and cash out in the file downloads of the Publish page.
+  - [x] Investments and cash out in the file downloads of the Publish page.
   - [ ] Who confirms: today controllers and any approver above the cost center, except one who plans it. Decide between the nearest approver only, steps (the manager, then the CFO above an amount), and how a confirmation by one approver shows to the others.
   - [ ] Carrying investments into a new round: multi-year projects and what wasn't started, with the checklist (ADR 0014).
   - [ ] Capex budgets per area: an envelope per hierarchy node, set by the controller, and plan against envelope in the overview.

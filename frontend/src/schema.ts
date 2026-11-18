@@ -640,6 +640,7 @@ export type MemberOut = {
   cost_center_code: string | null
   account_code: string | null
   variable_account_code: string | null
+  missing_since?: string | null
   external?: boolean | null
 }
 

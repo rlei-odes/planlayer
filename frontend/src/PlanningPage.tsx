@@ -82,14 +82,14 @@ function spreadChoosable(row: Row): boolean {
 
 /** How the line is entered, then what a year total typed there does: "Monthly · actuals". A
  * line whose reference has no values spreads evenly, and the badge says so (with ⚠). */
-function badgeLabel(row: Row): string {
+function badgeLabel(row: Row, quarters: boolean): string {
   if (row.not_planned) return 'Not planned'
   if (row.capacity) return 'From capacity'
   if (row.personnel) return 'Personnel costs'
   if (row.forwarded) return row.forwarded.side === 'credit' ? 'Passed on' : 'Charged'
   if (!row.entry_form) return ''
   if (row.entry_form === 'annual') return 'Year only'
-  const entry = row.entry_form === 'monthly' ? 'Monthly' : 'Year'
+  const entry = row.entry_form === 'monthly' ? (quarters ? 'Quarterly' : 'Monthly') : 'Year'
   return `${entry} · ${spreadWord(row)}`
 }
 
@@ -756,7 +756,7 @@ function accountCell(h: H, row: Row | undefined, profiles: ProfileRef[], quarter
   const form = row.entry_form
   // A line meant to follow a reference that has none spreads evenly and says so: "even". Its
   // tooltip tells why; a warning would contradict the badge.
-  const label = badgeLabel(row)
+  const label = badgeLabel(row, quarters)
   const classes = row.not_planned
     ? 'pv-form off'
     : row.capacity || row.forwarded?.side === 'credit'

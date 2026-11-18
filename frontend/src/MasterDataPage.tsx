@@ -1019,6 +1019,11 @@ function Members() {
                         {r.origin === 'manual' ? 'Entered here' : 'Source'}
                       </span>
                       {(r.renamed || r.moved) && <span className="su-pill in_progress">Changed here</span>}
+                      {r.missing_since && (
+                        <span className="su-pill overdue" title={`The source hasn’t delivered it since the sync of ${DAY.format(new Date(r.missing_since))}`}>
+                          No longer delivered
+                        </span>
+                      )}
                     </span>
                   </td>
                   {tree && (

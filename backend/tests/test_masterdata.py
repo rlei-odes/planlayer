@@ -354,6 +354,8 @@ def test_a_member_no_longer_delivered_keeps_its_place(
     sync.run(engine, source, system(engine))
     m = members(client, "cost_centers")["CC2"]
     assert (m["parent"], m["origin"]) == ("DEP", "source")
+    assert m["missing_since"] is not None  # the Members page says so
+    assert members(client, "cost_centers")["CC1"]["missing_since"] is None
     status = {r["code"]: r for r in client.get("/api/versions/B2026/overview").json()["rows"]}
     assert status["CC2"]["depth"] == 2  # still under DEP
 

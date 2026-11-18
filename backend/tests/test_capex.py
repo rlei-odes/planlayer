@@ -495,6 +495,16 @@ def test_publishing_writes_investments_and_cash_out(migrated: Settings, on: Test
                 (date(2027, 1, 1), Decimal("400.00")),
             ]
             assert {t.code for t in conn.execute(select(dim_capex_type))} == {"MACH", "IT"}
+            # The downloads hold the same investments and cash out.
+            files = {
+                t: on.get(f"/api/rounds/{R}/export.csv", params={"scope": "all", "table": t})
+                for t in ("investments", "cash_out")
+            }
+            assert {t: f.text.count("\n") - 1 for t, f in files.items()} == {
+                "investments": 2,
+                "cash_out": 2,
+            }
+            assert "Lathe" in files["investments"].text and "confirmed" in files["investments"].text
             # As published: nothing to publish; a change since the preview refuses the run.
             p = on.get(f"/api/rounds/{R}/publish/preview", params={"scope": "all"}).json()
             assert p["capex_changed"] is False

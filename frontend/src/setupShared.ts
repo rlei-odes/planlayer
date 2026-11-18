@@ -5,13 +5,34 @@ import type { NewRound, Profile, Scope, SetupDraft, SetupView } from './setupTyp
 
 // Shared by the setup page and its parts (E-03): the setup API, entry forms, account options.
 
-export const FORMS: { form: EntryForm; label: string; explain: string }[] = [
+type Form = { form: EntryForm; label: string; explain: string }
+
+const MONTH_FORMS: Form[] = [
   { form: 'monthly', label: 'Monthly', explain: 'Planners type each month. A year total they type spreads by last year’s actuals.' },
   { form: 'annual', label: 'Year only', explain: 'Planners type only the year total; months are not shown and are stored evenly.' },
   { form: 'annual_even', label: 'Year · even', explain: 'Planners type the year total; the months show it spread evenly.' },
   { form: 'annual_profile', label: 'Year · season', explain: 'Planners type the year total; it spreads by a seasonality profile.' },
   { form: 'annual_reference', label: 'Year · reference', explain: 'Planners type the year total; it spreads like last year’s actuals or another version.' },
 ]
+
+// A round planned by quarter (ADR 0015): a monthly line takes quarter totals, each spread over
+// its months; the year forms show their quarters read only. Months are stored either way.
+const QUARTER_FORMS: Form[] = [
+  { form: 'monthly', label: 'Quarterly', explain: 'Planners type each quarter; it spreads over its months by last year’s actuals, as does a year total they type.' },
+  { form: 'annual', label: 'Year only', explain: 'Planners type only the year total; quarters are not shown and the months are stored evenly.' },
+  { form: 'annual_even', label: 'Year · even', explain: 'Planners type the year total; the quarters show it spread evenly.' },
+  { form: 'annual_profile', label: 'Year · season', explain: 'Planners type the year total; it spreads by a seasonality profile, and the quarters show it.' },
+  { form: 'annual_reference', label: 'Year · reference', explain: 'Planners type the year total; it spreads like last year’s actuals or another version, and the quarters show it.' },
+]
+
+/** The entry forms as a round's grain presents them. */
+export function formsFor(grain: SetupDraft['grain']): Form[] {
+  return grain === 'quarter' ? QUARTER_FORMS : MONTH_FORMS
+}
+
+export function formOptions(grain: SetupDraft['grain']): Option<EntryForm>[] {
+  return formsFor(grain).map((f) => ({ value: f.form, label: f.label }))
+}
 
 export const PROFILE_FORMS: EntryForm[] = ['monthly', 'annual_profile']
 
@@ -60,4 +81,3 @@ export function accountOptions(accounts: MemberRow[], groupsToo: boolean): Optio
     }))
 }
 
-export const FORM_OPTIONS: Option<EntryForm>[] = FORMS.map((f) => ({ value: f.form, label: f.label }))

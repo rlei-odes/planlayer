@@ -26,7 +26,23 @@ from typing import Literal
 
 import pyarrow as pa
 import pyarrow.parquet as pq
-from sqlalchemy import Connection, Engine, delete, func, insert, select, update
+from sqlalchemy import (
+    BigInteger,
+    Column,
+    Connection,
+    Date,
+    DateTime,
+    Engine,
+    Integer,
+    Numeric,
+    SmallInteger,
+    Table,
+    delete,
+    func,
+    insert,
+    select,
+    update,
+)
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from planlayer.access import User
@@ -348,6 +364,26 @@ def hour_rows(engine: Engine, user: User, r: RoundRef, scope: Scope) -> list[Hou
             ]
     rows.sort(key=lambda row: row.key)
     return rows
+
+
+def _hour_records(r: RoundRef, hours: list[HourRow]) -> list[dict[str, object]]:
+    """The rows of ``fact_plan_capacity`` for the round, without the run's time and id."""
+    return [
+        {
+            "version_code": r.code,
+            "fiscal_year": r.fiscal_year,
+            "period": row.key[0],
+            "entity_code": row.key[1],
+            "cost_center_code": row.key[2],
+            "work_center_code": row.key[3],
+            "activity_type_code": row.key[4],
+            "measure": HOURS_MEASURE,
+            "amount": row.hours,
+            "status": row.status,
+            "origin": row.origin,
+        }
+        for row in hours
+    ]
 
 
 PublishedHours = dict[HourKey, tuple[Decimal, str, str]]
@@ -742,22 +778,8 @@ def run(
             conn.execute(
                 insert(h),
                 [
-                    {
-                        "version_code": r.code,
-                        "fiscal_year": r.fiscal_year,
-                        "period": row.key[0],
-                        "entity_code": row.key[1],
-                        "cost_center_code": row.key[2],
-                        "work_center_code": row.key[3],
-                        "activity_type_code": row.key[4],
-                        "measure": HOURS_MEASURE,
-                        "amount": row.hours,
-                        "status": row.status,
-                        "origin": row.origin,
-                        "published_at": now,
-                        "publish_run_id": run_id,
-                    }
-                    for row in hours
+                    {**record, "published_at": now, "publish_run_id": run_id}
+                    for record in _hour_records(r, hours)
                 ],
             )
         w = fact_plan_workforce
@@ -950,6 +972,86 @@ def parquet_bytes(engine: Engine, user: User, code: str, scope: Scope) -> bytes:
     buffer = io.BytesIO()
     pq.write_table(table, buffer)
     return buffer.getvalue()
+
+
+# A download per published table: the plan amounts (above), planned hours, investments and their
+# cash out, each with its table's columns but the run's time and id.
+Download = Literal["amounts", "hours", "investments", "cash_out"]
+RUN_COLUMNS = ("published_at", "publish_run_id")
+
+
+def _arrow_type(column: Column[object]) -> pa.DataType:
+    match column.type:
+        case Numeric() as n:
+            return pa.decimal128(n.precision or 18, n.scale or 0)
+        case DateTime():
+            return pa.timestamp("us", tz="UTC")
+        case Date():
+            return pa.date32()
+        case BigInteger():
+            return pa.int64()
+        case SmallInteger():
+            return pa.int16()
+        case Integer():
+            return pa.int32()
+        case _:
+            return pa.string()
+
+
+def _text(value: object) -> object:
+    match value:
+        case None:
+            return ""
+        case datetime():
+            return value.astimezone(UTC).isoformat()
+        case date():
+            return value.isoformat()
+        case _:
+            return value
+
+
+def _table_file(
+    table: Table, records: list[dict[str, object]], fmt: Literal["csv", "parquet"]
+) -> bytes:
+    columns = [c for c in table.columns if c.name not in RUN_COLUMNS]
+    if fmt == "csv":
+        buffer = io.StringIO()
+        writer = csv.writer(buffer, lineterminator="\n")
+        writer.writerow([c.name for c in columns])
+        writer.writerows([_text(record[c.name]) for c in columns] for record in records)
+        return buffer.getvalue().encode("utf-8")
+    schema = pa.schema([(c.name, _arrow_type(c)) for c in columns])
+    data = {c.name: [record[c.name] for record in records] for c in columns}
+    out = io.BytesIO()
+    pq.write_table(pa.table(data, schema=schema), out)
+    return out.getvalue()
+
+
+def download(
+    engine: Engine,
+    user: User,
+    code: str,
+    scope: Scope,
+    what: Download,
+    fmt: Literal["csv", "parquet"],
+) -> bytes:
+    """One published table of the round in the scope, as a file; writes nothing."""
+    if what == "amounts":
+        return (
+            csv_bytes(engine, user, code, scope)
+            if fmt == "csv"
+            else parquet_bytes(engine, user, code, scope)
+        )
+    user.require_controller()
+    with unit_of_work(engine, user) as conn:
+        r = get_round(conn, code)
+    if what == "hours":
+        return _table_file(
+            fact_plan_capacity, _hour_records(r, hour_rows(engine, user, r, scope)), fmt
+        )
+    records = _capex_records(r, *capex_rows(engine, user, r, scope))
+    table = fact_plan_capex if what == "investments" else fact_plan_cash_out
+    return _table_file(table, records[table.name], fmt)
 
 
 # --- History and republish ------------------------------------------------------------------------

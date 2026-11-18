@@ -117,19 +117,31 @@ export function number(n: number, maxDecimals = 0, minDecimals = 0): string {
     .replace(/[,.]/g, (c) => (c === ',' ? group : decimal))
 }
 
+/** A stored decimal that isn't an amount (a quantity, a rate) as a field starts with: the user's
+ * separators, trailing zeros dropped ("1500.2500" -> "1,500.25"), so parseNumber reads it back. */
+export function formatNumber(value: string | null): string {
+  if (value === null) return ''
+  const { decimal } = SEPARATORS[current.separators]
+  const negative = value.startsWith('-')
+  const [whole, frac = ''] = value.replace('-', '').split('.')
+  const digits = frac.replace(/0+$/, '')
+  return `${negative ? '-' : ''}${grouped(whole, current)}${digits ? decimal + digits : ''}`
+}
+
 /** Example amounts in a format, for choosing one. */
 export function example(f: NumberFormat): string {
   return ['1234567.89', '10520', '-523.4'].map((v) => display(v, f)).join(' · ')
 }
 
 /**
- * What a planner types or pastes, to a canonical decimal string for the API.
- * Accepts 1234.56, 1,234.56, 1.234,56, 1'234.56, 1 234,56, -12, (12) and currency signs. A lone
- * separator follows the user's format: "1.234" is 1234 to a user of 1.234,56 and 1.234 (refused,
- * more than cents) to a user of 1,234.56; one the format doesn't use is read as before.
- * Returns null for an empty cell and undefined when the text is not a number.
+ * A number as typed or pasted (a quantity, a rate), to a canonical decimal string: any number of
+ * decimals. Accepts 1234.56, 1,234.56, 1.234,56, 1'234.56, 1 234,56, -12, (12) and currency signs.
+ * A lone separator follows the user's format: "1.234" is 1234 to a user of 1.234,56 and 1.234 to
+ * a user of 1,234.56; a comma the format doesn't use is a decimal comma before one or two digits
+ * or after a 0. Thousands never start with 0: "0.125" is a decimal for everyone.
+ * Returns null for an empty text and undefined when it is not a number.
  */
-export function parse(raw: string): Amount | undefined {
+export function parseNumber(raw: string): string | null | undefined {
   let s = raw.trim().replace(/\s|CHF|EUR|USD|[€$]/g, '')
   if (s === '') return null
   let negative = false
@@ -149,18 +161,30 @@ export function parse(raw: string): Amount | undefined {
   if (lastDot >= 0 && lastComma >= 0) {
     // Both present: the later one is the decimal separator.
     s = lastComma > lastDot ? s.replace(/\./g, '').replace(',', '.') : s.replace(/,/g, '')
-  } else if (only && (s.split(only).length > 2 || (only === group && /^\d{1,3}[.,]\d{3}$/.test(s)))) {
+  } else if (only && (s.split(only).length > 2 || (only === group && /^[1-9]\d{0,2}[.,]\d{3}$/.test(s)))) {
     // 1.234.567, or 1.234 to a user of 1.234,56: thousands.
     s = s.split(only).join('')
   } else if (only === decimal) {
     s = s.replace(only, '.')
   } else if (only === ',') {
-    // A comma the format doesn't use: decimals if at most two digits follow.
+    // A comma the format doesn't use: decimals if at most two digits follow, or after a 0.
     const [whole, frac] = s.split(',')
-    s = frac.length <= 2 ? `${whole}.${frac}` : whole + frac
+    s = frac.length <= 2 || whole === '0' ? `${whole}.${frac}` : whole + frac
   }
-  if (!/^\d+(\.\d{1,2})?$/.test(s)) return undefined
-  return fromCents(negative ? -toCents(s) : toCents(s))
+  if (!/^\d+(\.\d+)?$/.test(s)) return undefined
+  return `${negative && /[1-9]/.test(s) ? '-' : ''}${s}`
+}
+
+/**
+ * What a planner types or pastes as an amount, to a canonical decimal string for the API, as
+ * parseNumber reads it, with at most cents: "1.234" is refused to a user of 1,234.56.
+ * Returns null for an empty cell and undefined when the text is not an amount.
+ */
+export function parse(raw: string): Amount | undefined {
+  const s = parseNumber(raw)
+  if (s === null || s === undefined) return s
+  if (!/^-?\d+(\.\d{1,2})?$/.test(s)) return undefined
+  return fromCents(toCents(s))
 }
 
 /** Quantity (up to 4 decimals) × unit price, rounded half up to the cent, as the database computes

@@ -134,17 +134,16 @@ def export(
     code: str,
     fmt: Literal["csv", "parquet"],
     scope: Scope = "approved",
+    table: publish.Download = "amounts",
 ) -> Response:
-    """The round's plan values in the scope as a file; writes nothing."""
+    """One published table of the round in the scope as a file: the plan amounts, planned hours,
+    investments or their cash out; writes nothing."""
     try:
-        if fmt == "csv":
-            body, media = publish.csv_bytes(engine_of(request), user, code, scope), "text/csv"
-        else:
-            body = publish.parquet_bytes(engine_of(request), user, code, scope)
-            media = "application/vnd.apache.parquet"
+        body = publish.download(engine_of(request), user, code, scope, table, fmt)
     except HANDLED as e:
         raise _http(e) from None
-    name = f"{code}-{scope}.{fmt}"
+    media = "text/csv" if fmt == "csv" else "application/vnd.apache.parquet"
+    name = f"{code}-{scope}.{fmt}" if table == "amounts" else f"{code}-{table}-{scope}.{fmt}"
     return Response(
         body, media_type=media, headers={"Content-Disposition": f'attachment; filename="{name}"'}
     )

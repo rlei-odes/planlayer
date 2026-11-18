@@ -1,7 +1,7 @@
 import type { MemberRow, Version } from './api'
 import Select from './Select'
 import type { ComparisonColumn, Profile, Rule } from './setupTypes'
-import { type DraftProps, FORMS, FORM_OPTIONS, type Level, PROFILE_FORMS, REFERENCE_FORMS, accountOptions } from './setupShared'
+import { type DraftProps, formOptions, formsFor, type Level, PROFILE_FORMS, REFERENCE_FORMS, accountOptions } from './setupShared'
 
 // The setup page's starting points, entry forms and comparison columns (E-03, ADR 0007).
 
@@ -39,7 +39,8 @@ export function EntryForms({
   rounds,
   current,
 }: DraftProps & { accounts: MemberRow[]; profiles: Profile[]; rounds: Version[]; current: string }) {
-  const explain = FORMS.find((f) => f.form === draft.default_form)?.explain
+  const forms = formsFor(draft.grain)
+  const explain = forms.find((f) => f.form === draft.default_form)?.explain
   const update = (i: number, rule: Rule) => setDraft({ ...draft, entry_forms: draft.entry_forms.map((r, j) => (j === i ? rule : r)) })
   const free = accounts.find((a) => a.is_group && !draft.entry_forms.some((r) => r.account_code === a.code))
   return (
@@ -51,7 +52,7 @@ export function EntryForms({
       <div className="su-body">
         <div className="su-sub">Default</div>
         <div className="su-forms" role="group" aria-label="Default entry form">
-          {FORMS.map((f) => (
+          {forms.map((f) => (
             <button
               key={f.form}
               type="button"
@@ -85,7 +86,7 @@ export function EntryForms({
               <Select
                 label="Entry form"
                 value={r.form}
-                options={FORM_OPTIONS}
+                options={formOptions(draft.grain)}
                 onChange={(form) => {
                   update(i, {
                     ...r,

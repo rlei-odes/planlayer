@@ -1,7 +1,7 @@
 """Master data endpoints (ADR 0012): dataset mappings and previews (admin), sync plan and run
 (admin, controller), the member tree with manual members and overrides (controller, admin)."""
 
-from datetime import date
+from datetime import date, datetime
 from typing import Annotated, Any, Literal
 
 import pyarrow as pa
@@ -389,6 +389,7 @@ class MemberOut(BaseModel):
     cost_center_code: str | None  # work centers
     account_code: str | None  # activity types: the account credited
     variable_account_code: str | None
+    missing_since: datetime | None = None  # synced, but no longer delivered by the source
     external: bool | None = None  # staff types: external staff (ADR 0020)
 
 

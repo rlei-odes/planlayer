@@ -1,5 +1,5 @@
 import { type ClipboardEvent, type KeyboardEvent, useCallback, useEffect, useRef, useState } from 'react'
-import { detail, display, format, number as shownNumber } from './amounts'
+import { detail, display, format, formatNumber, number as shownNumber, parseNumber } from './amounts'
 import { api, type Forwarding, type ForwardingIn, type ForwardingPage as Page } from './api'
 import PageHeader from './PageHeader'
 import Select, { type Option } from './Select'
@@ -78,15 +78,15 @@ function draftOf(f: Forwarding): Draft {
     method: f.method,
     source: f.source_code,
     shares: f.shares ?? 'percent',
-    amount: f.amount ?? '',
-    rate: f.rate ?? '',
+    amount: f.amount === null ? '' : format(f.amount),
+    rate: formatNumber(f.rate ?? null),
     unit: f.unit ?? '',
     group: f.group_code ?? '',
     chargeCode: f.charge_account.code,
     chargeName: f.charge_account.name,
     creditCode: f.credit_account.code,
     creditName: f.credit_account.name,
-    receivers: f.receivers.map((r) => ({ cc: r.cost_center_code, quantity: r.quantity })),
+    receivers: f.receivers.map((r) => ({ cc: r.cost_center_code, quantity: formatNumber(r.quantity) })),
     codesTyped: true,
     namesTyped: true,
   }
@@ -109,14 +109,15 @@ function body(d: Draft): ForwardingIn {
   }
 }
 
-/** A typed number as the API takes it: separators of thousands dropped; a comma before one or
- * two digits is a decimal comma, as for amounts ("1,300" is 1300, "2,5" is 2.5). */
+/** A typed number as the API takes it, read by the user's separators (amounts.ts); what isn't a
+ * number goes as typed, for the server to refuse. */
 function number(raw: string): string {
-  const s = raw.trim().replace(/[\s']/g, '')
-  if (/^\d+,\d{1,2}$/.test(s)) return s.replace(',', '.')
-  return s.includes('.') && s.includes(',') && s.lastIndexOf(',') > s.lastIndexOf('.')
-    ? s.replace(/\./g, '').replace(',', '.')
-    : s.replace(/,/g, '')
+  return parseNumber(raw) ?? raw.trim()
+}
+
+/** Whether a typed quantity is the stored one ("120" and "120.0000" are). */
+function same(stored: string, typed: string): boolean {
+  return Number(stored) === Number(number(typed))
 }
 
 /** The first column of what a spreadsheet copied: lines of the plain text, whatever line breaks
@@ -398,7 +399,7 @@ function Editor(p: {
     saved !== undefined &&
     saved.method === d.method &&
     saved.receivers.length === d.receivers.length &&
-    d.receivers.every((r) => saved.receivers.some((s) => s.cost_center_code === r.cc && s.quantity === number(r.quantity)))
+    d.receivers.every((r) => saved.receivers.some((s) => s.cost_center_code === r.cc && same(s.quantity, r.quantity)))
 
   function rename(name: string) {
     set(d.namesTyped ? { name } : { name, chargeName: name, creditName: name })
@@ -565,7 +566,7 @@ function Editor(p: {
             <tbody>
               {d.receivers.map((r, i) => {
                 const stored = saved?.receivers.find((s) => s.cost_center_code === r.cc)
-                const unchanged = stored !== undefined && stored.quantity === number(r.quantity)
+                const unchanged = stored !== undefined && same(stored.quantity, r.quantity)
                 const share = d.method === 'rate' ? null : d.shares === 'percent' ? value(r.quantity) : total ? (value(r.quantity) * 100) / total : 0
                 return (
                   <tr key={r.cc}>

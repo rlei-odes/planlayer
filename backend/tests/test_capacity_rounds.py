@@ -5,8 +5,10 @@ The fixture source gives CC1 a lathe (WC1, machine hours at 80, crediting accoun
 productive; Forecast 2025 is a 6+6 set up like it.
 """
 
+import io
 from decimal import Decimal
 
+import pyarrow.parquet as pq
 import pytest
 from fastapi.testclient import TestClient
 from httpx2 import Response
@@ -155,6 +157,17 @@ def test_publish_planned_hours(forecast: TestClient, migrated: Settings) -> None
     finally:
         output.dispose()
     assert counts == {"plan": Decimal("600.00"), "actual": Decimal("600.00")}
+    # The download holds the same rows, with the table's columns but the run's.
+    text = forecast.get(f"/api/rounds/{F}/export.csv", params={"scope": "all", "table": "hours"})
+    assert text.headers["content-disposition"].endswith(f'{F}-hours-all.csv"')
+    lines = text.text.strip().split("\n")
+    assert lines[0].split(",") == [
+        c.name for c in t.columns if c.name not in ("published_at", "publish_run_id")
+    ]
+    assert len(lines) == 13
+    parquet = forecast.get(f"/api/rounds/{F}/export.parquet?scope=all&table=hours").content
+    hours = pq.read_table(io.BytesIO(parquet)).column("amount").to_pylist()
+    assert sum(hours) == Decimal("1200.00")
 
 
 def test_closed_months_show_credits_the_ledger_books(
