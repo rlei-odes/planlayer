@@ -6,6 +6,9 @@ import { defineConfig } from 'vite'
 export default defineConfig({
   plugins: [react()],
   server: {
+    // Always 5173: fail if it is taken rather than moving to the next free port.
+    port: 5173,
+    strictPort: true,
     proxy: {
       '/api': process.env.PLANLAYER_API_URL ?? 'http://localhost:8000',
     },

@@ -62,6 +62,11 @@ cd frontend && npm run lint && npm run typecheck && npm run build
 After changing an API model, regenerate the frontend's types with `cd frontend && npm run gen:api`;
 a backend test fails while `frontend/src/schema.ts` is out of date.
 
+Running the app: always on http://localhost:5173, the Vite dev server (`cd frontend && npm run dev`,
+fixed port, it fails rather than move when 5173 is taken). It forwards `/api` to the backend on
+`localhost:8000`, the `app` container or `planlayer serve`. Open, screenshot and test the app on
+5173, not on 8000.
+
 Screenshots: the setup page's *Unsaved changes* bar (`.su-savebar`) is always rendered, parked below
 the viewport, and slides up only when the draft is dirty. A full-page screenshot captures it anyway,
 so it is not a sign of unsaved changes; check for `.su-savebar.show` instead.

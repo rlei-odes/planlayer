@@ -53,8 +53,14 @@ const shots = [
 const highlights = [
   { name: 'home', user: CONTROLLER, page: 'home' },
   { name: 'planning', user: OWNER, page: 'planning', round: 'B2026', unit: 'DE1020' },
-  // Her own lists, the controller's shared with her cost center, Luca Meier's where she is deputy.
-  { name: 'item-lists', user: OWNER, page: 'lists' },
+  // Her own lists, the controller's shared with her cost center, Luca Meier's where she is deputy;
+  // one of hers open over them.
+  {
+    name: 'item-lists',
+    user: OWNER,
+    page: 'lists',
+    prepare: (page) => page.locator('.il-row', { hasText: 'DE1010' }).filter({ hasText: '6300' }).click(),
+  },
   {
     name: 'notes',
     user: OWNER,
