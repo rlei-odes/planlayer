@@ -116,7 +116,7 @@ Each item lists the options and how to decide. Items marked ⚙ are decided by a
 - [x] **D-20 Auth.** Decided: T-22 (OIDC and LDAPS from `lancy-next`; fake development login first).
 - [x] **D-21 Permissions model.** Decided: [ADR 0009](docs/adr/0009-roles-and-scopes.md). Roles admin, controller and viewer as flags; planners from the matched owner (e-mail or login), the controller's override and deputies on cost centers or nodes; approvers read below their node; forced RLS over a per-user access view; hashed session tokens in a cookie.
 - [x] **D-22 Workflow.** Decided: [ADR 0008](docs/adr/0008-workflow.md). One-step approval per round × cost center (not started → in progress → submitted → approved, reject and reopen with comment); approvers assigned to hierarchy nodes, nearest one above wins, controller as fallback; round status setup / open / closed; the lock trigger reads the status.
-- [x] **D-23 Audit / change log.** Decided: [ADR 0005](docs/adr/0005-request-context-rls-audit.md). Statement-level triggers with transition tables; actor and batch from the per-transaction context. Retention and partitioning are set once real volumes are known.
+- [x] **D-23 Audit / change log.** Decided: [ADR 0005](docs/adr/0005-request-context-rls-audit.md). Statement-level triggers with transition tables; actor and batch from the per-transaction context. Retention and partitioning: E-14.
 - [ ] **D-24 Background jobs.** Syncs, exports and large spreads need a job runner. Options: in-process scheduler (APScheduler), a Postgres-backed queue (procrastinate, pgqueuer), or Celery/RQ + Redis. Recommendation: Postgres-backed, so there's no extra service in compose.
 - [ ] **D-25 Deployment shape.** The app store location is decided (T-14). Still to define:
   - **The container image:** the API serves the built frontend, background jobs run in-process (D-24), images are published to GHCR, and configuration comes from env vars.
@@ -290,6 +290,14 @@ Mid-size manufacturer of industrial pumps and valves, ~400 employees.
     - [ ] Real users' walkthroughs (R-4).
 - [ ] **E-11** Self-host packaging: container image on GHCR, the DBA install script and checklist (D-25), upgrade/migration procedure, the scheduled backup and restore (D-30), install docs.
     - [ ] A guided installation in the app for the admin: connections, the first sync, the first users and roles (an HR user among them), and the encryption key for pay (W-18), generated in the app and shown once for HR to keep in a password manager, with a check that it was saved before going on.
+    - [ ] Container logs rotated by default: the shipped compose file and the install docs set the `json-file` driver to 10 MB × 5 files per container (as the development `compose.yaml` does), and say how to set it in Docker's `daemon.json` or for Podman and Kubernetes, so logs can't fill a disk.
+- [ ] **E-14 Audit log retention.** The audit and change logs (`change_log`, `capacity_change_log`, `workforce_change_log`, `workforce_position_log`, `capacity_line_log`, `capacity_staff_log`, `capex_log`, `position_pay_log`, `annotation_log`, `workflow_event`, `pay_access_log`, the login log below) only grow today (D-23 left retention open).
+    - [ ] A setting on the admin's *Settings* page: how long entries are kept, in months, or *forever* (the default, since many companies must keep plan changes for years). Per log group if needed (plan changes, pay, access), one value to start.
+    - [ ] When the setting changes, a preview before saving: per log, how many rows the next run deletes and the oldest entry kept.
+    - [ ] A daily run in the app (D-24) deletes entries older than the setting, in batches, and records what it deleted (log, rows, cut-off date) in a run history the admin sees; `planlayer prune-logs --dry-run` does the same from the command line.
+    - [ ] Pruning is refused for entries of rounds that aren't closed, so undo and "changed since" keep working while a round is open.
+    - [ ] Decide whether large logs are partitioned by month, so pruning drops partitions instead of deleting rows (once volumes are measured, F-09).
+- [ ] **E-15 Login and session log.** Logins, logouts, failed logins and ended sessions are recorded nowhere today. A table with time, login (or the name tried), outcome, IP and user agent, read by admins on the *Users* page, also written as one server log line each; covered by E-14's retention. Repeated failed logins for one name are visible at a glance (rate limiting comes with E-09).
 
 ### Cost center accounting (after v1)
 

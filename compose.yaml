@@ -4,9 +4,17 @@
 # the backend and Vite locally (see README).
 name: planlayer
 
+# Container logs rotate at 10 MB, five files per container, so they can't fill the disk.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "5"
+
 services:
   db:
     image: postgres:18
+    logging: *logging
     environment:
       POSTGRES_PASSWORD: postgres
     ports:
@@ -23,6 +31,7 @@ services:
 
   app:
     build: .
+    logging: *logging
     environment:
       PLANLAYER_ENVIRONMENT: development
       PLANLAYER_DEV_LOGIN: "true"
