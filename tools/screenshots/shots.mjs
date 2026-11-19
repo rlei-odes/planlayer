@@ -48,19 +48,13 @@ const shots = [
 ]
 
 // The website's highlights (docs_local/website/copy.md), on the development data (seed-dev-plans,
-// seed-dev-notes, seed-dev-capex, seed-dev-workforce). `unit` is the cost center the page opens
+// seed-dev-notes, seed-dev-capex, seed-dev-workforce, seed-dev-item-lists). `unit` is the cost center the page opens
 // with; `prepare` brings the page into the state shown, without saving anything.
 const highlights = [
   { name: 'home', user: CONTROLLER, page: 'home' },
   { name: 'planning', user: OWNER, page: 'planning', round: 'B2026', unit: 'DE1020' },
-  {
-    name: 'spread',
-    user: OWNER,
-    page: 'planning',
-    round: 'B2026',
-    unit: 'DE1020',
-    prepare: (page) => page.locator('[data-spread="5050"]').click(),
-  },
+  // Her own lists, the controller's shared with her cost center, Luca Meier's where she is deputy.
+  { name: 'item-lists', user: OWNER, page: 'lists' },
   {
     name: 'notes',
     user: OWNER,

@@ -109,6 +109,10 @@ def main(argv: list[str] | None = None) -> None:
         help="notes on the seeded sheets and investments of a round (development)",
     )
     notes_cmd.add_argument("--round", default="B2026", help="the planning round (default B2026)")
+    commands.add_parser(
+        "seed-dev-item-lists",
+        help="item lists on the test company's lines, by several owners (development)",
+    )
     types_cmd = commands.add_parser(
         "api-types", help="write the frontend's TypeScript types from the API schema"
     )
@@ -250,6 +254,16 @@ def main(argv: list[str] | None = None) -> None:
             finally:
                 engine.dispose()
             print(f"created {threads} note thread(s) in {args.round}")
+        case "seed-dev-item-lists":
+            settings = Settings()  # type: ignore[call-arg]
+            if settings.environment == "production":
+                raise SystemExit("seed-dev-item-lists is refused in production")
+            engine = create_app_engine(settings)
+            try:
+                lists = devdata.seed_item_lists(engine)
+            finally:
+                engine.dispose()
+            print(f"created {lists} item list(s)")
         case "seed-dev-workforce":
             settings = Settings()  # type: ignore[call-arg]
             if settings.environment == "production":

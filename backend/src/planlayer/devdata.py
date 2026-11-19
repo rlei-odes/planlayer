@@ -15,7 +15,7 @@ from typing import Literal
 
 from sqlalchemy import Engine, func, select
 
-from planlayer import access, notes, planning, workflow
+from planlayer import access, item_lists, notes, planning, workflow
 from planlayer.domain.workflow import Status
 from planlayer.rounds import fiscal_periods, get_round
 from planlayer.sheet import MONTHS, EditError
@@ -941,3 +941,106 @@ def seed_notes(engine: Engine, round_code: str) -> int:
 def _said(say: Say, cast: dict[Role, access.User], names: dict[int, str]) -> str:
     """The note's text with the people's names."""
     return say.text.format(**{role: names[u.user_id] for role, u in cast.items()})
+
+
+# --- Item lists (ADR 0017) ------------------------------------------------------------------------
+
+ANNA, LUCA, CONTROLLER = (
+    "anna.keller@nordwerk.example",
+    "luca.meier@nordwerk.example",
+    "controller@nordwerk.example",
+)
+# owner, cost center, account, visibility, items: (name, supplier, quantity, unit price, comment).
+# Anna Keller sees all but Luca Meier's private one: her own, the controller's shared with DE1010's
+# planners, and Luca's of Valve Production, where she is deputy.
+ITEM_LISTS: tuple[
+    tuple[str, str, str, item_lists.Visibility,
+          tuple[tuple[str, str | None, str, str, str | None], ...]], ...
+] = (
+    (ANNA, "DE1010", "6800", "cost_center", (
+        ("CAM software, maintenance", "Hexagon", "4", "3450", "renewal in March"),
+        ("CAD viewer licences", "Autodesk", "6", "420", None),
+        ("Tool management system", "Zoller", "1", "5800", None),
+        ("Machine monitoring, per machine", "Fanuc", "14", "390", "two machines added in May"),
+        ("Tablets for shop floor terminals", "Bechtle", "6", "640", None),
+    )),
+    (ANNA, "DE1010", "6300", "cost_center", (
+        ("Carbide inserts", "Sandvik Coromant", "2400", "11.80", None),
+        ("End mills, solid carbide", "Walter", "320", "64.50", None),
+        ("Coolant concentrate, 200 l", "Blaser", "14", "1180", None),
+        ("Cleaning cloths and wipes", "Mewa", "12", "165", "monthly delivery"),
+        ("Hydraulic oil, 208 l", "Fuchs", "6", "910", None),
+        ("Measuring tips and styli", "Renishaw", "40", "48", None),
+        ("Safety gloves", "Hoffmann Group", "600", "6.40", None),
+    )),
+    (ANNA, "DE1020", "6800", "public", (
+        ("CMM software, maintenance", "Zeiss", "2", "6200", None),
+        ("CAQ system, subscription", "Babtec", "12", "980", "per month"),
+        ("SPC add-on", "Babtec", "1", "2400", None),
+        ("Calibration management", "Testo", "1", "1350", None),
+    )),
+    (ANNA, "DE1020", "7000", "private", (
+        ("Air conditioning, service", "Kältetechnik Süd", "2", "1850", "spring and autumn"),
+        ("Granite plate, regrinding", "Mahr", "1", "2600", None),
+        ("Clean room filters", "Camfil", "24", "135", None),
+    )),
+    (ANNA, "DE1070", "7000", "cost_center", (
+        ("Crane inspection, annual", "TÜV Süd", "4", "720", "required by law"),
+        ("Compressed air, maintenance contract", "Kaeser", "1", "8400", None),
+        ("Fire extinguishers, inspection", "Minimax", "38", "24", None),
+        ("Forklift battery charging station", "Jungheinrich", "1", "3900", None),
+        ("Roller doors, service", "Hörmann", "6", "310", None),
+        ("Lighting retrofit, hall 2", "Zumtobel", "1", "14500", "half of the hall"),
+    )),
+    (ANNA, "DE1080", "6600", "cost_center", (
+        ("Supplier audit, Poland", None, "3", "950", "Casting PL, three trips"),
+        ("LogiMAT trade fair", None, "2", "1400", "two people, Stuttgart"),
+        ("Forklift instructor course", "DEKRA", "1", "1250", None),
+    )),
+    (CONTROLLER, "DE1010", "7000", "cost_center", (
+        ("Hall cleaning, contract", "Dussmann", "12", "2850", "per month"),
+        ("Waste disposal, metal chips", "Remondis", "12", "640", "per month, less if recycled"),
+        ("Security service, night", "Securitas", "12", "1900", None),
+    )),
+    (LUCA, "CH1010", "6300", "cost_center", (
+        ("Forging dies, steel", "Böhler", "18", "2400", None),
+        ("Die lubricant, graphite", "Acheson", "40", "185", None),
+        ("Refractory lining, repair", "Calderys", "1", "12800", "planned for the summer shutdown"),
+        ("Protective clothing, heat", "Hoffmann Group", "24", "290", None),
+    )),
+    (LUCA, "CH1020", "6800", "public", (
+        ("CNC simulation software", "Vericut", "2", "4100", None),
+        ("ERP terminals, shop floor", "Bechtle", "5", "880", None),
+    )),
+    (LUCA, "CH1030", "6600", "private", (
+        ("Customer visit, Houston", None, "2", "3200", None),
+        ("Valve World Expo", None, "3", "1800", "Düsseldorf"),
+    )),
+)  # fmt: skip
+
+
+def seed_item_lists(engine: Engine) -> int:
+    """Item lists on lines of the test company, for demonstrations and screenshots: several
+    owners and visibilities, a handful of items each. Lists don't belong to a round. A line that
+    has a list already, or whose cost center or account isn't there, is skipped, so running it
+    again adds nothing new. Returns the lists created."""
+    with engine.connect() as conn:
+        logins = set(conn.execute(select(app_user.c.login)).scalars())
+        if CONTROLLER not in logins:
+            raise ValueError("the development users are missing: run seed-dev-users first")
+        users = {login: access.user_by_login(conn, login) for login in {ANNA, LUCA, CONTROLLER}}
+    made = 0
+    for owner, cc, account, visibility, items in ITEM_LISTS:
+        who = users[owner]
+        try:
+            if item_lists.list_of_line(engine, who, cc, account) is not None:
+                continue
+            item_lists.create_list(
+                engine, who, cc, account, visibility,
+                [item_lists.ItemIn(name, price, qty, supplier, comment)
+                 for name, supplier, qty, price, comment in items],
+            )  # fmt: skip
+        except (LookupError, item_lists.ListError):  # not there, or a list hidden from the owner
+            continue
+        made += 1
+    return made

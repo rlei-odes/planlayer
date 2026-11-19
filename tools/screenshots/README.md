@@ -22,4 +22,4 @@ panel open, a preview run) without saving anything. Each is taken twice, as a br
 in dark colour scheme states it, into `out/website/<name>-light.png` and `<name>-dark.png`: the
 website shows the one matching its visitor's scheme, e.g. with `<picture>` and
 `prefers-color-scheme`. They need the development data: `seed-dev-users`, `seed-dev-plans`,
-`seed-dev-notes`, `seed-dev-capex` and `seed-dev-workforce`.
+`seed-dev-notes`, `seed-dev-capex`, `seed-dev-workforce` and `seed-dev-item-lists`.
