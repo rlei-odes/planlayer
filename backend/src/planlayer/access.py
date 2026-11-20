@@ -121,9 +121,21 @@ class UserRow:
     is_viewer: bool
     is_hr: bool
     disabled: bool
+    owns: int = 0  # cost centers the user owns: matched from the source, or set instead
+    deputy: int = 0  # cost centers and nodes the user is deputy on
+    local: bool = False  # has a local password (ADR 0030)
+    provider: str | None = None  # logged in through it: oidc or ldap
 
 
 def users(engine: Engine, *, active_only: bool = False) -> list[UserRow]:
+    owns = (
+        select(func.count())
+        .where(cost_center_owner.c.user_id == app_user.c.user_id)
+        .scalar_subquery()
+    )
+    deputy = (
+        select(func.count()).where(planner_grant.c.user_id == app_user.c.user_id).scalar_subquery()
+    )
     query = (
         select(
             app_user.c.login,
@@ -134,6 +146,10 @@ def users(engine: Engine, *, active_only: bool = False) -> list[UserRow]:
             app_user.c.is_viewer,
             app_user.c.is_hr,
             app_user.c.disabled,
+            owns.label("owns"),
+            deputy.label("deputy"),
+            app_user.c.password_hash.is_not(None).label("local"),
+            func.split_part(app_user.c.identity, ":", 1).label("provider"),
         )
         .where(app_user.c.is_system.is_(False))
         .order_by(app_user.c.login)

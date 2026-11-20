@@ -1,14 +1,19 @@
 """Installation settings (E-12) for the admin: the sign convention of published amounts
-(ADR 0019) and the default number format."""
+(ADR 0019), the default number format, and the databases Planlayer connects to."""
 
+import logging
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
+from sqlalchemy import Engine, make_url, text
+from sqlalchemy.exc import DBAPIError
 
 from planlayer import number_format, signs
 from planlayer.access import AccessError
-from planlayer.api.auth import CurrentUser, NumberFormatIO, engine_of, format_io
+from planlayer.api.auth import CurrentUser, NumberFormatIO, engine_of, format_io, settings_of
+
+log = logging.getLogger("planlayer.settings")
 
 router = APIRouter(prefix="/api")
 
@@ -72,3 +77,63 @@ def put_number_format(request: Request, user: CurrentUser, body: NumberFormatIO)
     except AccessError as e:
         raise HTTPException(403, str(e)) from None
     return format_io(number_format.default(engine, user))
+
+
+class ConnectionOut(BaseModel):
+    role: Literal["app", "source", "output"]
+    host: str | None
+    port: int | None
+    database: str | None
+    user: str | None
+    schema_name: str  # where Planlayer works in it
+    shared: bool  # the same database as the app store's (an unset URL falls back to it)
+    ok: bool
+    server: str | None = None  # the server's version, when connected
+    error: str | None = None  # why it failed, without the password
+
+
+def _probe(engine: Engine) -> tuple[bool, str | None, str | None]:
+    try:
+        with engine.connect() as conn:
+            version = conn.execute(text("SELECT current_setting('server_version')")).scalar()
+        return True, f"PostgreSQL {str(version).split()[0]}", None  # 18.6, not its build
+    except DBAPIError as e:
+        log.warning("connection check failed: %s", e)
+        return False, None, str(e.orig or e).splitlines()[0]
+
+
+@router.get("/settings/connections", responses={403: {}})
+def connections(request: Request, user: CurrentUser) -> list[ConnectionOut]:
+    """The three databases Planlayer connects to (T-14): the app store, the source of master data
+    and actuals, and the output it publishes to. Planlayer bundles no database of its own."""
+    try:
+        user.require_admin()
+    except AccessError as e:
+        raise HTTPException(403, str(e)) from None
+    s = settings_of(request)
+    engines: dict[str, Engine] = {
+        "app": engine_of(request),
+        "source": request.app.state.source.engine,
+        "output": request.app.state.output_engine,
+    }
+    urls = {"app": s.app_url, "source": s.source_url, "output": s.output_url}
+    schemas = {"app": s.app_schema, "source": s.source_schema, "output": s.output_schema}
+    found = []
+    for role in ("app", "source", "output"):
+        url = make_url(urls[role])
+        ok, server, error = _probe(engines[role])
+        found.append(
+            ConnectionOut(
+                role=role,
+                host=url.host,
+                port=url.port,
+                database=url.database,
+                user=url.username,
+                schema_name=schemas[role],
+                shared=role != "app" and urls[role] == urls["app"],
+                ok=ok,
+                server=server,
+                error=error,
+            )
+        )
+    return found

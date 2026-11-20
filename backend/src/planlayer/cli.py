@@ -12,6 +12,7 @@ from planlayer import access, devdata, publish, rounds, sync
 from planlayer.adapters.source import PostgresSource
 from planlayer.config import Settings
 from planlayer.login import local
+from planlayer.login import settings as login_settings
 from planlayer.store import migrate
 from planlayer.store.db import create_app_engine
 from planlayer.store.output import create_output_engine
@@ -121,6 +122,10 @@ def main(argv: list[str] | None = None) -> None:
     commands.add_parser(
         "seed-demo",
         help="a demo from the Nordwerk test warehouse, into an empty app store (demo only)",
+    )
+    commands.add_parser(
+        "setup-code",
+        help="a new setup code for the first admin account, while no admin can log in",
     )
     password_cmd = commands.add_parser(
         "set-password",
@@ -300,6 +305,16 @@ def main(argv: list[str] | None = None) -> None:
             finally:
                 engine.dispose()
                 source.dispose()
+        case "setup-code":
+            settings = Settings()  # type: ignore[call-arg]
+            engine = create_app_engine(settings)
+            try:
+                issued = local.ensure_code(engine, login_settings.load(engine)[0], renew=True)
+            finally:
+                engine.dispose()
+            if issued is None:
+                raise SystemExit("an admin can log in already; no setup code is needed")
+            print(issued)
         case "set-password":
             settings = Settings()  # type: ignore[call-arg]
             password = os.environ.get("PLANLAYER_PASSWORD") or getpass.getpass("Password: ")

@@ -24,7 +24,8 @@ may not have a shell on the server, and a demo that anyone can try without one.
 ### First run
 
 When no active admin has a password and no provider is set up, the app creates a setup code,
-stores its hash and writes the code to the server log. The login page then asks for the code and
+stores its hash and writes the code to the server log; each start of the server, and
+`planlayer setup-code`, issues a new one in its place. The login page then asks for the code and
 an admin account (login, name, e-mail, password). Without the code, whoever opened a newly
 started server first would become its admin. The account is a **local account**: its password
 hash (scrypt) is in `app_user`. It stays as the way in when the provider is down or set up wrong;

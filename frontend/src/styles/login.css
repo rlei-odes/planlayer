@@ -136,3 +136,8 @@
   overflow-x: auto;
   margin: 8px 0;
 }
+
+.lg-hint.warn {
+  color: var(--warn);
+  font-weight: 600;
+}

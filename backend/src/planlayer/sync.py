@@ -18,6 +18,7 @@ rounds compare with: their fiscal years and the years before.
 
 import json
 import logging
+import re
 import time
 from collections import defaultdict
 from collections.abc import Iterable
@@ -240,6 +241,7 @@ class Mapping:
             raise MappingError(f"unknown dataset {self.dataset}")
         if not self.query.strip():
             raise MappingError("the query is empty")
+        check_query(self.query)
         unknown = set(self.fields) - set(FIELDS[self.dataset])
         if unknown:
             raise MappingError(f"unknown field(s): {', '.join(sorted(unknown))}")
@@ -685,10 +687,35 @@ def _cycles(label: str, parent: dict[str, str | None]) -> list[str]:
 SOURCE_ERRORS = (DBAPIError, pa.ArrowException)
 
 
+# Leading comments and blanks of a query, before its first word.
+_LEADING = re.compile(r"\A(?:\s+|--[^\n]*(?:\n|\Z)|/\*.*?\*/)*", re.S)
+SYNTAX_ERROR = "42601"
+
+
+def check_query(sql: str) -> None:
+    """A query is one SELECT (or WITH … SELECT) statement: it is read as a subquery."""
+    rest = _LEADING.sub("", sql, count=1)
+    first = rest.split(None, 1)[0].lower() if rest.strip() else ""
+    if first not in ("select", "with", "(select", "values", "table"):
+        raise MappingError("a query starts with SELECT or WITH")
+
+
+def source_error(e: Exception) -> str:
+    """What the source said, for the admin: its first line, and for a syntax error, how the
+    query is run, since the error's position counts in that wrapping."""
+    orig = getattr(e, "orig", None)
+    detail = str(orig or e).splitlines()[0]
+    if getattr(orig, "sqlstate", None) == SYNTAX_ERROR:
+        detail += (
+            " (the query runs as SELECT … FROM (query) AS src: one SELECT or WITH statement, "
+            "without a semicolon inside)"
+        )
+    return f"the source refused the query: {detail}"
+
+
 def _failed(dataset: str, e: Exception) -> str:
     log.warning("sync: reading %s failed: %s", dataset, e)
-    detail = str(getattr(e, "orig", None) or e).splitlines()[0]
-    return f"{dataset}: reading failed: {detail}"
+    return f"{dataset}: reading failed: {source_error(e)}"
 
 
 def plan(

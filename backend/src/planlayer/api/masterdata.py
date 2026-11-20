@@ -1,18 +1,22 @@
 """Master data endpoints (ADR 0012): dataset mappings and previews (admin), sync plan and run
 (admin, controller), the member tree with manual members and overrides (controller, admin)."""
 
+import logging
 from datetime import date, datetime
 from typing import Annotated, Any, Literal
 
 import pyarrow as pa
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
+from sqlalchemy.exc import DBAPIError
 
 from planlayer import masterdata, sync
 from planlayer.access import AccessError, User
 from planlayer.adapters.source import Query, SourceAdapter
 from planlayer.api.auth import CurrentUser, engine_of
 from planlayer.api.limits import FEW, MANY, Code, Email, Name, SqlQuery
+
+log = logging.getLogger("planlayer.masterdata")
 
 router = APIRouter(prefix="/api")
 Dataset = Literal[
@@ -218,6 +222,7 @@ def preview(
     source = _source(request)
     try:
         if not body.mapped:
+            sync.check_query(body.query)
             columns, rows = source.preview(Query(body.query), PREVIEW_ROWS)
             return QueryPreviewOut(columns=columns, rows=rows)
         m = sync.Mapping(
@@ -236,9 +241,33 @@ def preview(
     except sync.MappingError as e:
         return QueryPreviewOut(columns=[], rows=[], error=str(e))
     except sync.SOURCE_ERRORS as e:
-        return QueryPreviewOut(
-            columns=[], rows=[], error=str(getattr(e, "orig", None) or e).splitlines()[0]
-        )
+        return QueryPreviewOut(columns=[], rows=[], error=sync.source_error(e))
+
+
+class SourceStatusOut(BaseModel):
+    ok: bool
+    database: str | None = None
+    user: str | None = None
+    server: str | None = None
+    schemas: list[str] = []
+    error: str | None = None  # why the connection failed, without its password
+
+
+@router.get("/source/status", responses={403: {}})
+def source_status(request: Request, user: CurrentUser) -> SourceStatusOut:
+    """Whether the source connection works, and where it lands."""
+    try:
+        _admin(user)
+    except HANDLED as e:
+        raise _http(e) from None
+    try:
+        info = _source(request).describe()
+    except DBAPIError as e:
+        log.warning("source connection failed: %s", e)
+        return SourceStatusOut(ok=False, error=str(e.orig or e).splitlines()[0])
+    return SourceStatusOut(
+        ok=True, database=info.database, user=info.user, server=info.server, schemas=info.schemas
+    )
 
 
 def _text(value: object) -> str | None:

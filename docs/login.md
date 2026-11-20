@@ -21,7 +21,8 @@ While no admin can log in, the server writes a setup code to its log:
 WARNING:     planlayer.login: No admin can log in yet. Setup code for the first admin account: ABCD-EFGH-JKLM-NPQR
 ```
 
-(`docker compose logs app` shows it.) The login page then asks for the code and the admin's login,
+(`docker compose logs app` shows it; `docker compose exec app planlayer setup-code` prints a new
+one and makes the earlier one invalid.) The login page then asks for the code and the admin's login,
 name, e-mail and password (at least 12 characters). The account is a **local account**: its
 password is stored as a scrypt hash in the app store. It stays the way in when the login provider
 is down or set up wrong.
@@ -98,26 +99,15 @@ secret from `PLANLAYER_OIDC_CLIENT_SECRET` (sent as HTTP Basic). The issuer must
 | Claims: login | `preferred_username` | |
 | Claims: e-mail | `email` | |
 | Claims: name | `name` | |
-| Claims: groups | `groups` | |
+| Claims: groups | `groups` | Entra ID: `roles` for app roles by name |
 | CA certificate | | PEM, for a provider signed by the company's own CA |
 
 ### Microsoft Entra ID
 
-1. *Entra admin center › App registrations › New registration*: name "Planlayer", *Accounts in
-   this organizational directory only* (single tenant).
-2. *Authentication › Add a platform › Web*, redirect URI from the *Settings* page, e.g.
-   `https://plan.example.com/api/auth/oidc/callback`. For development, `http://localhost:5173/api/auth/oidc/callback`
-   is accepted too.
-3. *Certificates & secrets › New client secret*; set it as `PLANLAYER_OIDC_CLIENT_SECRET`.
-4. *Token configuration*: *Add optional claim › ID › email*; for role groups, *Add groups claim ›
-   Security groups* (the claim holds the groups' object IDs).
-5. In Planlayer: issuer `https://login.microsoftonline.com/<Directory (tenant) ID>/v2.0`, client ID
-   the *Application (client) ID*, button "Microsoft". Group fields take object IDs.
-
-The issuer must be the tenant's own, not `common` or `organizations`: a multi-tenant issuer lets
-any tenant's users claim any e-mail address. `preferred_username` is the user's UPN
-(`anna.keller@corp.example`). A user in more than 200 groups gets no `groups` claim (Entra's group
-overage); such users need role groups they are directly in, or roles on the *Users* page.
+The app registration, roles by app role name or by group, and a local test installation:
+[entra-id.md](entra-id.md). In short: issuer `https://login.microsoftonline.com/<tenant ID>/v2.0`
+(the tenant's own, never `common`), a *Web* redirect URI with a client secret in
+`PLANLAYER_OIDC_CLIENT_SECRET`, and *Claims › Groups* `roles` to match app roles by name.
 
 ### Keycloak
 

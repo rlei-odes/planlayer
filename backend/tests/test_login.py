@@ -121,6 +121,18 @@ def test_settings_from_the_environment_win(engine: Engine, monkeypatch: pytest.M
         login_settings.save(engine, admin, LoginSettings(), development=False)
 
 
+def test_variables_without_the_method_fill_in_a_draft(
+    engine: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    saved = login_settings.stored(engine)
+    assert login_settings.suggested(saved) is None
+    monkeypatch.setenv("PLANLAYER_LOGIN_OIDC_ISSUER", ISSUER)
+    monkeypatch.setenv("PLANLAYER_LOGIN_ADMIN_GROUP", "admins")
+    draft = login_settings.suggested(saved)
+    assert draft == replace(saved, method="oidc", oidc_issuer=ISSUER, admin_group="admins")
+    assert login_settings.load(engine) == (saved, False)  # a draft only, nothing in force
+
+
 # --- First run ---------------------------------------------------------------------------------
 
 
@@ -153,6 +165,36 @@ def test_first_run_creates_a_local_admin(
     assert outcomes == [("setup", "failed")] * 2 + [("setup", "success"), ("setup", "failed")]
 
 
+def test_each_start_issues_a_new_setup_code(
+    prod: Settings, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level("WARNING", "planlayer.login")
+    with https_client(prod) as client:
+        first = setup_code(caplog)
+        client.get("/api/auth/options")  # the page asking doesn't replace it
+        assert setup_code(caplog) == first
+    with https_client(prod) as client:
+        second = setup_code(caplog)
+        assert second != first
+        assert first_admin(client, first).status_code == 422
+        assert first_admin(client, second).status_code == 200
+
+
+def test_setup_code_command(prod: Settings, engine: Engine) -> None:
+    s = LoginSettings()
+    code = local.ensure_code(engine, s, renew=True)
+    assert code is not None and local.ensure_code(engine, s) is None  # kept, not reissued
+    again = local.ensure_code(engine, s, renew=True)
+    assert again is not None and again != code
+    with https_client(prod) as client:
+        assert first_admin(client, code).status_code == 422
+    with https_client(prod) as client:
+        new = local.ensure_code(engine, s, renew=True)
+        assert new is not None
+        assert first_admin(client, new).status_code == 200
+    assert local.ensure_code(engine, s, renew=True) is None  # an admin can log in now
+
+
 def test_first_run_while_a_provider_gives_no_admin(engine: Engine) -> None:
     s = LoginSettings(method="oidc", oidc_issuer=ISSUER, oidc_client_id=CLIENT_ID)
     assert local.needed(engine, s)
@@ -174,6 +216,8 @@ def test_password_login_and_its_limit(prod: Settings, engine: Engine) -> None:
     admin = replace(access.system_user(engine), is_admin=True)
     access.create_user(engine, admin, "eva", "Eva", is_controller=True)
     local.set_password(engine, "Eva", PASSWORD)
+    eva = next(u for u in access.users(engine) if u.login == "eva")
+    assert (eva.local, eva.provider) == (True, None)
     with https_client(prod) as client:
         ok = client.post("/api/auth/login", json={"login": "EVA", "password": PASSWORD})
         assert ok.status_code == 200 and ok.json()["is_controller"] is True
@@ -232,6 +276,11 @@ def test_a_first_login_creates_a_user_without_roles(engine: Engine) -> None:
     assert roles(engine, "anna@corp.example") == (False, False, False, False)
     # Found by the identity from then on, though the provider renames the login.
     assert identity.resolve(engine, s, person(login="anna.k@corp.example")) == "anna@corp.example"
+    listed = {u.login: u for u in access.users(engine)}
+    assert (listed["anna@corp.example"].local, listed["anna@corp.example"].provider) == (
+        False,
+        "oidc",
+    )
 
 
 def test_matched_by_login_then_by_verified_email(engine: Engine) -> None:
@@ -451,12 +500,15 @@ def test_oidc_test_with_unsaved_settings(
         back = client.get(
             f"/api/auth/oidc/callback?state={state}&code=good-code", follow_redirects=False
         )
-        assert back.headers["location"] == f"/?login_test={state}#settings"
+        assert back.status_code == 200 and "planlayerLoginTest" in back.text
+        assert f"/?login_test={state}#settings" in back.text  # without a popup: back to Settings
+        assert r.json()["state"] == state
         result = client.get(f"/api/settings/login/test-oidc/{state}").json()
         assert result["ok"] is True, result
         steps = {s["label"]: s["detail"] for s in result["steps"]}
         assert steps["Logs in as"] == "a new user anna@corp.example"
         assert steps["Roles"] == "admin yes"
+        assert result["groups"] == ["planlayer"]
         assert "PLANLAYER_LOGIN_METHOD=oidc" in result["env"]
         assert f"PLANLAYER_LOGIN_OIDC_ISSUER={ISSUER}" in result["env"]
         # Nothing saved, no session made: still the admin, still no method.
@@ -508,3 +560,16 @@ def test_ldap_password_login(
             client.post("/api/auth/login", json={"login": "down", "password": "x"}).status_code
             == 503
         )
+
+
+def test_connections_for_admins(client: TestClient, engine: Engine) -> None:
+    """The slice's client is the controller; the app store is the test schema."""
+    assert client.get("/api/settings/connections").status_code == 403
+    admin = replace(access.system_user(engine), is_admin=True)
+    access.create_user(engine, admin, "root", "Root", is_admin=True)
+    client.post("/api/auth/demo-login", json={"login": "root"})
+    found = {c["role"]: c for c in client.get("/api/settings/connections").json()}
+    assert set(found) == {"app", "source", "output"}
+    assert all(c["ok"] and c["server"].startswith("PostgreSQL ") for c in found.values())
+    assert found["app"]["user"] == "planlayer_test" and found["output"]["shared"] is True
+    assert "planlayer_test@" not in str(found)  # parts, never the URL with its password

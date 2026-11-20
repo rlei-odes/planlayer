@@ -25,3 +25,11 @@
 .st-settings .su-hint {
   margin-left: 0;
 }
+
+.set-ok {
+  color: var(--ok);
+}
+
+.set-fail {
+  color: var(--danger);
+}

@@ -10,6 +10,8 @@
 *.local.yaml
 *.local.toml
 docker-compose.override.yml
+# Microsoft Entra ID test values (template: deploy/dev/entra.env.example)
+/deploy/dev/entra.env
 compose.override.yml
 
 # --- Python ------------------------------------------------------------------

@@ -94,6 +94,48 @@ def test_preview_raw_mapped_and_errors(
     assert "read-only transaction" in error
 
 
+def test_query_errors_say_what_to_fix(engine: Engine, client: TestClient) -> None:
+    login(client, ADMIN)
+
+    def error(query: str) -> str | None:
+        body = {"query": query, "fields": {}}
+        result: str | None = client.post("/api/datasets/entities/preview", json=body).json()[
+            "error"
+        ]
+        return result
+
+    assert error("dfdf") == "a query starts with SELECT or WITH"
+    assert error("-- entities\nSELECT 1 AS x;") is None  # comments, and a semicolon at the end
+    syntax = error("SELECT 1 FROM")
+    assert syntax is not None and syntax.startswith("the source refused the query: syntax error")
+    assert "SELECT … FROM (query) AS src" in syntax
+
+
+def test_the_source_connection_is_shown(
+    migrated: Settings, engine: Engine, client: TestClient
+) -> None:
+    assert client.get("/api/source/status").status_code == 403  # the controller
+    login(client, ADMIN)
+    status = client.get("/api/source/status").json()
+    assert status["ok"] and status["user"] == "planlayer_test"
+    assert status["server"].startswith("PostgreSQL ") and migrated.app_schema in status["schemas"]
+    down = Settings(
+        _env_file=None,  # type: ignore[call-arg]
+        environment="development",
+        demo=True,
+        app_database_url=migrated.app_url,  # type: ignore[arg-type]
+        source_database_url="postgresql+psycopg://nobody:secret@127.0.0.1:1/none",  # type: ignore[arg-type]
+        app_schema=migrated.app_schema,
+        output_schema=migrated.output_schema,
+    )
+    with TestClient(create_app(down)) as c:
+        login(c, ADMIN)
+        failed = c.get("/api/source/status").json()
+    assert (
+        failed["ok"] is False and "refused" in failed["error"] and "secret" not in failed["error"]
+    )
+
+
 # --- Hierarchy forms ------------------------------------------------------------------------------
 
 

@@ -33,6 +33,10 @@ class UserOut(BaseModel):
     is_viewer: bool
     is_hr: bool
     disabled: bool
+    owns: int  # cost centers the user owns, so plans (ADR 0009)
+    deputy: int  # cost centers and nodes the user is deputy on
+    local: bool  # logs in with a local password (ADR 0030)
+    provider: Literal["oidc", "ldap"] | None  # has logged in through the login provider
 
 
 class UserIn(BaseModel):

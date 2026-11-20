@@ -1,14 +1,15 @@
 """Logging in (ADR 0030): the demo's user list, the first run's admin, passwords (local accounts
 and LDAP), OpenID Connect; and the provider's settings for the admin, with a test of each."""
 
+import json
 import logging
 import os
 from typing import Annotated
-from urllib.parse import urlencode
+from urllib.parse import parse_qs, urlencode, urlsplit
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response
-from fastapi.responses import RedirectResponse
-from pydantic import BaseModel
+from fastapi.responses import HTMLResponse, RedirectResponse
+from pydantic import BaseModel, Field
 
 from planlayer import access
 from planlayer.api.auth import CurrentUser, Me, engine_of, settings_of, start_session
@@ -257,7 +258,7 @@ def oidc_callback(
     state: Annotated[str, Query(max_length=200)] = "",
     code: AuthCode = "",
     error: Annotated[str, Query(max_length=200)] = "",
-) -> RedirectResponse:
+) -> Response:
     """Where the provider sends the browser back to. A login gets a session and lands on the
     start page; a test keeps its steps and lands on the Settings page."""
     engine, client = engine_of(request), _client(request)
@@ -289,8 +290,12 @@ def oidc_callback(
     if p.test_by is not None:
         if found is not None:
             steps += _steps_of_identity(request, s, found, claims, "Claims")
-        oidc.keep_result(engine, state, {"steps": [x.model_dump() for x in steps]})
-        return RedirectResponse(f"/?{urlencode({'login_test': state})}#settings", status_code=303)
+        oidc.keep_result(
+            engine,
+            state,
+            {"steps": [x.model_dump() for x in steps], "groups": _picks(found)},
+        )
+        return _test_done(state)
     oidc.forget(engine, state)
     if found is None:
         detail = steps[-1].detail
@@ -308,6 +313,19 @@ def oidc_callback(
     start_session(request, response, login)
     events.record(engine, client, login=login, method="oidc", outcome="success")
     return response
+
+
+def _test_done(state: str) -> HTMLResponse:
+    """The end of a test at the provider. In the popup the Settings page opened, it tells that
+    page and closes; opened in the page itself (a blocked popup), it goes back to Settings."""
+    back = json.dumps(f"/?{urlencode({'login_test': state})}#settings")
+    message = json.dumps({"planlayerLoginTest": state})
+    return HTMLResponse(
+        "<!doctype html><meta charset=utf-8><title>Planlayer</title>"
+        "<p>Test finished. This window closes by itself.</p><script>"
+        f"if (window.opener) {{ window.opener.postMessage({message}, location.origin); "
+        f"window.close() }} else location.replace({back})</script>"
+    )
 
 
 # --- The provider's settings, for the admin ------------------------------------------------------
@@ -343,6 +361,9 @@ class LoginPageOut(BaseModel):
     redirect_uri: str  # to register at the OpenID Connect provider
     client_secret: bool  # PLANLAYER_OIDC_CLIENT_SECRET is set: a confidential client
     problems: list[str]
+    # The saved settings filled in from PLANLAYER_LOGIN_* variables set without the method: a
+    # draft to test and save.
+    suggested: LoginSettingsIO | None = None
 
 
 class LdapTestIn(BaseModel):
@@ -357,12 +378,16 @@ class OidcTestIn(BaseModel):
 
 class OidcTestOut(BaseModel):
     url: str  # the provider's login page, to open
+    state: str  # the test's key, to ask for its result
 
 
 class TestOut(BaseModel):
     steps: list[Step]
     ok: bool
     env: str | None  # the settings as environment variables, after a test that passed
+    # The groups (or app roles) the test found, for the admin to pick role groups from. An LDAP
+    # group by its name, not its DN.
+    groups: Annotated[list[str], Field(max_length=10_000)] = []
 
 
 def _io(s: LoginSettings) -> LoginSettingsIO:
@@ -382,8 +407,10 @@ def _of(body: LoginSettingsIO) -> LoginSettings:
 
 def _page(request: Request) -> LoginPageOut:
     s, from_env = login_settings.load(engine_of(request))
+    draft = None if from_env else login_settings.suggested(s)
     return LoginPageOut(
         settings=_io(s),
+        suggested=_io(draft) if draft else None,
         from_env=from_env,
         redirect_uri=redirect_uri(request),
         client_secret=bool(os.environ.get(oidc.CLIENT_SECRET_ENV)),
@@ -410,9 +437,13 @@ def put_login(request: Request, user: CurrentUser, body: LoginSettingsIO) -> Log
     return _page(request)
 
 
-def _result(steps: list[Step], s: LoginSettings) -> TestOut:
+def _picks(found: identity.Identity | None) -> list[str]:
+    return sorted(g for g in found.groups if "=" not in g) if found else []
+
+
+def _result(steps: list[Step], s: LoginSettings, groups: list[str] | None = None) -> TestOut:
     ok = all(x.ok is not False for x in steps)
-    return TestOut(steps=steps, ok=ok, env=s.env() if ok else None)
+    return TestOut(steps=steps, ok=ok, env=s.env() if ok else None, groups=groups or [])
 
 
 @router.post("/settings/login/test-ldap", responses={403: {}})
@@ -434,7 +465,7 @@ def test_ldap(request: Request, user: CurrentUser, body: LdapTestIn) -> TestOut:
         return _result(steps, s)
     steps.append(Step(label="Bind", ok=True, detail=f"as {bound.bind_dn}"))
     steps += _steps_of_identity(request, s, bound.identity, bound.attributes, "Attributes")
-    return _result(steps, s)
+    return _result(steps, s, _picks(bound.identity))
 
 
 @router.post("/settings/login/test-oidc", responses={403: {}, 422: {}})
@@ -449,7 +480,7 @@ def test_oidc(request: Request, user: CurrentUser, body: OidcTestIn) -> OidcTest
         url = oidc.start(engine_of(request), s, redirect_uri(request), test_by=user.user_id)
     except oidc.LoginError as e:
         raise HTTPException(422, str(e)) from None
-    return OidcTestOut(url=url)
+    return OidcTestOut(url=url, state=parse_qs(urlsplit(url).query)["state"][0])
 
 
 @router.get("/settings/login/test-oidc/{state}", responses={403: {}, 404: {}})
@@ -459,4 +490,5 @@ def oidc_test_result(request: Request, user: CurrentUser, state: Code) -> TestOu
     p = oidc.pending(engine, state)
     if p is None or p.test_by != user.user_id or p.result is None or p.settings is None:
         raise HTTPException(404, "no test result; it is kept for ten minutes")
-    return _result([Step(**x) for x in p.result["steps"]], p.settings)
+    steps = [Step(**x) for x in p.result["steps"]]
+    return _result(steps, p.settings, p.result.get("groups"))

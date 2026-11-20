@@ -154,6 +154,25 @@ def from_env() -> LoginSettings | None:
     return LoginSettings.of(values)
 
 
+def suggested(base: LoginSettings) -> LoginSettings | None:
+    """``base`` filled in from ``PLANLAYER_LOGIN_*`` variables set without the method, as a draft
+    for the Settings page; the method follows from them (an issuer: OpenID Connect, a server:
+    LDAP). None when no such variable changes anything."""
+    env = _Env()
+    if env.method is not None:
+        return None
+    values = {k: v for k, v in env.model_dump().items() if v is not None and k != "method"}
+    if "ca_pem" in values:
+        values["ca_pem"] = values["ca_pem"].replace("\\n", "\n")
+    if base.method == "none":
+        if values.get("oidc_issuer"):
+            values["method"] = "oidc"
+        elif values.get("ldap_url"):
+            values["method"] = "ldap"
+    draft = LoginSettings.of({**base.as_dict(), **values})
+    return None if draft == base else draft
+
+
 def stored(engine: Engine) -> LoginSettings:
     names = [f.name for f in fields(LoginSettings)]
     with engine.connect() as conn:

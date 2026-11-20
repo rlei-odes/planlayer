@@ -329,3 +329,20 @@
 .md-off .md-field-name {
   color: var(--ink-3);
 }
+
+/* The source connection's status on Sources. */
+.md-source {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.md-source.ok {
+  background: var(--ok-tint);
+  color: var(--ok);
+}
+
+.md-source code {
+  margin-right: 4px;
+}

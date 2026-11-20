@@ -59,7 +59,7 @@ def _first_run(engine: Engine, settings: Settings) -> None:
         with engine.connect() as conn:
             if current_revision(conn, settings.app_schema) != head_revision():
                 return
-        local.ensure_code(engine, login_settings.load(engine)[0])
+        local.ensure_code(engine, login_settings.load(engine)[0], renew=True)
     except SQLAlchemyError as e:
         # The server starts without its database; /api/health reports it.
         log.warning("first run check skipped, the app store can't be read: %s", type(e).__name__)

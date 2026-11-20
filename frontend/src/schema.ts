@@ -232,6 +232,19 @@ export type ConflictOut = {
   month: number
 }
 
+export type ConnectionOut = {
+  role: "app" | "source" | "output"
+  host: string | null
+  port: number | null
+  database: string | null
+  user: string | null
+  schema_name: string
+  shared: boolean
+  ok: boolean
+  server?: string | null
+  error?: string | null
+}
+
 export type CostCenterRefOut = {
   code: string
   name: string
@@ -582,6 +595,7 @@ export type LoginPageOut = {
   redirect_uri: string
   client_secret: boolean
   problems: string[]
+  suggested?: LoginSettingsIO | null
 }
 
 export type LoginSettingsIO = {
@@ -815,6 +829,7 @@ export type OidcTestIn = {
 
 export type OidcTestOut = {
   url: string
+  state: string
 }
 
 export type OverviewOut = {
@@ -1363,6 +1378,15 @@ export type SourceOut = {
   remaining: string | null
 }
 
+export type SourceStatusOut = {
+  ok: boolean
+  database?: string | null
+  user?: string | null
+  server?: string | null
+  schemas?: string[]
+  error?: string | null
+}
+
 export type SpreadIn = {
   spread: LineSpreadIO | null
 }
@@ -1488,6 +1512,7 @@ export type TestOut = {
   steps: Step[]
   ok: boolean
   env: string | null
+  groups?: string[]
 }
 
 export type ThreadIn = {
@@ -1595,6 +1620,10 @@ export type UserOut = {
   is_viewer: boolean
   is_hr: boolean
   disabled: boolean
+  owns: number
+  deputy: number
+  local: boolean
+  provider: "oidc" | "ldap" | null
 }
 
 export type ValidationError = {

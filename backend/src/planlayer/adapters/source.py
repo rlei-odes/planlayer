@@ -44,8 +44,20 @@ class Query:
 Source = Relation | Query
 
 
+@dataclass(frozen=True)
+class SourceInfo:
+    """Where the source connection lands, for the admin to see it works."""
+
+    database: str
+    user: str
+    server: str  # the server's version
+    schemas: list[str]  # schemas the connection may read
+
+
 class SourceAdapter(Protocol):
-    def test_connection(self) -> None: ...
+    def describe(self) -> SourceInfo:
+        """Connects; raises the driver's error when it can't."""
+        ...
 
     def read(
         self, source: Source, contract: pa.Schema, columns: Mapping[str, str] | None = None
@@ -85,11 +97,23 @@ class PostgresSource:
     def _origin(source: Source) -> FromClause:
         if isinstance(source, Relation):
             return table(source.name, schema=source.schema)
-        return text(source.sql).columns().subquery("src")
+        # A semicolon at the end would close the statement inside the subquery.
+        return text(source.sql.strip().rstrip(";")).columns().subquery("src")
 
-    def test_connection(self) -> None:
+    def describe(self) -> SourceInfo:
         with self.engine.connect() as conn:
-            conn.execute(text("SELECT 1"))
+            row = conn.execute(
+                text("SELECT current_database(), current_user, current_setting('server_version')")
+            ).one()
+            schemas = conn.execute(
+                text(
+                    "SELECT nspname FROM pg_namespace WHERE has_schema_privilege(oid, 'USAGE') "
+                    "AND nspname NOT LIKE 'pg\\_%' AND nspname <> 'information_schema' "
+                    "ORDER BY nspname"
+                )
+            ).scalars()
+            version = str(row[2]).split()[0]  # 18.6, not its build
+            return SourceInfo(row[0], row[1], f"PostgreSQL {version}", list(schemas))
 
     def read(
         self, source: Source, contract: pa.Schema, columns: Mapping[str, str] | None = None

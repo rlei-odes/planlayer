@@ -53,18 +53,22 @@ def _hash(code: str) -> str:
     return hashlib.sha256(code.replace("-", "").upper().encode()).hexdigest()
 
 
-def ensure_code(engine: Engine, settings: LoginSettings) -> None:
-    """While the first run is needed, keep a setup code and write it to the server log. A code
-    already issued stays valid; only its hash is stored."""
+def ensure_code(engine: Engine, settings: LoginSettings, *, renew: bool = False) -> str | None:
+    """While the first run is needed, keep a setup code and write it to the server log; only its
+    hash is stored. ``renew`` (at the server's start, and ``planlayer setup-code``) replaces a
+    code issued before, whose log line may be gone with an earlier container. Returns a code
+    issued now."""
     with engine.begin() as conn:
         if not _needed(conn, settings):
-            return
-        if conn.execute(select(login_setting.c.setup_code_hash)).scalar() is not None:
-            return
+            return None
+        issued = conn.execute(select(login_setting.c.setup_code_hash)).scalar() is not None
+        if issued and not renew:
+            return None
         raw = "".join(secrets.choice(_ALPHABET) for _ in range(16))
         code = "-".join(raw[i : i + 4] for i in range(0, 16, 4))
         conn.execute(update(login_setting).values(setup_code_hash=_hash(code)))
     log.warning("No admin can log in yet. Setup code for the first admin account: %s", code)
+    return code
 
 
 def create_first_admin(

@@ -1,10 +1,11 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { api, type LoginPage, type LoginSettings, type LoginTest } from './api'
 import { LIMIT } from './limits'
 
 // The login provider (ADR 0030), for the admin: OpenID Connect or LDAP, tested with the unsaved
-// settings before they are saved. An OpenID Connect test leaves the page for the provider; the
-// draft waits in sessionStorage and the callback brings the browser back with `?login_test=`.
+// settings before they are saved. The draft is kept in sessionStorage until it is saved, so it
+// outlasts a switch to another page and an OpenID Connect test, which leaves for the provider
+// and comes back with `?login_test=`.
 
 type Method = LoginSettings['method']
 type Note = { kind: 'ok' | 'error'; text: string }
@@ -25,16 +26,20 @@ function readDraft(): LoginSettings | null {
   }
 }
 
+function keepDraft(draft: LoginSettings | null) {
+  try {
+    if (draft) window.sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft))
+    else window.sessionStorage.removeItem(DRAFT_KEY)
+  } catch {
+    // Without storage, an unsaved draft is lost when the page is left.
+  }
+}
+
 /** The OpenID Connect test's state the callback came back with. */
 const testState = () => new URLSearchParams(window.location.search).get('login_test')
 
-/** Off the address and out of storage, once the test's result is shown. */
+/** Off the address, once the test's result is shown. */
 function clearReturn() {
-  try {
-    window.sessionStorage.removeItem(DRAFT_KEY)
-  } catch {
-    // Nothing kept.
-  }
   const params = new URLSearchParams(window.location.search)
   params.delete('login_test')
   const query = params.toString()
@@ -43,25 +48,81 @@ function clearReturn() {
 
 const same = (a: LoginSettings, b: LoginSettings) => JSON.stringify(a) === JSON.stringify(b)
 
+// What reaches the provider: a change here is tested before it is saved. The button's label and
+// the groups can't keep anyone out (local accounts always log in), so they save without a test.
+const CONNECTION: (keyof LoginSettings)[] = [
+  'method',
+  'oidc_issuer',
+  'oidc_client_id',
+  'oidc_scopes',
+  'oidc_login_claim',
+  'oidc_email_claim',
+  'oidc_name_claim',
+  'oidc_groups_claim',
+  'ldap_url',
+  'ldap_bind_dn',
+  'ldap_base_dn',
+  'ldap_login_attribute',
+  'ldap_email_attribute',
+  'ldap_name_attribute',
+  'ca_pem',
+]
+const sameConnection = (a: LoginSettings, b: LoginSettings) => CONNECTION.every((k) => (a[k] ?? '') === (b[k] ?? ''))
+
 export default function LoginSettingsCard() {
   const [page, setPage] = useState<LoginPage | null>(null)
   const [draft, setDraft] = useState<LoginSettings | null>(null)
   const [test, setTest] = useState<{ settings: LoginSettings; result: LoginTest } | null>(null)
   const [note, setNote] = useState<Note | null>(null)
+  const [fromEnv, setFromEnv] = useState(false)
+  const [testing, setTesting] = useState(false)
+  // The OpenID Connect test running in a popup: its state, and the settings it tries.
+  const running = useRef<{ state: string; settings: LoginSettings; popup: Window } | null>(null)
+
+  // The popup's page tells this one when the test is done; closing it early ends the wait too.
+  useEffect(() => {
+    const finish = (state: string) => {
+      const run = running.current
+      if (!run || run.state !== state) return
+      running.current = null
+      setTesting(false)
+      api.oidcTestResult(state).then(
+        (result) => setTest({ settings: run.settings, result }),
+        () => setNote({ kind: 'error', text: 'The test window closed before the provider answered.' }),
+      )
+    }
+    const onMessage = (e: MessageEvent) => {
+      const state = (e.data as { planlayerLoginTest?: unknown } | null)?.planlayerLoginTest
+      if (e.origin === window.location.origin && typeof state === 'string') finish(state)
+    }
+    const watch = window.setInterval(() => {
+      const run = running.current
+      if (run?.popup.closed) finish(run.state)
+    }, 1000)
+    window.addEventListener('message', onMessage)
+    return () => {
+      window.removeEventListener('message', onMessage)
+      window.clearInterval(watch)
+    }
+  }, [])
 
   useEffect(() => {
     let live = true
     const state = testState()
-    const waiting = state ? readDraft() : null
+    const kept = readDraft()
     const fail = (e: unknown) => live && setNote({ kind: 'error', text: e instanceof Error ? e.message : String(e) })
     api.loginSettings().then((p) => {
       if (!live) return
       setPage(p)
-      setDraft(waiting ?? p.settings)
-      if (state && waiting)
+      if (kept && !same(kept, p.settings)) setDraft(kept)
+      else if (p.suggested) {
+        setDraft(p.suggested)
+        setFromEnv(true)
+      } else setDraft(p.settings)
+      if (state && kept)
         api.oidcTestResult(state).then((result) => {
           if (!live) return
-          setTest({ settings: waiting, result })
+          setTest({ settings: kept, result })
           clearReturn()
         }, fail)
     }, fail)
@@ -74,12 +135,15 @@ export default function LoginSettingsCard() {
 
   const locked = page.from_env
   const set = (change: Partial<LoginSettings>) => {
-    setDraft({ ...draft, ...change })
+    const next = { ...draft, ...change }
+    setDraft(next)
+    keepDraft(same(next, page.settings) ? null : next)
     setNote(null)
   }
   const tested = test !== null && test.result.ok && same(test.settings, draft)
   const changed = !same(draft, page.settings)
-  const canSave = !locked && changed && (draft.method === 'none' || tested)
+  const needsTest = draft.method !== 'none' && !sameConnection(draft, page.settings) && !tested
+  const canSave = !locked && changed && !needsTest
 
   async function save() {
     if (!draft) return
@@ -87,6 +151,8 @@ export default function LoginSettingsCard() {
       const p = await api.saveLoginSettings(draft)
       setPage(p)
       setDraft(p.settings)
+      keepDraft(null)
+      setFromEnv(false)
       setNote({ kind: 'ok', text: 'Saved. The login page offers it from now on.' })
     } catch (e) {
       setNote({ kind: 'error', text: e instanceof Error ? e.message : String(e) })
@@ -95,20 +161,30 @@ export default function LoginSettingsCard() {
 
   async function testOidc() {
     if (!draft) return
+    const settings = draft
+    // Opened at the click, before any request: browsers block a popup opened later.
+    const popup = window.open('', 'planlayer-login-test', 'popup,width=520,height=700')
     try {
-      const { url } = await api.testOidc(draft)
-      try {
-        window.sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft))
-      } catch {
-        // Without storage the result still comes back; the draft is then the saved settings.
+      const { url, state } = await api.testOidc(settings)
+      if (popup) {
+        running.current = { state, settings, popup }
+        setTesting(true)
+        setNote(null)
+        popup.location.href = url
+      } else {
+        // Popups blocked: the test runs in this window and comes back to Settings.
+        keepDraft(settings)
+        window.location.assign(url)
       }
-      window.location.assign(url)
     } catch (e) {
+      popup?.close()
       setNote({ kind: 'error', text: e instanceof Error ? e.message : String(e) })
     }
   }
 
-  const field = (key: keyof LoginSettings, label: string, max: number, hint?: string, placeholder?: string) => (
+  // The groups or app roles the last test found, offered in the group fields.
+  const seen = test?.result.groups ?? []
+  const field = (key: keyof LoginSettings, label: string, max: number, hint?: string, placeholder?: string, list?: string) => (
     <div className="su-field" key={key}>
       <label htmlFor={`ls-${key}`}>{label}</label>
       <input
@@ -120,6 +196,7 @@ export default function LoginSettingsCard() {
         disabled={locked}
         spellCheck={false}
         aria-describedby={hint ? `ls-${key}-hint` : undefined}
+        list={list}
         onChange={(e) => set({ [key]: e.target.value })}
       />
       {hint && (
@@ -132,9 +209,11 @@ export default function LoginSettingsCard() {
 
   return (
     <div className="su-card">
-      <h3>Login</h3>
       <p className="su-hint">How users log in besides local accounts. Local accounts, such as the first admin's, always work.</p>
       {locked && <div className="su-note fw-gap">Set by PLANLAYER_LOGIN_* environment variables; read-only here. Test still works.</div>}
+      {changed && !locked && (
+        <div className="su-note warn fw-gap">Unsaved changes{fromEnv ? ', filled in from PLANLAYER_LOGIN_* variables' : ''}</div>
+      )}
 
       <div className="seg fw-gap" role="group" aria-label="Login method">
         {METHODS.map((m) => (
@@ -162,7 +241,7 @@ export default function LoginSettingsCard() {
             {field('oidc_login_claim', 'Login', LIMIT.name)}
             {field('oidc_email_claim', 'E-mail', LIMIT.name)}
             {field('oidc_name_claim', 'Name', LIMIT.name)}
-            {field('oidc_groups_claim', 'Groups', LIMIT.name, 'Entra ID sends group object IDs.')}
+            {field('oidc_groups_claim', 'Groups', LIMIT.name, 'Entra ID: roles, for app roles by name; groups sends object IDs.')}
           </Fold>
         </div>
       )}
@@ -204,22 +283,32 @@ export default function LoginSettingsCard() {
             </Fold>
           </div>
           <h4 className="ls-sub">Groups</h4>
-          <p className="su-hint">A role group sets that role at every login through the provider. Empty: the role is set on the Users page.</p>
+          <p className="su-hint">
+            A role group sets that role at every login through the provider. Empty: the role is set on the Users page.{' '}
+            {seen.length > 0 ? `${seen.length} found by the last test; pick them in the fields.` : 'Test to pick from the groups the provider sends.'}
+          </p>
+          <datalist id="ls-groups">
+            {seen.map((g) => (
+              <option key={g} value={g} />
+            ))}
+          </datalist>
           <div className="ls-grid">
-            {field('allowed_group', 'Allowed', LIMIT.longText, 'Only its members log in. Empty: everyone the provider knows.')}
-            {field('admin_group', 'Admin', LIMIT.longText)}
-            {field('controller_group', 'Controller', LIMIT.longText)}
-            {field('viewer_group', 'Viewer', LIMIT.longText)}
-            {field('hr_group', 'HR', LIMIT.longText)}
+            {field('allowed_group', 'Allowed', LIMIT.longText, 'Only its members log in. Empty: everyone the provider knows.', undefined, 'ls-groups')}
+            {field('admin_group', 'Admin', LIMIT.longText, undefined, undefined, 'ls-groups')}
+            {field('controller_group', 'Controller', LIMIT.longText, undefined, undefined, 'ls-groups')}
+            {field('viewer_group', 'Viewer', LIMIT.longText, undefined, undefined, 'ls-groups')}
+            {field('hr_group', 'HR', LIMIT.longText, undefined, undefined, 'ls-groups')}
           </div>
           {draft.method === 'ldap' ? (
             <LdapTest settings={draft} onResult={(result) => setTest({ settings: draft, result })} />
           ) : (
             <div className="fw-buttons ls-left">
-              <button type="button" className="su-btn" onClick={() => void testOidc()}>
-                Test
+              <button type="button" className="su-btn" disabled={testing} onClick={() => void testOidc()}>
+                {testing ? 'Testing…' : 'Test'}
               </button>
-              <span className="lg-hint">Signs in at the provider with these settings. Nothing is saved, no session made.</span>
+              <span className="lg-hint">
+                {testing ? 'Sign in in the window that opened.' : 'Signs in at the provider in a small window. Nothing is saved, no session made.'}
+              </span>
             </div>
           )}
           {test && same(test.settings, draft) && <TestResult result={test.result} />}
@@ -229,7 +318,8 @@ export default function LoginSettingsCard() {
       {note && <div className={`su-note ${note.kind} fw-gap`}>{note.text}</div>}
       {!locked && (
         <div className="fw-buttons">
-          {changed && draft.method !== 'none' && !tested && <span className="lg-hint">Test before saving.</span>}
+          {changed && needsTest && <span className="lg-hint">The connection changed: test before saving.</span>}
+          {changed && tested && <span className="lg-hint warn">Tested, not saved yet: the login page offers it once saved.</span>}
           <button type="button" className="su-btn primary" disabled={!canSave} onClick={() => void save()}>
             Save
           </button>

@@ -18,6 +18,7 @@ import PageHeader from './PageHeader'
 import Select, { type Option } from './Select'
 import Tile from './Tile'
 import { LIMIT } from './limits'
+import type * as S from './schema'
 
 // Master data (ADR 0012): the admin's query per dataset with named columns (Sources), the sync
 // preview with confirmation of matches (Sync), and the member tree with manual members and
@@ -149,6 +150,7 @@ function Sources() {
   return (
     <div className="su-col">
       {error && <div className="su-note error">{error}</div>}
+      <SourceStatus />
       <div className="su-note">
         Name which result column is which field. Every dataset is optional: without a source, enter members by hand
         under Members.
@@ -166,6 +168,40 @@ function Sources() {
             ))}
         </div>
       ))}
+    </div>
+  )
+}
+
+/** Whether the source connection works, and where it lands. */
+function SourceStatus() {
+  const [status, setStatus] = useState<S.SourceStatusOut | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const check = useCallback(() => {
+    setStatus(null)
+    api.sourceStatus().then(setStatus, (e: unknown) => setError(errorText(e)))
+  }, [])
+  useEffect(check, [check])
+  if (error) return <div className="su-note error">{error}</div>
+  return (
+    <div className={`su-note md-source ${status === null ? '' : status.ok ? 'ok' : 'error'}`}>
+      <span>
+        {status === null && 'Connecting to the source…'}
+        {status?.ok && (
+          <>
+            <strong>Connected</strong> to database <code>{status.database}</code> as <code>{status.user}</code>, {status.server}. Readable
+            schemas: {status.schemas?.length ? status.schemas.map((s) => <code key={s}>{s}</code>) : 'none'}.
+          </>
+        )}
+        {status && !status.ok && (
+          <>
+            <strong>No connection to the source:</strong> {status.error}. It comes from <code>PLANLAYER_SOURCE_DATABASE_URL</code>, or the app
+            store's connection when that is unset.
+          </>
+        )}
+      </span>
+      <button type="button" className="su-btn" disabled={status === null} onClick={check}>
+        Check
+      </button>
     </div>
   )
 }

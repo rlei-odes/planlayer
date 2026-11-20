@@ -179,6 +179,8 @@ export const api = {
   passwordLogin: (login: string, password: string) =>
     post('/api/auth/login', { login, password }).then((res) => loginJson<Me>(res)),
   setup: (body: S.SetupIn) => post('/api/auth/setup', body).then((res) => loginJson<Me>(res)),
+  connections: () => fetch('/api/settings/connections').then((res) => json<S.ConnectionOut[]>(res)),
+  sourceStatus: () => fetch('/api/source/status').then((res) => json<S.SourceStatusOut>(res)),
   loginSettings: () => fetch('/api/settings/login').then((res) => json<LoginPage>(res)),
   saveLoginSettings: (settings: LoginSettings) =>
     send('PUT', '/api/settings/login', settings).then((res) => json<LoginPage>(res)),

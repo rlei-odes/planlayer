@@ -234,8 +234,12 @@ def test_only_admins_manage_users(engine: Engine, client: TestClient) -> None:
     admin = replace(access.system_user(engine), is_admin=True)
     access.create_user(engine, admin, "root@x.example", "Root", is_admin=True)
     login(client, "root@x.example")
-    logins = [u["login"] for u in client.get("/api/users").json()]
-    assert "system" not in logins and OWNER in logins
+    access.add_deputy(engine, access.system_user(engine), "DEP", NOBODY)
+    listed = {u["login"]: u for u in client.get("/api/users").json()}
+    assert "system" not in listed and OWNER in listed
+    # Planners have no role: what they plan comes from owning and deputising.
+    assert (listed[OWNER]["owns"], listed[OWNER]["deputy"]) == (1, 0)
+    assert (listed[NOBODY]["owns"], listed[NOBODY]["deputy"]) == (0, 1)
     new = {"login": "New@X.example", "display_name": "New", "is_viewer": True}
     assert client.post("/api/users", json=new).status_code == 200
     assert client.post("/api/users", json=new).status_code == 422  # exists (logins are lowercase)

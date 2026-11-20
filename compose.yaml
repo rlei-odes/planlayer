@@ -85,5 +85,53 @@ services:
     volumes:
       - ./deploy/dev/lldap:/bootstrap:ro
 
+  # A production-like installation to log in with Microsoft Entra ID (docs/entra-id.md), with the
+  # profile: docker compose --profile entra up -d --build app-entra, then http://localhost:8001.
+  # Its own database planlayer_entra, created once by entra-db as a DBA would; no demo login; the
+  # values from deploy/dev/entra.env (copied from entra.env.example).
+  entra-db:
+    image: postgres:18
+    profiles: [entra]
+    environment:
+      PGHOST: db
+      PGUSER: postgres
+      PGPASSWORD: postgres
+    volumes:
+      - ./deploy/sql/install.sql:/planlayer/install.sql:ro
+    command:
+      - sh
+      - -c
+      - |
+        if [ -z "$(psql -tAc "SELECT 1 FROM pg_database WHERE datname = 'planlayer_entra'")" ]; then
+          psql -v ON_ERROR_STOP=1 -c "CREATE DATABASE planlayer_entra"
+          psql -v ON_ERROR_STOP=1 -d planlayer_entra -c "CREATE SCHEMA gold"
+          psql -v ON_ERROR_STOP=1 -v app_db=planlayer_entra -v output_db=planlayer_entra \
+               -v source_db=planlayer_entra -v source_schema=gold -v app_role=planlayer_entra \
+               -v bi_role=planlayer_entra_bi -v app_password=planlayer_entra -f /planlayer/install.sql
+        fi
+    depends_on:
+      db:
+        condition: service_healthy
+
+  app-entra:
+    build: .
+    profiles: [entra]
+    logging: *logging
+    environment:
+      # Development: plain-http cookies on localhost.
+      PLANLAYER_ENVIRONMENT: development
+      PLANLAYER_APP_DATABASE_URL: postgresql+psycopg://planlayer_entra:planlayer_entra@db/planlayer_entra
+      # The address of the redirect URI registered in Entra ID.
+      PLANLAYER_PUBLIC_URL: http://localhost:8001
+    env_file:
+      - path: ./deploy/dev/entra.env
+        required: true
+    command: ["sh", "-c", "planlayer migrate && planlayer serve"]
+    ports:
+      - "127.0.0.1:8001:8000"
+    depends_on:
+      entra-db:
+        condition: service_completed_successfully
+
 volumes:
   pgdata:
