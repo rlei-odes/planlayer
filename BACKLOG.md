@@ -450,6 +450,28 @@ An MCP (Model Context Protocol) server, so a user can connect the LLM client of 
 - [ ] **P-5 Number display** follows the installation's setting (E-13).
 - [ ] **P-6 Tests:** the report's text content checked against a fixed round (golden), and the close trigger generating exactly one set.
 
+### Warehouses other than Postgres (after v1)
+
+Many companies run their warehouse on SQL Server, Azure SQL, Fabric, BigQuery, Databricks or Snowflake. The app store stays on Postgres: row-level security, the lock and audit triggers and exact `numeric` are what T-11 and ADR 0009 rest on. Only the source and the output connections (T-14) open up to other backends, through the adapter layer (T-4, ADR 0004).
+
+- [ ] **C-1 Decision (ADR): which backends, in which order, and through which drivers.**
+  - **Order:** by demand from actual users. SQL Server and Azure SQL are likely first for mid-size companies on Microsoft, and the same TDS adapter may reach Fabric and Synapse.
+  - **Drivers:** SQLAlchemy dialects keep `Relation`/`Query` and the wrapped filter and limit unchanged. Arrow-native clients (BigQuery Storage API, Databricks SQL connector, Snowflake connector) or ADBC where a driver exists skip the row-by-row conversion. Each driver's size and licence in the image (SQL Server's ODBC driver comes under Microsoft's licence terms); drivers as optional extras if the image grows too much.
+  - **Login per backend:** user and password, Entra ID tokens (Azure SQL, Fabric), service account keys or workload identity (BigQuery), OAuth or tokens (Databricks), key pairs (Snowflake). Credentials only from environment variables or the connection settings, never logged.
+- [ ] **C-2 A Postgres for companies without one.** A compose profile running Postgres 18 next to the app for the app store, and the managed services that fit (Azure Database for PostgreSQL, RDS, Cloud SQL) in the install docs, with their extension and role requirements against `deploy/sql/install.sql`. The scheduled backup (D-30) is the only copy of plan data then, so restore is tested in this setup.
+- [ ] **C-3 Source adapters.** One per backend, behind the existing `SourceAdapter`:
+  - `describe()`: database, user, version and readable schemas from the backend's catalog;
+  - read-only access and a statement timeout for admin-entered queries (ADR 0012), or what the backend offers instead (a read-only role, a query timeout or job limit);
+  - batched streaming reads, cast to the contract schema; type mapping checked for decimals (SQL Server `decimal`/`money`, BigQuery `NUMERIC`/`BIGNUMERIC`, Databricks `DECIMAL`), dates and timestamps with time zones;
+  - the mapping preview and the source status on the Connections page per backend.
+- [ ] **C-4 Output targets.** The larger part: `planlayer_out` is Postgres DDL, views, grants, `DELETE` + `COPY` in one transaction and `INSERT … ON CONFLICT` today. Per target:
+  - creating the tables and the flat views in that backend's SQL;
+  - an atomic, idempotent replace of a round's rows: a transaction with bulk insert (SQL Server), a load into a staging table then `MERGE` or a partition overwrite (BigQuery), `INSERT … REPLACE WHERE` on a Delta table (Databricks);
+  - the refusal when the result changed since the preview (ADR 0011) holding without a cross-statement lock where the backend has none;
+  - grants to the BI role left to the DBA's install script for that backend.
+  - **Alternative for lakehouses:** publish as Parquet to object storage (ADLS, S3, GCS), read by the warehouse as an external table. The Parquet download (E-10) already produces the rows.
+- [ ] **C-5 Tests.** The adapter contract suite (S-05) run against each backend: SQL Server in a container in CI, BigQuery against an emulator where it covers the calls used, Databricks and Snowflake against a test account outside CI. Sign conversion (T-7) and decimal round trips checked per backend.
+
 ### Line notes
 
 Notes on a line of a sheet (cost center × account, or work center × activity type on the capacity sheet), for the whole fiscal year rather than a month. They hold to-dos and explanations of why a value is what it is, and carry forward from round to round while open. Built: [ADR 0017](docs/adr/0017-notes-and-item-lists.md).
@@ -504,7 +526,7 @@ How potential users find and try Planlayer.
 
 ### Various
 
-**Later (not v1):** layers beyond `base`, rolling forecast, price × volume drivers, simple formulas, non-Postgres adapters, balance sheet, an "attention" list (everything that needs a person: missing submissions, unexplained variances, unrolled forecast, unapproved version), variance commentary thresholds, and a default spread profile per account group.
+**Later (not v1):** layers beyond `base`, rolling forecast, price × volume drivers, simple formulas, non-Postgres sources and targets (C-1 to C-5), balance sheet, an "attention" list (everything that needs a person: missing submissions, unexplained variances, unrolled forecast, unapproved version), variance commentary thresholds, and a default spread profile per account group.
 
 ---
 
