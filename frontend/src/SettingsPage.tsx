@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { api, type Signs } from './api'
 import type { ConnectionOut } from './schema'
 import { detail, example, type NumberFormat } from './amounts'
@@ -220,11 +220,14 @@ const ROLE: Record<ConnectionOut['role'], { label: string; env: string }> = {
 function Connections() {
   const [rows, setRows] = useState<ConnectionOut[] | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const fetchRows = useCallback(() => {
+    api.connections().then(setRows, (e: unknown) => setError(e instanceof Error ? e.message : String(e)))
+  }, [])
+  useEffect(fetchRows, [fetchRows])
   const load = () => {
     setRows(null)
-    api.connections().then(setRows, (e: unknown) => setError(e instanceof Error ? e.message : String(e)))
+    fetchRows()
   }
-  useEffect(load, [])
   if (error) return <div className="su-note error">{error}</div>
   return (
     <div className="su-card">

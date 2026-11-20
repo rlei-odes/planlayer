@@ -176,11 +176,14 @@ function Sources() {
 function SourceStatus() {
   const [status, setStatus] = useState<S.SourceStatusOut | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const check = useCallback(() => {
-    setStatus(null)
+  const fetchStatus = useCallback(() => {
     api.sourceStatus().then(setStatus, (e: unknown) => setError(errorText(e)))
   }, [])
-  useEffect(check, [check])
+  useEffect(fetchStatus, [fetchStatus])
+  const check = () => {
+    setStatus(null)
+    fetchStatus()
+  }
   if (error) return <div className="su-note error">{error}</div>
   return (
     <div className={`su-note md-source ${status === null ? '' : status.ok ? 'ok' : 'error'}`}>
