@@ -1,0 +1,12 @@
+{
+  "id": "admin",
+  "email": "admin@nordwerk.example",
+  "password": "planlayer-dev",
+  "displayName": "Adam Admin",
+  "firstName": "Adam",
+  "lastName": "Admin",
+  "groups": [
+    "planlayer",
+    "planlayer-admins"
+  ]
+}

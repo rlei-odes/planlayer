@@ -20,8 +20,13 @@ One container, connected to an existing Postgres 18 (or newer). Planlayer keeps 
 | `PLANLAYER_SOURCE_DATABASE_URL` | Source views connection (default: app store) |
 | `PLANLAYER_OUTPUT_DATABASE_URL` | Published output connection (default: app store) |
 | `PLANLAYER_APP_SCHEMA`, `PLANLAYER_OUTPUT_SCHEMA` | Schema names (default `planlayer_app`, `planlayer_out`) |
+| `PLANLAYER_PUBLIC_URL` | The address users open, e.g. `https://plan.example.com` (default: each request's) |
+| `PLANLAYER_DEMO` | `true` for a demo installation: log in as any user without a password |
+| `PLANLAYER_LOGIN_*`, `PLANLAYER_OIDC_CLIENT_SECRET` | The login provider, instead of the Settings page ([docs/login.md](docs/login.md)) |
 
 URLs use the form `postgresql+psycopg://user:password@host:5432/database`.
+
+On first start the server logs a setup code; the login page takes it to create the first admin, a local account. The admin then connects OpenID Connect (Microsoft Entra ID, Keycloak, …) or LDAP (Active Directory, OpenLDAP) on the Settings page: [docs/login.md](docs/login.md).
 
 ## Development
 
@@ -56,7 +61,11 @@ docker compose exec app planlayer create-version B2026 --name "Budget 2026" --fi
 docker compose exec app planlayer seed-dev-users
 ```
 
-The development login (`PLANLAYER_DEV_LOGIN`, on in `compose.yaml`, refused in production) lets you log in as any of these users without a password: the cost center owners, `controller@nordwerk.example`, `admin@nordwerk.example`, `cfo@nordwerk.example` and `auditor@nordwerk.example`. A new planning round starts in status `setup`; the controller opens it on the status page. Mappings, sync previews and master data are on the "Master data" page; `planlayer sync --dry-run` shows the plan without writing. The controller sets up rounds on "Setup" and publishes them on "Publish" into `planlayer_out` (documented in [docs/output.md](docs/output.md)); `planlayer republish` rebuilds the output.
+Or all of it, with plans begun, investments, positions, forwardings, notes and item lists, into an empty app store: `docker compose exec app planlayer seed-demo`.
+
+`compose.yaml` runs a demo installation (`PLANLAYER_DEMO`), whose login lists the users and logs in as any of them without a password: the cost center owners, `controller@nordwerk.example`, `admin@nordwerk.example`, `cfo@nordwerk.example` and `auditor@nordwerk.example`. A new planning round starts in status `setup`; the controller opens it on the status page. Mappings, sync previews and master data are on the "Master data" page; `planlayer sync --dry-run` shows the plan without writing. The controller sets up rounds on "Setup" and publishes them on "Publish" into `planlayer_out` (documented in [docs/output.md](docs/output.md)); `planlayer republish` rebuilds the output.
+
+Keycloak and lldap to develop the login against: `docker compose --profile auth up -d keycloak lldap` ([docs/login.md](docs/login.md#developing-against-real-providers)).
 
 Checks, as run in CI:
 

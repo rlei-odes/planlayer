@@ -1,5 +1,6 @@
 """FastAPI application factory."""
 
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Literal
@@ -8,7 +9,7 @@ from fastapi import FastAPI, Request, Response, status
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from sqlalchemy import text
+from sqlalchemy import Engine, text
 from sqlalchemy.exc import DBAPIError, SQLAlchemyError
 
 from planlayer import __version__
@@ -21,6 +22,7 @@ from planlayer.api.capex import router as capex_router
 from planlayer.api.forwarding import router as forwarding_router
 from planlayer.api.home import router as home_router
 from planlayer.api.item_lists import router as item_lists_router
+from planlayer.api.login import router as login_router
 from planlayer.api.masterdata import router as masterdata_router
 from planlayer.api.notes import router as notes_router
 from planlayer.api.personnel import router as personnel_router
@@ -31,9 +33,13 @@ from planlayer.api.setup import router as setup_router
 from planlayer.api.workforce import router as workforce_router
 from planlayer.api.workforce import transfers as transfers_router
 from planlayer.config import Settings
+from planlayer.login import local
+from planlayer.login import settings as login_settings
 from planlayer.store.db import create_app_engine
-from planlayer.store.migrate import current_revision
+from planlayer.store.migrate import current_revision, head_revision
 from planlayer.store.output import create_output_engine
+
+log = logging.getLogger("planlayer")
 
 # Postgres refusing a value too large for its column: a number beyond its numeric(p, s), or a
 # text beyond a length. The parsers check numbers against their columns; this catches the rest.
@@ -46,6 +52,19 @@ class Health(BaseModel):
     schema_revision: str | None
 
 
+def _first_run(engine: Engine, settings: Settings) -> None:
+    """While no admin can log in, the setup code goes to the log at start (ADR 0030). An app
+    store not yet migrated, or not reachable yet, gets it when the login page first asks."""
+    try:
+        with engine.connect() as conn:
+            if current_revision(conn, settings.app_schema) != head_revision():
+                return
+        local.ensure_code(engine, login_settings.load(engine)[0])
+    except SQLAlchemyError as e:
+        # The server starts without its database; /api/health reports it.
+        log.warning("first run check skipped, the app store can't be read: %s", type(e).__name__)
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or Settings()  # type: ignore[call-arg]  # values come from the env
     engine = create_app_engine(settings)
@@ -55,6 +74,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # FastAPI requires the lifespan to be async; it only disposes the pool on shutdown.
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        if not settings.demo:
+            _first_run(engine, settings)
         yield
         engine.dispose()
         source.dispose()
@@ -74,6 +95,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         raise e
 
     app.include_router(auth_router)
+    app.include_router(login_router)
     app.include_router(access_router)
     app.include_router(masterdata_router)
     app.include_router(planning_router)

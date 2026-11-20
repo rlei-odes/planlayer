@@ -1,4 +1,4 @@
-// Screenshots of the main pages, logged in through the development login.
+// Screenshots of the main pages, logged in through the demo login (PLANLAYER_DEMO).
 // Usage: node shots.mjs [--website] [base URL] [width]   (default http://localhost:5173, 1440 wide)
 // Only the names given in SHOTS (comma-separated) are taken, e.g. SHOTS=capex,status.
 //
@@ -117,7 +117,7 @@ try {
   for (const shot of (website ? highlights : shots).filter((s) => !only || only.includes(s.name))) {
     for (const colorScheme of schemes) {
       const context = await browser.newContext({ viewport: { ...viewport, width: shot.width ?? viewport.width }, colorScheme })
-      const res = await context.request.post(`${base}/api/auth/dev-login`, { data: { login: shot.user } })
+      const res = await context.request.post(`${base}/api/auth/demo-login`, { data: { login: shot.user } })
       if (!res.ok()) throw new Error(`Dev login as ${shot.user} failed: ${res.status()}`)
       const own = (await (await context.request.get(`${base}/api/me`)).json()).number_own
       const setFormat = async (data) => {

@@ -46,7 +46,7 @@ Users without any of these rights see nothing.
 
 ### Sessions
 
-A login creates a random session token, sent as an HttpOnly, SameSite=Lax cookie (Secure in production). The app store keeps only its SHA-256 hash and an expiry (`PLANLAYER_SESSION_HOURS`, default 12). Disabling a user ends their sessions. The development login (`PLANLAYER_DEV_LOGIN`, refused in production) logs in as any active user without a password; OIDC and LDAPS will create the same sessions.
+A login creates a random session token, sent as an HttpOnly, SameSite=Lax cookie (Secure in production). The app store keeps only its SHA-256 hash and an expiry (`PLANLAYER_SESSION_HOURS`, default 12). Disabling a user ends their sessions. Every way of logging in creates the same sessions; they are set out in [ADR 0030](0030-login.md).
 
 ## Reasons
 

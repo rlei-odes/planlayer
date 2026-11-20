@@ -29,6 +29,20 @@ export default function UsersPage() {
 
   useEffect(load, [load])
 
+  // Roles the login provider's groups set (ADR 0030): taken anew at every login through it.
+  const [grouped, setGrouped] = useState<string[]>([])
+  useEffect(() => {
+    api.loginSettings().then(
+      (p) => {
+        const s = p.settings
+        if (s.method === 'none') return
+        const groups: Record<Flag, string | undefined> = { is_admin: s.admin_group, is_controller: s.controller_group, is_viewer: s.viewer_group, is_hr: s.hr_group }
+        setGrouped(ROLES.filter(([flag]) => groups[flag]).map(([, label]) => label))
+      },
+      (e: unknown) => setNote({ kind: 'error', text: e instanceof Error ? e.message : String(e) }),
+    )
+  }, [])
+
   async function run(task: () => Promise<unknown>, done: string) {
     try {
       await task()
@@ -95,6 +109,12 @@ export default function UsersPage() {
         </form>
       )}
       {note && <div className={`su-note ${note.kind} rs-gap`}>{note.text}</div>}
+      {grouped.length > 0 && (
+        <div className="su-note rs-gap">
+          {grouped.join(', ')}: set by the login provider's groups at every login through it. A change here holds until that user's next login there; local
+          accounts keep it.
+        </div>
+      )}
 
       <div className="tbl-card">
         <div className="tbl-scroll">

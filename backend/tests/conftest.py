@@ -63,7 +63,7 @@ def db_settings() -> Iterator[Settings]:
             app_database_url=_app_url(),  # type: ignore[arg-type]
             app_schema=app_schema,
             output_schema=output_schema,
-            dev_login=True,
+            demo=True,
         )
     finally:
         with admin.begin() as conn:
@@ -227,7 +227,7 @@ def client(migrated: Settings, source_schema: str) -> Iterator[TestClient]:
 
 
 def login(client: TestClient, user: str) -> None:
-    response = client.post("/api/auth/dev-login", json={"login": user})
+    response = client.post("/api/auth/demo-login", json={"login": user})
     assert response.status_code == 200, response.text
 
 

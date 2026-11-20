@@ -269,11 +269,11 @@ export type DecisionIn = {
   reason?: string | null
 }
 
-export type DevLoginIn = {
+export type DemoLoginIn = {
   login: string
 }
 
-export type DevUser = {
+export type DemoUser = {
   login: string
   display_name: string
 }
@@ -507,6 +507,12 @@ export type LatestActualsOut = {
   start_month: number
 }
 
+export type LdapTestIn = {
+  settings: LoginSettingsIO
+  login: string
+  password: string
+}
+
 export type LineChangeIn = {
   rate?: string | null
   active?: boolean | null
@@ -564,7 +570,42 @@ export type LoginIn = {
 }
 
 export type LoginOptions = {
-  dev_login: boolean
+  demo: boolean
+  setup: boolean
+  oidc: string | null
+  ldap: boolean
+}
+
+export type LoginPageOut = {
+  settings: LoginSettingsIO
+  from_env: boolean
+  redirect_uri: string
+  client_secret: boolean
+  problems: string[]
+}
+
+export type LoginSettingsIO = {
+  method: "none" | "oidc" | "ldap"
+  oidc_label?: string
+  oidc_issuer?: string
+  oidc_client_id?: string
+  oidc_scopes?: string
+  oidc_login_claim?: string
+  oidc_email_claim?: string
+  oidc_name_claim?: string
+  oidc_groups_claim?: string
+  ldap_url?: string
+  ldap_bind_dn?: string
+  ldap_base_dn?: string
+  ldap_login_attribute?: string
+  ldap_email_attribute?: string
+  ldap_name_attribute?: string
+  ca_pem?: string
+  allowed_group?: string
+  admin_group?: string
+  controller_group?: string
+  viewer_group?: string
+  hr_group?: string
 }
 
 export type MappingIO = {
@@ -768,6 +809,14 @@ export type NumberOverrideIO = {
   units?: boolean | null
 }
 
+export type OidcTestIn = {
+  settings: LoginSettingsIO
+}
+
+export type OidcTestOut = {
+  url: string
+}
+
 export type OverviewOut = {
   round: Version
   rows: StatusRowOut[]
@@ -776,6 +825,11 @@ export type OverviewOut = {
 
 export type OwnerIn = {
   login: string | null
+}
+
+export type PasswordLoginIn = {
+  login: string
+  password: string
 }
 
 export type PayAccountOut = {
@@ -1267,6 +1321,14 @@ export type SetupIO = {
   capex?: CapexSettingsIO | null
 }
 
+export type SetupIn = {
+  code: string
+  login: string
+  display_name: string
+  email?: string | null
+  password: string
+}
+
 export type SetupOut = {
   round: Version
   copied_from: string | null
@@ -1388,6 +1450,12 @@ export type StatusSumsOut = {
   declined: string
 }
 
+export type Step = {
+  label: string
+  ok: boolean | null
+  detail: string
+}
+
 export type SumsOut = {
   by_priority: StatusSumsOut[]
   count: number
@@ -1414,6 +1482,12 @@ export type SyncRunOut = {
 export type SyncYearsOut = {
   default: WindowOut | null
   years: YearOut[]
+}
+
+export type TestOut = {
+  steps: Step[]
+  ok: boolean
+  env: string | null
 }
 
 export type ThreadIn = {

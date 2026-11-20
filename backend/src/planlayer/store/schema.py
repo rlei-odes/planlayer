@@ -390,9 +390,83 @@ app_user = Table(
     Column("number_decimals", Boolean),
     Column("number_scale", Text),
     Column("number_units", Boolean),
+    # A local account's password (scrypt, planlayer.login.passwords); NULL: no local password.
+    Column("password_hash", Text),
+    # The provider's key of the user once they logged in through it (ADR 0030):
+    # ``oidc:<issuer> <sub>`` or ``ldap:<dn>``.
+    Column("identity", Text, unique=True),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     CheckConstraint(NUMBER_SEPARATORS.format("number_separators"), name="number_separators"),
     CheckConstraint(NUMBER_SCALE.format("number_scale"), name="number_scale"),
+)
+
+# The login provider, set up by the admin on the Settings page (ADR 0030). One row. No secret is
+# kept here: OpenID Connect runs as a public client, LDAP binds as the user logging in.
+login_setting = Table(
+    "login_setting",
+    metadata,
+    Column("id", SmallInteger, primary_key=True, server_default="1"),
+    Column("method", Text, nullable=False, server_default="none"),  # none, oidc, ldap
+    Column("oidc_label", Text, nullable=False, server_default=""),  # the button: "Microsoft"
+    Column("oidc_issuer", Text, nullable=False, server_default=""),
+    Column("oidc_client_id", Text, nullable=False, server_default=""),
+    Column("oidc_scopes", Text, nullable=False, server_default="openid profile email"),
+    Column("oidc_login_claim", Text, nullable=False, server_default="preferred_username"),
+    Column("oidc_email_claim", Text, nullable=False, server_default="email"),
+    Column("oidc_name_claim", Text, nullable=False, server_default="name"),
+    Column("oidc_groups_claim", Text, nullable=False, server_default="groups"),
+    Column("ldap_url", Text, nullable=False, server_default=""),
+    Column("ldap_bind_dn", Text, nullable=False, server_default=""),  # with {login}
+    Column("ldap_base_dn", Text, nullable=False, server_default=""),
+    Column("ldap_login_attribute", Text, nullable=False, server_default="uid"),
+    Column("ldap_email_attribute", Text, nullable=False, server_default="mail"),
+    Column("ldap_name_attribute", Text, nullable=False, server_default="cn"),
+    Column("ca_pem", Text, nullable=False, server_default=""),  # the provider's CA, if private
+    Column("allowed_group", Text, nullable=False, server_default=""),
+    Column("admin_group", Text, nullable=False, server_default=""),
+    Column("controller_group", Text, nullable=False, server_default=""),
+    Column("viewer_group", Text, nullable=False, server_default=""),
+    Column("hr_group", Text, nullable=False, server_default=""),
+    # The first run's setup code (hash), while no admin can log in.
+    Column("setup_code_hash", Text),
+    Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    CheckConstraint("id = 1", name="single_row"),
+    CheckConstraint("method IN ('none', 'oidc', 'ldap')", name="login_method"),
+)
+
+# OpenID Connect logins between the redirect to the provider and its callback, ten minutes at
+# most. A test login carries the settings tried and keeps its result for the admin.
+oidc_login = Table(
+    "oidc_login",
+    metadata,
+    Column("state", Text, primary_key=True),
+    Column("nonce", Text, nullable=False),
+    Column("verifier", Text, nullable=False),
+    Column("redirect_uri", Text, nullable=False),
+    Column("test_by", Integer, ForeignKey("app_user.user_id"), index=True),
+    Column("settings", JSONB),
+    Column("result", JSONB),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)
+
+# Every login attempt (ADR 0030); also read to refuse logins after too many failures.
+login_event = Table(
+    "login_event",
+    metadata,
+    Column("event_id", BigInteger, Identity(always=True), primary_key=True),
+    Column("at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("login", Text, nullable=False),  # as tried
+    Column("method", Text, nullable=False),  # demo, password, oidc, setup
+    Column("outcome", Text, nullable=False),  # success, failed, refused, blocked, error
+    Column("address", Text),
+    Column("user_agent", Text),
+    Column("detail", Text),
+    Column("user_id", Integer, ForeignKey("app_user.user_id"), index=True),
+    CheckConstraint("method IN ('demo', 'password', 'oidc', 'setup')", name="login_event_method"),
+    CheckConstraint(
+        "outcome IN ('success', 'failed', 'refused', 'blocked', 'error')",
+        name="login_event_outcome",
+    ),
 )
 
 # Login sessions; only a hash of the token is stored.

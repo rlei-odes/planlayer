@@ -125,6 +125,8 @@ def test_the_frontend_has_the_same_bounds() -> None:
         "longText": limits.LongText,
         "number": limits.Number,
         "query": limits.SqlQuery,
+        "password": limits.Password,
+        "pem": limits.Pem,
     }
     backend = {name: TypeAdapter(t).json_schema()["maxLength"] for name, t in types.items()}
     assert frontend == backend

@@ -1,0 +1,143 @@
+{
+  "realm": "planlayer",
+  "enabled": true,
+  "sslRequired": "none",
+  "groups": [
+    {
+      "name": "planlayer"
+    },
+    {
+      "name": "planlayer-admins"
+    },
+    {
+      "name": "planlayer-controllers"
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "planlayer",
+      "name": "Planlayer",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": [
+        "http://localhost:5173/api/auth/oidc/callback",
+        "http://localhost:8000/api/auth/oidc/callback"
+      ],
+      "webOrigins": [
+        "+"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "+"
+      },
+      "protocolMappers": [
+        {
+          "name": "groups",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-group-membership-mapper",
+          "config": {
+            "full.path": "false",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "claim.name": "groups"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "anna.keller",
+      "enabled": true,
+      "firstName": "Anna",
+      "lastName": "Keller",
+      "email": "anna.keller@nordwerk.example",
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "planlayer-dev",
+          "temporary": false
+        }
+      ],
+      "groups": [
+        "/planlayer"
+      ]
+    },
+    {
+      "username": "jonas.brandt",
+      "enabled": true,
+      "firstName": "Jonas",
+      "lastName": "Brandt",
+      "email": "jonas.brandt@nordwerk.example",
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "planlayer-dev",
+          "temporary": false
+        }
+      ],
+      "groups": [
+        "/planlayer"
+      ]
+    },
+    {
+      "username": "controller",
+      "enabled": true,
+      "firstName": "Carla",
+      "lastName": "Controller",
+      "email": "controller@nordwerk.example",
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "planlayer-dev",
+          "temporary": false
+        }
+      ],
+      "groups": [
+        "/planlayer",
+        "/planlayer-controllers"
+      ]
+    },
+    {
+      "username": "admin",
+      "enabled": true,
+      "firstName": "Adam",
+      "lastName": "Admin",
+      "email": "admin@nordwerk.example",
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "planlayer-dev",
+          "temporary": false
+        }
+      ],
+      "groups": [
+        "/planlayer",
+        "/planlayer-admins"
+      ]
+    },
+    {
+      "username": "outsider",
+      "enabled": true,
+      "firstName": "Otto",
+      "lastName": "Outsider",
+      "email": "outsider@nordwerk.example",
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "planlayer-dev",
+          "temporary": false
+        }
+      ],
+      "groups": []
+    }
+  ]
+}

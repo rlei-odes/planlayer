@@ -62,7 +62,7 @@ def test_requests_need_a_login(client: TestClient) -> None:
     assert client.get("/api/health").status_code == 200
     login(client, OWNER)
     assert client.get("/api/me").json()["email"] == OWNER_EMAIL
-    assert client.post("/api/auth/dev-login", json={"login": "system"}).status_code == 422
+    assert client.post("/api/auth/demo-login", json={"login": "system"}).status_code == 422
 
 
 def test_me_says_whether_any_cost_center_is_readable(client: TestClient, engine: Engine) -> None:
@@ -80,11 +80,11 @@ def test_me_says_whether_any_cost_center_is_readable(client: TestClient, engine:
         assert client.get("/api/me").json()["reads_cost_centers"] is reads, who
 
 
-def test_dev_login_can_be_off(migrated: Settings, client: TestClient) -> None:
-    with TestClient(create_app(migrated.model_copy(update={"dev_login": False}))) as c:
-        assert c.get("/api/auth/options").json() == {"dev_login": False}
-        assert c.post("/api/auth/dev-login", json={"login": CONTROLLER}).status_code == 404
-        assert c.get("/api/auth/dev-users").status_code == 404
+def test_demo_login_only_in_a_demo(migrated: Settings, client: TestClient) -> None:
+    with TestClient(create_app(migrated.model_copy(update={"demo": False}))) as c:
+        assert c.get("/api/auth/options").json()["demo"] is False
+        assert c.post("/api/auth/demo-login", json={"login": CONTROLLER}).status_code == 404
+        assert c.get("/api/auth/demo-users").status_code == 404
 
 
 # --- Scopes ---------------------------------------------------------------------------------------

@@ -1,8 +1,7 @@
 """Login sessions (T-22, ADR 0009).
 
-A session token lives in an HttpOnly cookie; the app store keeps only its hash. Until OIDC and
-LDAPS arrive, the development login (``PLANLAYER_DEV_LOGIN``, refused in production) logs in as
-any active user without a password.
+A session token lives in an HttpOnly cookie; the app store keeps only its hash. How a user gets
+one is ``planlayer.api.login`` (ADR 0030).
 """
 
 from typing import Annotated
@@ -12,7 +11,6 @@ from pydantic import BaseModel
 from sqlalchemy import Engine
 
 from planlayer import access, number_format
-from planlayer.api.limits import Code
 from planlayer.config import Settings
 
 SESSION_COOKIE = "planlayer_session"
@@ -75,19 +73,6 @@ class Me(BaseModel):
     number_own: NumberOverrideIO
 
 
-class LoginOptions(BaseModel):
-    dev_login: bool
-
-
-class DevUser(BaseModel):
-    login: str
-    display_name: str
-
-
-class DevLoginIn(BaseModel):
-    login: Code
-
-
 def format_io(f: number_format.NumberFormat) -> NumberFormatIO:
     return NumberFormatIO(
         separators=f.separators, decimals=f.decimals, scale=f.scale, units=f.units
@@ -132,41 +117,18 @@ def put_number_format(request: Request, user: CurrentUser, body: NumberOverrideI
     return me_of(engine, user)
 
 
-@router.get("/auth/options")
-def options(request: Request) -> LoginOptions:
-    return LoginOptions(dev_login=settings_of(request).dev_login)
-
-
-def _require_dev_login(request: Request) -> None:
-    if not settings_of(request).dev_login:
-        raise HTTPException(404, "the development login is off")
-
-
-@router.get("/auth/dev-users", responses={404: {}})
-def dev_users(request: Request) -> list[DevUser]:
-    _require_dev_login(request)
-    return [
-        DevUser(login=u.login, display_name=u.display_name)
-        for u in access.users(engine_of(request), active_only=True)
-    ]
-
-
-@router.post("/auth/dev-login", responses={404: {}, 422: {}})
-def dev_login(request: Request, response: Response, body: DevLoginIn) -> Me:
-    _require_dev_login(request)
+def start_session(request: Request, response: Response, login: str) -> Me:
+    """A session for an active user, in the cookie; the user as the API shows them."""
     settings = settings_of(request)
     engine = engine_of(request)
-    try:
-        token = access.create_session(engine, body.login, settings.session_hours)
-    except access.UserError as e:
-        raise HTTPException(422, str(e)) from None
+    token = access.create_session(engine, login, settings.session_hours)
     response.set_cookie(
         SESSION_COOKIE,
         token,
         max_age=settings.session_hours * 3600,
         httponly=True,
         samesite="lax",
-        secure=settings.environment == "production",
+        secure=not settings.development,
     )
     user = access.session_user(engine, token)
     assert user is not None

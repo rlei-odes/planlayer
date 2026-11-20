@@ -1,5 +1,5 @@
-"""Development users (TD-09) and plan values (TD-19) for the Nordwerk test data; refused in
-production.
+"""Development users (TD-09) and plan values (TD-19) for the Nordwerk test data, for demo and
+development installations only.
 
 The cost center owners are the generator's ``USERS`` (tools/gen_testdata, ``master.py``); its
 ``UNMATCHED_OWNER`` deliberately gets no user. Besides them: an admin, a controller, the CFO
@@ -11,7 +11,7 @@ import random
 from dataclasses import dataclass, replace
 from datetime import date, timedelta
 from decimal import Decimal
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from sqlalchemy import Engine, func, select
 
@@ -31,6 +31,9 @@ from planlayer.store.schema import (
 )
 from planlayer.store.uow import unit_of_work
 from planlayer.workflow import enabled_members
+
+if TYPE_CHECKING:
+    from planlayer.adapters.source import PostgresSource
 
 OWNERS = (
     "anna.keller@nordwerk.example",
@@ -343,8 +346,8 @@ def seed_workforce(engine: Engine, round_code: str) -> tuple[int, int, int]:
     has none, HR's staff taken as positions for every planned cost center, and, entered by the
     owners, a replacement for every leaver announced after HR's latest month-end figures (HR
     already lists the successors of those who left before) plus a few new positions. A cost
-    center that already has plan positions is left alone. Returns (people taken from HR,
-    replacements, new positions)."""
+    center that already has plan positions, or is submitted or approved, is left alone.
+    Returns (people taken from HR, replacements, new positions)."""
     # Imported here: workforce builds on planning, which this module imports.
     from planlayer import workforce
     from planlayer.domain.workforce import month_end
@@ -414,8 +417,19 @@ def seed_workforce(engine: Engine, round_code: str) -> tuple[int, int, int]:
             conn.execute(select(member.c.code).where(member.c.member_id.in_(planned))).scalars()
         )
         enabled = {m for m, on in enabled_members(conn, r.version_id).items() if on}
+        # Submitted and approved cost centers take no new positions.
+        locked = set(
+            conn.execute(
+                select(workflow_status.c.cost_center_id).where(
+                    workflow_status.c.version_id == r.version_id,
+                    workflow_status.c.status.in_(("submitted", "approved")),
+                )
+            ).scalars()
+        )
         in_round = set(
-            conn.execute(select(member.c.code).where(member.c.member_id.in_(enabled))).scalars()
+            conn.execute(
+                select(member.c.code).where(member.c.member_id.in_(enabled - locked))
+            ).scalars()
         )
 
     def planner(cc: str) -> access.User:
@@ -429,7 +443,7 @@ def seed_workforce(engine: Engine, round_code: str) -> tuple[int, int, int]:
     for row in leavers:
         # The replacement starts on the first of the month after the leaver's last day.
         entry = month_end(row.leave_date) + timedelta(days=1)
-        if entry > periods[-1]:
+        if entry > periods[-1] or row.cc_code not in in_round:
             continue
         workforce.save_position(
             engine,
@@ -1044,3 +1058,53 @@ def seed_item_lists(engine: Engine) -> int:
             continue
         made += 1
     return made
+
+
+DEMO_ROUND, DEMO_YEAR = "B2026", 2026
+
+
+def seed_demo(engine: Engine, source: "PostgresSource", source_schema: str) -> list[str]:
+    """A demo installation from the Nordwerk test warehouse (ADR 0030), into an empty app store:
+    the mappings, a sync, the users, an open budget round with plans begun, investments,
+    positions, forwardings, notes and item lists. Returns what was done, one line each."""
+    # Imported here: sync and rounds build on what this module imports.
+    from planlayer import rounds, sync
+
+    system = access.system_user(engine)
+    with engine.connect() as conn:
+        users = conn.execute(
+            select(func.count()).where(app_user.c.is_system.is_(False))
+        ).scalar_one()
+        rounds_made = conn.execute(
+            select(func.count()).where(version.c.kind != "actuals")
+        ).scalar_one()
+    if users or rounds_made:
+        raise ValueError("seed-demo needs an empty app store: it has users or rounds already")
+    for m in sync.default_mappings(source_schema):
+        sync.save_mapping(engine, system, m)
+    sync.set_pay_from_source(engine, system, True)  # the test warehouse delivers salaries
+    # The source is read before anything else is written, so a warehouse that doesn't fit
+    # leaves the app store empty for the next try.
+    if problems := sync.plan(engine, source).problems:
+        raise sync.SyncError(problems)
+    synced = sync.run(engine, source, system)  # every year the warehouse delivers
+    created = seed(engine)
+    # After the sync: a new round enables the cost centers there are.
+    rounds.create_round(engine, system, DEMO_ROUND, "Budget 2026", "budget", DEMO_YEAR)
+    rounds.set_round_status(engine, system, DEMO_ROUND, "open")
+    # In this order: forwardings mark accounts not planned before plans are on them; plans
+    # submit and approve some cost centers, which positions then leave alone.
+    forwardings = seed_forwarding(engine, DEMO_ROUND)
+    plans = seed_plans(engine, DEMO_ROUND)
+    projects, lines = seed_capex(engine, DEMO_ROUND)
+    taken, replaced, new = seed_workforce(engine, DEMO_ROUND)
+    threads = seed_notes(engine, DEMO_ROUND)
+    lists = seed_item_lists(engine)
+    return [
+        f"synced {synced.members} members, {synced.actual_rows} actual cells from {source_schema}",
+        f"created {len(created)} users",
+        f"opened round {DEMO_ROUND}; plans begun for {len(plans)} cost centers",
+        f"{projects} large projects and {lines} investments",
+        f"{taken} positions from HR, {replaced} replacements, {new} new positions",
+        f"{len(forwardings)} forwardings, {threads} note threads, {lists} item lists",
+    ]

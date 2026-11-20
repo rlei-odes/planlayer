@@ -8,5 +8,7 @@ export const LIMIT = {
   email: 254,
   longText: 2000,
   number: 40,
+  password: 200,
+  pem: 20_000,
   query: 100_000,
 } as const

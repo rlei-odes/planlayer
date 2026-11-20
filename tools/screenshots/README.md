@@ -12,7 +12,7 @@ SHOTS=capex,status npm run shots              # only these
 npm run website                               # light and dark pairs for the website
 ```
 
-The script logs in through the development login (`PLANLAYER_DEV_LOGIN`), so it needs the dev
+The script logs in through the demo login (`PLANLAYER_DEMO`), so it needs the dev
 users (`planlayer seed-dev-users`) and a round with data. Each page is captured at 1440×900, or
 the width given, the viewport only, into `out/` (not tracked). Pages are listed in `shots.mjs`.
 

@@ -1,0 +1,11 @@
+{
+  "id": "anna.keller",
+  "email": "anna.keller@nordwerk.example",
+  "password": "planlayer-dev",
+  "displayName": "Anna Keller",
+  "firstName": "Anna",
+  "lastName": "Keller",
+  "groups": [
+    "planlayer"
+  ]
+}

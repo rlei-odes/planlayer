@@ -1,0 +1,9 @@
+{
+  "id": "outsider",
+  "email": "outsider@nordwerk.example",
+  "password": "planlayer-dev",
+  "displayName": "Otto Outsider",
+  "firstName": "Otto",
+  "lastName": "Outsider",
+  "groups": []
+}

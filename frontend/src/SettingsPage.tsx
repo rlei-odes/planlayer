@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { api, type Signs } from './api'
 import { detail, example, type NumberFormat } from './amounts'
 import { NumberFormatFields } from './NumberFormat'
+import LoginSettingsCard from './LoginSettings'
 import PageHeader from './PageHeader'
 
 // Installation settings (E-12), for the admin: the sign convention of published amounts
@@ -59,6 +60,8 @@ export default function SettingsPage() {
   return (
     <div className="su st-settings">
       <PageHeader title="Settings" />
+
+      <LoginSettingsCard />
 
       <NumberDefault />
 

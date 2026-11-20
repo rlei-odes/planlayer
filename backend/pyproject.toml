@@ -8,6 +8,8 @@ dependencies = [
     # Schema migrations of planlayer_app (planlayer.store.migrations).
     "alembic==1.20.1",
     "fastapi==0.162.2",
+    # Login against the company's directory over LDAPS (planlayer.login.ldap, ADR 0030).
+    "ldap3==2.9.1",
     # Excel files of HR's salary upload and its template (ADR 0025).
     "openpyxl==3.1.5",
     # Postgres driver for SQLAlchemy; the pool keeps connections per process.
@@ -36,8 +38,12 @@ dev = [
     # Runs the tests on every core; each database test has schemas of its own.
     "pytest-xdist==3.8.0",
     "ruff==0.17.4",
-    # openpyxl ships without types; mypy --strict checks the salary files with these.
+    # ldap3 and openpyxl ship without types; mypy --strict checks the login and the salary
+    # files with these. types-pyasn1 comes with types-ldap3, pinned below its newest release,
+    # which is younger than two weeks.
+    "types-ldap3==2.9.13.20250622",
     "types-openpyxl==3.1.5.20250919",
+    "types-pyasn1==0.6.0.20260724",
 ]
 
 [tool.ruff]

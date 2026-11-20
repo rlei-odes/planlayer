@@ -23,6 +23,10 @@ export type Overview = S.OverviewOut
 export type ActionRequest = S.ActionIn
 
 export type Me = S.Me
+export type LoginSettings = S.LoginSettingsIO
+export type LoginPage = S.LoginPageOut
+export type LoginTest = S.TestOut
+export type LoginStep = S.Step
 export type User = S.UserOut
 export type Responsibility = S.ResponsibilityOut
 export type Responsibilities = S.ResponsibilitiesOut
@@ -131,6 +135,14 @@ async function json<T>(response: Response): Promise<T> {
   return response.json() as Promise<T>
 }
 
+async function loginJson<T>(response: Response): Promise<T> {
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}))
+    throw new Error(body.detail ?? `${response.status} ${response.statusText}`)
+  }
+  return response.json() as Promise<T>
+}
+
 const send = (method: string, url: string, body?: unknown) =>
   fetch(url, {
     method,
@@ -160,9 +172,22 @@ function lineQuery(version: string, line: NoteLine): string {
 export const api = {
   me: () => fetch('/api/me').then((res) => json<Me>(res)),
   setOwnNumberFormat: (own: S.NumberOverrideIO) => send('PUT', '/api/me/number-format', own).then((res) => json<Me>(res)),
-  loginOptions: () => fetch('/api/auth/options').then((res) => json<S.LoginOptions>(res)),
-  devUsers: () => fetch('/api/auth/dev-users').then((res) => json<S.DevUser[]>(res)),
-  devLogin: (login: string) => post('/api/auth/dev-login', { login }).then((res) => json<Me>(res)),
+  // Logging in (ADR 0030): a refused login answers 401 with its reason, not "logged out".
+  loginOptions: () => fetch('/api/auth/options').then((res) => loginJson<S.LoginOptions>(res)),
+  demoUsers: () => fetch('/api/auth/demo-users').then((res) => loginJson<S.DemoUser[]>(res)),
+  demoLogin: (login: string) => post('/api/auth/demo-login', { login }).then((res) => loginJson<Me>(res)),
+  passwordLogin: (login: string, password: string) =>
+    post('/api/auth/login', { login, password }).then((res) => loginJson<Me>(res)),
+  setup: (body: S.SetupIn) => post('/api/auth/setup', body).then((res) => loginJson<Me>(res)),
+  loginSettings: () => fetch('/api/settings/login').then((res) => json<LoginPage>(res)),
+  saveLoginSettings: (settings: LoginSettings) =>
+    send('PUT', '/api/settings/login', settings).then((res) => json<LoginPage>(res)),
+  testLdap: (settings: LoginSettings, login: string, password: string) =>
+    post('/api/settings/login/test-ldap', { settings, login, password }).then((res) => json<LoginTest>(res)),
+  testOidc: (settings: LoginSettings) =>
+    post('/api/settings/login/test-oidc', { settings }).then((res) => json<S.OidcTestOut>(res)),
+  oidcTestResult: (state: string) =>
+    fetch(`/api/settings/login/test-oidc/${encodeURIComponent(state)}`).then((res) => json<LoginTest>(res)),
   logout: () => post('/api/auth/logout', {}).then((res) => json<null>(res)),
   users: () => fetch('/api/users').then((res) => json<User[]>(res)),
   createUser: (user: S.UserIn) => post('/api/users', user).then((res) => json<null>(res)),

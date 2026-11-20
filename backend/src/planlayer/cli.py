@@ -1,7 +1,9 @@
 """The ``planlayer`` command."""
 
 import argparse
+import getpass
 import logging
+import os
 from datetime import date
 
 import uvicorn
@@ -9,6 +11,7 @@ import uvicorn
 from planlayer import access, devdata, publish, rounds, sync
 from planlayer.adapters.source import PostgresSource
 from planlayer.config import Settings
+from planlayer.login import local
 from planlayer.store import migrate
 from planlayer.store.db import create_app_engine
 from planlayer.store.output import create_output_engine
@@ -39,6 +42,12 @@ def _years(value: str) -> tuple[int, int]:
         raise argparse.ArgumentTypeError("a year or a range, e.g. 2025-2027") from None
 
 
+def _require_demo(settings: Settings, command: str) -> None:
+    """Test data only goes into a demo or a development installation (ADR 0030)."""
+    if not (settings.demo or settings.development):
+        raise SystemExit(f"{command} needs PLANLAYER_DEMO=true or a development environment")
+
+
 def main(argv: list[str] | None = None) -> None:
     # Planlayer's own messages (e.g. sync steps and their times) next to the server's.
     logging.basicConfig(level=logging.INFO, format="%(levelname)s:     %(name)s: %(message)s")
@@ -65,7 +74,7 @@ def main(argv: list[str] | None = None) -> None:
 
     commands.add_parser(
         "seed-dev-mappings",
-        help="map the datasets to the test warehouse's views (not in production)",
+        help="map the datasets to the test warehouse's views (demo or development)",
     )
 
     version_cmd = commands.add_parser(
@@ -81,7 +90,7 @@ def main(argv: list[str] | None = None) -> None:
     commands.add_parser("republish", help="rebuild the output from every round's last publish run")
 
     commands.add_parser(
-        "seed-dev-users", help="create the development users of the test data (not in production)"
+        "seed-dev-users", help="create the development users of the test data (demo or development)"
     )
 
     plans_cmd = commands.add_parser(
@@ -109,6 +118,15 @@ def main(argv: list[str] | None = None) -> None:
         help="notes on the seeded sheets and investments of a round (development)",
     )
     notes_cmd.add_argument("--round", default="B2026", help="the planning round (default B2026)")
+    commands.add_parser(
+        "seed-demo",
+        help="a demo from the Nordwerk test warehouse, into an empty app store (demo only)",
+    )
+    password_cmd = commands.add_parser(
+        "set-password",
+        help="a local password for a user (from PLANLAYER_PASSWORD or a prompt): the way back in",
+    )
+    password_cmd.add_argument("login")
     commands.add_parser(
         "seed-dev-item-lists",
         help="item lists on the test company's lines, by several owners (development)",
@@ -176,8 +194,7 @@ def main(argv: list[str] | None = None) -> None:
             )
         case "seed-dev-mappings":
             settings = Settings()  # type: ignore[call-arg]
-            if settings.environment == "production":
-                raise SystemExit("seed-dev-mappings is refused in production")
+            _require_demo(settings, "seed-dev-mappings")
             engine = create_app_engine(settings)
             try:
                 system = access.system_user(engine)
@@ -204,8 +221,7 @@ def main(argv: list[str] | None = None) -> None:
             print(f"republished {', '.join(codes) or 'nothing (no publish runs yet)'}")
         case "seed-dev-users":
             settings = Settings()  # type: ignore[call-arg]
-            if settings.environment == "production":
-                raise SystemExit("seed-dev-users is refused in production")
+            _require_demo(settings, "seed-dev-users")
             engine = create_app_engine(settings)
             try:
                 created = devdata.seed(engine)
@@ -214,8 +230,7 @@ def main(argv: list[str] | None = None) -> None:
             print(f"created {len(created)} user(s): {', '.join(created) or '-'}")
         case "seed-dev-plans":
             settings = Settings()  # type: ignore[call-arg]
-            if settings.environment == "production":
-                raise SystemExit("seed-dev-plans is refused in production")
+            _require_demo(settings, "seed-dev-plans")
             engine = create_app_engine(settings)
             try:
                 seeded = devdata.seed_plans(engine, args.round)
@@ -226,8 +241,7 @@ def main(argv: list[str] | None = None) -> None:
             print(f"seeded plan values for {len(seeded)} cost center(s) in {args.round}")
         case "seed-dev-forwarding":
             settings = Settings()  # type: ignore[call-arg]
-            if settings.environment == "production":
-                raise SystemExit("seed-dev-forwarding is refused in production")
+            _require_demo(settings, "seed-dev-forwarding")
             engine = create_app_engine(settings)
             try:
                 made = devdata.seed_forwarding(engine, args.round)
@@ -236,8 +250,7 @@ def main(argv: list[str] | None = None) -> None:
             print(f"created {len(made)} forwarding(s) in {args.round}: {', '.join(made) or '-'}")
         case "seed-dev-capex":
             settings = Settings()  # type: ignore[call-arg]
-            if settings.environment == "production":
-                raise SystemExit("seed-dev-capex is refused in production")
+            _require_demo(settings, "seed-dev-capex")
             engine = create_app_engine(settings)
             try:
                 projects, lines = devdata.seed_capex(engine, args.round)
@@ -246,8 +259,7 @@ def main(argv: list[str] | None = None) -> None:
             print(f"created {projects} large project(s) and {lines} investment(s) in {args.round}")
         case "seed-dev-notes":
             settings = Settings()  # type: ignore[call-arg]
-            if settings.environment == "production":
-                raise SystemExit("seed-dev-notes is refused in production")
+            _require_demo(settings, "seed-dev-notes")
             engine = create_app_engine(settings)
             try:
                 threads = devdata.seed_notes(engine, args.round)
@@ -256,8 +268,7 @@ def main(argv: list[str] | None = None) -> None:
             print(f"created {threads} note thread(s) in {args.round}")
         case "seed-dev-item-lists":
             settings = Settings()  # type: ignore[call-arg]
-            if settings.environment == "production":
-                raise SystemExit("seed-dev-item-lists is refused in production")
+            _require_demo(settings, "seed-dev-item-lists")
             engine = create_app_engine(settings)
             try:
                 lists = devdata.seed_item_lists(engine)
@@ -266,8 +277,7 @@ def main(argv: list[str] | None = None) -> None:
             print(f"created {lists} item list(s)")
         case "seed-dev-workforce":
             settings = Settings()  # type: ignore[call-arg]
-            if settings.environment == "production":
-                raise SystemExit("seed-dev-workforce is refused in production")
+            _require_demo(settings, "seed-dev-workforce")
             engine = create_app_engine(settings)
             try:
                 taken, replaced, new = devdata.seed_workforce(engine, args.round)
@@ -277,6 +287,30 @@ def main(argv: list[str] | None = None) -> None:
                 f"{args.round}: {taken} position(s) from HR, {replaced} replacement(s), "
                 f"{new} new position(s)"
             )
+        case "seed-demo":
+            settings = Settings()  # type: ignore[call-arg]
+            if not settings.demo:
+                raise SystemExit("seed-demo needs PLANLAYER_DEMO=true")
+            engine, source = create_app_engine(settings), PostgresSource(settings.source_url)
+            try:
+                for line in devdata.seed_demo(engine, source, settings.source_schema):
+                    print(line)
+            except (ValueError, sync.SyncError) as e:
+                raise SystemExit(str(e)) from None
+            finally:
+                engine.dispose()
+                source.dispose()
+        case "set-password":
+            settings = Settings()  # type: ignore[call-arg]
+            password = os.environ.get("PLANLAYER_PASSWORD") or getpass.getpass("Password: ")
+            engine = create_app_engine(settings)
+            try:
+                local.set_password(engine, args.login, password)
+            except (ValueError, access.UserError) as e:
+                raise SystemExit(str(e)) from None
+            finally:
+                engine.dispose()
+            print(f"password set for {args.login.strip().lower()}")
         case "api-types":
             from planlayer.api.typescript import app_schema, typescript
 

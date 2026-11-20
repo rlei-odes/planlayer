@@ -34,10 +34,15 @@ def test_schema_names_must_be_plain_identifiers(name: str) -> None:
         make(app_schema=name)
 
 
-def test_dev_login_refused_in_production() -> None:
-    with pytest.raises(ValidationError, match="not allowed in production"):
-        make(dev_login=True, environment="production")
+def test_demo_is_off_by_default() -> None:
+    assert make().demo is False
 
 
-def test_dev_login_allowed_in_development() -> None:
-    assert make(dev_login=True, environment="development").dev_login
+@pytest.mark.parametrize("url", ["plan.example.com", "ftp://plan.example.com"])
+def test_public_url_must_be_http(url: str) -> None:
+    with pytest.raises(ValidationError, match="https://"):
+        make(public_url=url)
+
+
+def test_public_url_without_trailing_slash() -> None:
+    assert make(public_url="https://plan.example.com/").public_url == "https://plan.example.com"

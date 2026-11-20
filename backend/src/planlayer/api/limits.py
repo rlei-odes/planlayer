@@ -17,6 +17,10 @@ Email = Annotated[str, Field(max_length=254)]
 LongText = Annotated[str, Field(max_length=2000)]
 # A number as typed: an amount, a rate, a quantity, a percentage.
 Number = Annotated[str, Field(max_length=40)]
+# A password as typed at login; scrypt reads it whole, so the bound keeps hashing cheap.
+Password = Annotated[str, Field(max_length=200)]
+# A CA certificate (PEM), or a chain of a few.
+Pem = Annotated[str, Field(max_length=20_000)]
 # An admin's source query.
 SqlQuery = Annotated[str, Field(max_length=100_000)]
 

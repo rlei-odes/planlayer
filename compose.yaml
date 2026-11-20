@@ -34,7 +34,7 @@ services:
     logging: *logging
     environment:
       PLANLAYER_ENVIRONMENT: development
-      PLANLAYER_DEV_LOGIN: "true"
+      PLANLAYER_DEMO: "true"
       PLANLAYER_APP_DATABASE_URL: postgresql+psycopg://planlayer:planlayer@db/planlayer
       PLANLAYER_SOURCE_DATABASE_URL: postgresql+psycopg://planlayer:planlayer@db/dwh
       PLANLAYER_OUTPUT_DATABASE_URL: postgresql+psycopg://planlayer:planlayer@db/dwh
@@ -44,6 +44,46 @@ services:
     depends_on:
       db:
         condition: service_healthy
+
+  # Login providers to develop against (ADR 0030), with the profile: docker compose --profile auth up -d
+  # Users anna.keller, jonas.brandt, controller, admin and outsider, password planlayer-dev; see
+  # docs/login.md for the settings that connect Planlayer to each.
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.8.1
+    profiles: [auth]
+    logging: *logging
+    command: ["start-dev", "--import-realm", "--http-port=8080"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      # One issuer for the browser and for the app: *.localhost is loopback to browsers and
+      # the host, and an alias of this container inside the compose network.
+      KC_HOSTNAME: http://kc.localhost:8080
+    ports:
+      - "127.0.0.1:8080:8080"
+      - "[::1]:8080:8080"
+    volumes:
+      - ./deploy/dev/keycloak:/opt/keycloak/data/import:ro
+    networks:
+      default:
+        aliases: [kc.localhost]
+
+  lldap:
+    image: lldap/lldap:v0.6.3
+    profiles: [auth]
+    logging: *logging
+    environment:
+      LLDAP_LDAP_BASE_DN: dc=nordwerk,dc=example
+      # The directory's own admin, apart from the test users (one of them is called admin).
+      LLDAP_LDAP_USER_DN: lldap-admin
+      LLDAP_LDAP_USER_PASS: lldap-admin-dev
+      LLDAP_JWT_SECRET: development-only-not-a-secret
+      LLDAP_KEY_SEED: development-only-not-a-seed
+    ports:
+      - "127.0.0.1:3890:3890"   # LDAP
+      - "127.0.0.1:17170:17170" # web UI
+    volumes:
+      - ./deploy/dev/lldap:/bootstrap:ro
 
 volumes:
   pgdata:

@@ -10,7 +10,9 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
     proxy: {
-      '/api': process.env.PLANLAYER_API_URL ?? 'http://localhost:8000',
+      // The browser's Host is kept, so the backend builds addresses the browser can open, such
+      // as the OpenID Connect redirect URI (http://localhost:5173/api/auth/oidc/callback).
+      '/api': { target: process.env.PLANLAYER_API_URL ?? 'http://localhost:8000', changeOrigin: false },
     },
   },
 })
