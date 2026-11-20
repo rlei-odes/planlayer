@@ -41,6 +41,7 @@ from planlayer.store.schema import (
     member,
     workforce_position,
 )
+from planlayer.store.uow import system_rights
 from planlayer.workflow import enabled_members, status_of
 from planlayer.workforce.common import (
     CENT,
@@ -192,14 +193,16 @@ def _not_transferred_out(old: Row[Any]) -> None:
 
 def _next_number(conn: Connection, version_id: int) -> str:
     """The next of Planlayer's position numbers in the round: N00001, N00002, ... One
-    transaction at a time takes a number (an advisory lock on the round)."""
+    transaction at a time takes a number (an advisory lock on the round). Counted over every
+    cost center's positions, not only those the user may read: numbers are unique per round."""
     conn.execute(select(func.pg_advisory_xact_lock(NUMBERING_LOCK, version_id)))
     p = workforce_position
-    last = conn.execute(
-        select(func.max(func.substring(p.c.code, 2).cast(Integer))).where(
-            p.c.version_id == version_id, p.c.origin == "manual"
-        )
-    ).scalar()
+    with system_rights(conn):
+        last = conn.execute(
+            select(func.max(func.substring(p.c.code, 2).cast(Integer))).where(
+                p.c.version_id == version_id, p.c.origin == "manual"
+            )
+        ).scalar()
     return f"N{(last or 0) + 1:05d}"
 
 

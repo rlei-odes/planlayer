@@ -286,6 +286,18 @@ def test_positions_added_here_are_numbered(client: TestClient) -> None:
     assert all(p["origin"] == "manual" for p in sheet["positions"])
 
 
+def test_numbers_count_positions_the_user_cant_read(client: TestClient) -> None:
+    """The controller adds a position on CC2; CC1's owner, who reads only CC1, takes the next
+    number, not the one CC2's position has."""
+    mode(client, "positions")
+    other = f"/api/versions/{R}/workforce/CC2/positions"
+    assert client.post(other, json=position()).status_code == 200
+    login(client, OWNER)
+    sheet = client.post(f"{SHEET}/positions", json=position(title="Planner"))
+    assert sheet.status_code == 200, sheet.text
+    assert [p["code"] for p in sheet.json()["positions"] if p["origin"] == "manual"] == ["N00002"]
+
+
 def test_positions_from_hr_keep_hrs_facts(engine: Engine, client: TestClient) -> None:
     mode(client, "positions")
     client.post(f"{SHEET}/hr")
