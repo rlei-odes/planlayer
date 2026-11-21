@@ -8,7 +8,7 @@ How users log in to Planlayer, and how an admin sets it up. The decisions behind
 | | Demo | Production |
 |---|---|---|
 | Setting | `PLANLAYER_DEMO=true` | `PLANLAYER_DEMO` unset |
-| Login page | Lists the users; anyone logs in as anyone, without a password | Password form, and the provider's button when OpenID Connect is set up |
+| Login page | Lists the users; anyone logs in as anyone, without a password | The provider's button when OpenID Connect is set up, with the password form behind *Use Planlayer account*; otherwise the password form |
 | Data | `planlayer seed-demo` fills an empty app store from the Nordwerk test warehouse | The company's own |
 
 A demo is never turned into a production installation: production starts from an empty app store.

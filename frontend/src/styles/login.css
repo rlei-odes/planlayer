@@ -141,3 +141,19 @@
   color: var(--warn);
   font-weight: 600;
 }
+
+/* The Settings page's login card: the hint, and "Active" on the method in force. */
+.ls-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ls-head .su-pill {
+  flex: none;
+}
+
+.lg-local {
+  margin-top: 10px;
+}

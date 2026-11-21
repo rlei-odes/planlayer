@@ -6,8 +6,8 @@ import { initials } from './names'
 import type { DemoUser, LoginOptions } from './schema'
 
 // Login (ADR 0030): a demo's user list; the first run's admin account, with the setup code from
-// the server log; otherwise the OpenID Connect provider's button and the password form (local
-// accounts, and directory accounts when LDAP is set up).
+// the server log; otherwise the OpenID Connect provider's button, with the password form (local
+// accounts, and directory accounts when LDAP is set up) behind "Use Planlayer account".
 
 /** The error the OpenID Connect callback sent back with, taken off the address. */
 function takeLoginError(): string | null {
@@ -23,6 +23,8 @@ function takeLoginError(): string | null {
 export default function LoginPage({ onLogin }: { onLogin: (me: Me) => void }) {
   const [options, setOptions] = useState<LoginOptions | null>(null)
   const [error, setError] = useState<string | null>(takeLoginError)
+  // With OpenID Connect, the password form opens on request: most users sign in at the provider.
+  const [local, setLocal] = useState(false)
 
   useEffect(() => {
     api.loginOptions().then(setOptions, (e: unknown) => setError(e instanceof Error ? e.message : String(e)))
@@ -55,12 +57,20 @@ export default function LoginPage({ onLogin }: { onLogin: (me: Me) => void }) {
                 Sign in with {options.oidc}
               </a>
             )}
-            {options.oidc && <div className="lg-or">or with a password</div>}
-            <PasswordForm
-              hint={options.ldap ? 'Your directory account, or a local account.' : 'A local account.'}
-              primary={!options.oidc}
-              onSubmit={(login, password) => void attempt(() => api.passwordLogin(login, password))}
-            />
+            {options.oidc && !local ? (
+              <button type="button" className="su-btn ghost lg-wide lg-local" onClick={() => setLocal(true)}>
+                Use Planlayer account
+              </button>
+            ) : (
+              <>
+                {options.oidc && <div className="lg-or">Planlayer account</div>}
+                <PasswordForm
+                  primary={!options.oidc}
+                  autoFocus={!!options.oidc}
+                  onSubmit={(login, password) => void attempt(() => api.passwordLogin(login, password))}
+                />
+              </>
+            )}
           </>
         )}
       </section>
@@ -104,12 +114,12 @@ function DemoUsers({ onPick }: { onPick: (login: string) => void }) {
 }
 
 function PasswordForm({
-  hint,
   primary,
+  autoFocus,
   onSubmit,
 }: {
-  hint: string
   primary: boolean
+  autoFocus: boolean
   onSubmit: (login: string, password: string) => void
 }) {
   const [login, setLogin] = useState('')
@@ -120,10 +130,17 @@ function PasswordForm({
   }
   return (
     <form className="lg-form" onSubmit={submit}>
-      <p className="lg-hint">{hint}</p>
       <label className="su-field">
         Login
-        <input maxLength={LIMIT.code} className="su-input" autoComplete="username" value={login} onChange={(e) => setLogin(e.target.value)} required />
+        <input
+          maxLength={LIMIT.code}
+          className="su-input"
+          autoComplete="username"
+          autoFocus={autoFocus}
+          value={login}
+          onChange={(e) => setLogin(e.target.value)}
+          required
+        />
       </label>
       <label className="su-field">
         Password

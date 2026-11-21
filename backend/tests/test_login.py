@@ -136,6 +136,9 @@ def test_variables_without_the_method_fill_in_a_draft(
     draft = login_settings.suggested(saved)
     assert draft == replace(saved, method="oidc", oidc_issuer=ISSUER, admin_group="admins")
     assert login_settings.load(engine) == (saved, False)  # a draft only, nothing in force
+    # Once a method is saved, the page shows what is saved, not the variables.
+    set_method(engine, method="ldap", ldap_url="ldaps://dc", ldap_bind_dn="uid={login}")
+    assert login_settings.suggested(login_settings.stored(engine)) is None
 
 
 # --- First run ---------------------------------------------------------------------------------

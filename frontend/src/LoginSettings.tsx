@@ -209,7 +209,10 @@ export default function LoginSettingsCard() {
 
   return (
     <div className="su-card">
-      <p className="su-hint">How users log in besides local accounts. Local accounts, such as the first admin's, always work.</p>
+      <div className="ls-head">
+        <p className="su-hint">How users log in besides local accounts. Local accounts, such as the first admin's, always work.</p>
+        {draft.method !== 'none' && draft.method === page.settings.method && <span className="su-pill approved">Active</span>}
+      </div>
       {locked && <div className="su-note fw-gap">Set by PLANLAYER_LOGIN_* environment variables; read-only here. Test still works.</div>}
       {changed && !locked && (
         <div className="su-note warn fw-gap">Unsaved changes{fromEnv ? ', filled in from PLANLAYER_LOGIN_* variables' : ''}</div>

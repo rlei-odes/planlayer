@@ -163,10 +163,11 @@ def from_env() -> LoginSettings | None:
 
 def suggested(base: LoginSettings) -> LoginSettings | None:
     """``base`` filled in from ``PLANLAYER_LOGIN_*`` variables set without the method, as a draft
-    for the Settings page; the method follows from them (an issuer: OpenID Connect, a server:
-    LDAP). None when no such variable changes anything."""
+    for the Settings page's first setup; the method follows from them (an issuer: OpenID Connect,
+    a server: LDAP). None once a login method is saved, whose settings the page then shows, and
+    when no such variable changes anything."""
     env = _Env()
-    if env.method is not None:
+    if env.method is not None or base.method != "none":
         return None
     values = {k: v for k, v in env.model_dump().items() if v is not None and k != "method"}
     if "ca_pem" in values:
