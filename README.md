@@ -26,7 +26,7 @@ One container, connected to an existing Postgres 18 (or newer). Planlayer keeps 
 
 URLs use the form `postgresql+psycopg://user:password@host:5432/database`.
 
-On first start the server logs a setup code; the login page takes it to create the first admin, a local account. The admin then connects OpenID Connect (Microsoft Entra ID, Keycloak, …) or LDAP (Active Directory, OpenLDAP) on the Settings page: [docs/login.md](docs/login.md).
+On first start the server logs a setup code; the login page takes it to create the first admin, a local account. The admin then connects OpenID Connect (Microsoft Entra ID, Okta, Google Workspace, Keycloak, …) or LDAP (Active Directory, OpenLDAP) on the Settings page: [docs/login.md](docs/login.md).
 
 ## Development
 

@@ -179,5 +179,52 @@ services:
       okta-db:
         condition: service_completed_successfully
 
+  # The same for Google Workspace (docs/google-workspace.md): docker compose --profile google up
+  # -d --build app-google, then http://localhost:8003. Database planlayer_google; the values from
+  # deploy/dev/google.env.
+  google-db:
+    image: postgres:18
+    profiles: [google]
+    environment:
+      PGHOST: db
+      PGUSER: postgres
+      PGPASSWORD: postgres
+    volumes:
+      - ./deploy/sql/install.sql:/planlayer/install.sql:ro
+    command:
+      - sh
+      - -c
+      - |
+        if [ -z "$(psql -tAc "SELECT 1 FROM pg_database WHERE datname = 'planlayer_google'")" ]; then
+          psql -v ON_ERROR_STOP=1 -c "CREATE DATABASE planlayer_google"
+          psql -v ON_ERROR_STOP=1 -d planlayer_google -c "CREATE SCHEMA gold"
+          psql -v ON_ERROR_STOP=1 -v app_db=planlayer_google -v output_db=planlayer_google \
+               -v source_db=planlayer_google -v source_schema=gold -v app_role=planlayer_google \
+               -v bi_role=planlayer_google_bi -v app_password=planlayer_google -f /planlayer/install.sql
+        fi
+    depends_on:
+      db:
+        condition: service_healthy
+
+  app-google:
+    build: .
+    profiles: [google]
+    logging: *logging
+    environment:
+      # Development: plain-http cookies on localhost.
+      PLANLAYER_ENVIRONMENT: development
+      PLANLAYER_APP_DATABASE_URL: postgresql+psycopg://planlayer_google:planlayer_google@db/planlayer_google
+      # The address of the redirect URI registered at Google.
+      PLANLAYER_PUBLIC_URL: http://localhost:8003
+    env_file:
+      - path: ./deploy/dev/google.env
+        required: true
+    command: ["sh", "-c", "planlayer migrate && planlayer serve"]
+    ports:
+      - "127.0.0.1:8003:8000"
+    depends_on:
+      google-db:
+        condition: service_completed_successfully
+
 volumes:
   pgdata:

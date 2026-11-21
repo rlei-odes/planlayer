@@ -130,19 +130,20 @@ def start(
                 settings=settings.as_dict() if test_by is not None else None,
             )
         )
-    query = urllib.parse.urlencode(
-        {
-            "response_type": "code",
-            "client_id": settings.oidc_client_id,
-            "redirect_uri": redirect_uri,
-            "scope": settings.oidc_scopes,
-            "state": state,
-            "nonce": nonce,
-            "code_challenge": _b64(hashlib.sha256(verifier.encode()).digest()),
-            "code_challenge_method": "S256",
-        }
-    )
-    return f"{doc['authorization_endpoint']}?{query}"
+    params = {
+        "response_type": "code",
+        "client_id": settings.oidc_client_id,
+        "redirect_uri": redirect_uri,
+        "scope": settings.oidc_scopes,
+        "state": state,
+        "nonce": nonce,
+        "code_challenge": _b64(hashlib.sha256(verifier.encode()).digest()),
+        "code_challenge_method": "S256",
+    }
+    if settings.oidc_hosted_domain:
+        # Google offers only that domain's accounts; the ID token's hd claim is still checked.
+        params["hd"] = settings.oidc_hosted_domain
+    return f"{doc['authorization_endpoint']}?{urllib.parse.urlencode(params)}"
 
 
 def pending(engine: Engine, state: str) -> Pending | None:
@@ -233,6 +234,15 @@ def finish(settings: LoginSettings, p: Pending, code: str) -> tuple[Identity, li
         raise LoginError("the token response has no ID token: is openid among the scopes?")
     claims = _claims(id_token)
     check_claims(claims, doc["issuer"], settings.oidc_client_id, p.nonce)
+    # The ID token's own hd, before userinfo is merged in: Google sets it for Workspace accounts
+    # only, so a personal account with the same e-mail domain doesn't pass.
+    if settings.oidc_hosted_domain and (
+        str(claims.get("hd", "")).lower() != settings.oidc_hosted_domain.lower()
+    ):
+        raise LoginError(
+            f"the ID token's hosted domain is {claims.get('hd')!r},"
+            f" not {settings.oidc_hosted_domain!r}"
+        )
     # The userinfo endpoint may carry claims the ID token leaves out (groups, e-mail); it must
     # name the same subject. The ID token's own claims win.
     access_token = tokens.get("access_token")

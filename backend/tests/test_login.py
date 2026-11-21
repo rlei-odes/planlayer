@@ -86,6 +86,11 @@ def test_settings_problems() -> None:
     ]
     with pytest.raises(ValueError, match="method"):
         LoginSettings.of({"method": "saml"})
+    google = LoginSettings(
+        method="oidc", oidc_issuer="https://accounts.google.com", oidc_client_id="c"
+    )
+    assert google.problems(development=False) == ["Google needs the hosted domain"]
+    assert replace(google, oidc_hosted_domain="corp.example").problems(development=False) == []
 
 
 def test_settings_round_trip_through_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -473,6 +478,35 @@ def test_oidc_id_token_checks(
         assert "login_error" in r.headers["location"]
         assert client.get("/api/me").status_code == 401
     assert error in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("claims", "logs_in"),
+    [
+        ({"hd": "Corp.Example"}, True),
+        ({"hd": "other.example"}, False),
+        ({}, False),  # a personal account: Google sends no hd
+    ],
+)
+def test_oidc_hosted_domain(
+    prod: Settings,
+    engine: Engine,
+    provider: Provider,
+    claims: dict[str, Any],
+    logs_in: bool,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    with engine.begin() as conn:
+        conn.execute(update(login_setting).values(oidc_hosted_domain="corp.example"))
+    provider.claims = claims
+    with https_client(prod) as client:
+        r = client.get("/api/auth/oidc/login", follow_redirects=False)
+        q = {k: v[0] for k, v in parse_qs(urlsplit(r.headers["location"]).query).items()}
+        assert q["hd"] == "corp.example"
+        provider.nonce = nonce_of(engine, q["state"])
+        client.get(f"/api/auth/oidc/callback?state={q['state']}&code=good-code")
+        assert (client.get("/api/me").status_code == 200) is logs_in
+    assert logs_in or "hosted domain" in caplog.text
 
 
 def test_oidc_test_with_unsaved_settings(

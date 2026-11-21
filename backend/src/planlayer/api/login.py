@@ -341,6 +341,7 @@ class LoginSettingsIO(BaseModel):
     oidc_email_claim: Name = "email"
     oidc_name_claim: Name = "name"
     oidc_groups_claim: Name = "groups"
+    oidc_hosted_domain: Name = ""
     ldap_url: LongText = ""
     ldap_bind_dn: LongText = ""
     ldap_base_dn: LongText = ""

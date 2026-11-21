@@ -415,6 +415,7 @@ login_setting = Table(
     Column("oidc_email_claim", Text, nullable=False, server_default="email"),
     Column("oidc_name_claim", Text, nullable=False, server_default="name"),
     Column("oidc_groups_claim", Text, nullable=False, server_default="groups"),
+    Column("oidc_hosted_domain", Text, nullable=False, server_default=""),  # Google's hd claim
     Column("ldap_url", Text, nullable=False, server_default=""),
     Column("ldap_bind_dn", Text, nullable=False, server_default=""),  # with {login}
     Column("ldap_base_dn", Text, nullable=False, server_default=""),

@@ -100,6 +100,7 @@ secret from `PLANLAYER_OIDC_CLIENT_SECRET` (sent as HTTP Basic). The issuer must
 | Claims: e-mail | `email` | |
 | Claims: name | `name` | |
 | Claims: groups | `groups` | Entra ID: `roles` for app roles by name |
+| Hosted domain | | Google Workspace: the ID token's `hd` claim must be this domain |
 | CA certificate | | PEM, for a provider signed by the company's own CA |
 
 ### Microsoft Entra ID
@@ -115,6 +116,14 @@ The app integration, roles by group name, and a local test installation: [okta.m
 short: a *Web Application* integration with a client secret in `PLANLAYER_OIDC_CLIENT_SECRET`,
 issuer `https://<org>.okta.com` (without `-admin`), a groups claim filter on the app's *Sign On*
 tab, and scopes `openid profile email groups`.
+
+### Google Workspace
+
+The OAuth client, the hosted domain, and a local test installation:
+[google-workspace.md](google-workspace.md). In short: an *Internal* app with a *Web application*
+client and its secret in `PLANLAYER_OIDC_CLIENT_SECRET`, issuer `https://accounts.google.com`,
+*Hosted domain* the Workspace's domain (required for Google: every Google account has this
+issuer), *Claims › Login* `email`. Google sends no groups, so roles are set on the *Users* page.
 
 ### Keycloak
 

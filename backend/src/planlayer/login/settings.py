@@ -14,6 +14,7 @@ from planlayer.store.schema import login_setting
 Method = Literal["none", "oidc", "ldap"]
 METHODS: tuple[Method, ...] = ("none", "oidc", "ldap")
 ROLES = ("admin", "controller", "viewer", "hr")
+GOOGLE_ISSUER = "https://accounts.google.com"
 
 
 @dataclass(frozen=True)
@@ -27,6 +28,7 @@ class LoginSettings:
     oidc_email_claim: str = "email"
     oidc_name_claim: str = "name"
     oidc_groups_claim: str = "groups"
+    oidc_hosted_domain: str = ""  # Google Workspace: the hd claim every ID token must carry
     ldap_url: str = ""
     ldap_bind_dn: str = ""  # with {login}
     ldap_base_dn: str = ""
@@ -72,6 +74,10 @@ class LoginSettings:
                     found.append("the scopes must include openid")
                 if not self.oidc_login_claim:
                     found.append("the login claim is missing")
+                # Every Google account has this issuer; the hosted domain limits it to one
+                # Workspace, as a tenant's own issuer does for Entra ID.
+                if self.oidc_issuer.rstrip("/") == GOOGLE_ISSUER and not self.oidc_hosted_domain:
+                    found.append("Google needs the hosted domain")
             case "ldap":
                 if not self.ldap_url:
                     found.append("the server is missing")
@@ -129,6 +135,7 @@ class _Env(BaseSettings):
     oidc_email_claim: str | None = None
     oidc_name_claim: str | None = None
     oidc_groups_claim: str | None = None
+    oidc_hosted_domain: str | None = None
     ldap_url: str | None = None
     ldap_bind_dn: str | None = None
     ldap_base_dn: str | None = None

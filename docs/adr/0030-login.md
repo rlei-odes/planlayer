@@ -57,7 +57,9 @@ No secret is stored there:
   in place of the signature. This keeps a JWT library out. The issuer must be `https`, except in
   development.
 - The issuer is a single tenant's (for Entra ID, `https://login.microsoftonline.com/<tenant>/v2.0`).
-  A multi-tenant issuer would let any tenant's users claim any e-mail address.
+  A multi-tenant issuer would let any tenant's users claim any e-mail address. Google has only
+  one issuer for all its accounts; there the hosted domain setting stands in for the tenant: the
+  ID token's `hd` claim must name the Workspace's domain, and the settings are refused without it.
 - Claims are configurable: login (default `preferred_username`), e-mail (`email`), name (`name`),
   groups (`groups`). The userinfo endpoint's claims are added when it names the same subject.
 

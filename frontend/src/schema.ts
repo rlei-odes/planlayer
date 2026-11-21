@@ -608,6 +608,7 @@ export type LoginSettingsIO = {
   oidc_email_claim?: string
   oidc_name_claim?: string
   oidc_groups_claim?: string
+  oidc_hosted_domain?: string
   ldap_url?: string
   ldap_bind_dn?: string
   ldap_base_dn?: string

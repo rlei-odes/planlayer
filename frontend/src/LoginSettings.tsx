@@ -229,6 +229,7 @@ export default function LoginSettingsCard() {
           {field('oidc_issuer', 'Issuer', LIMIT.longText, 'Entra ID: https://login.microsoftonline.com/<tenant ID>/v2.0', 'https://')}
           {field('oidc_client_id', 'Client ID', LIMIT.longText)}
           {field('oidc_scopes', 'Scopes', LIMIT.name)}
+          {field('oidc_hosted_domain', 'Hosted domain', LIMIT.name, 'Google Workspace: only accounts of this domain log in.', 'corp.example')}
           <div className="su-field ls-wide">
             Redirect URI
             <code className="ls-code">{page.redirect_uri}</code>

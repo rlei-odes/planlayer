@@ -14,6 +14,8 @@ docker-compose.override.yml
 /deploy/dev/entra.env
 # Okta test values (template: deploy/dev/okta.env.example)
 /deploy/dev/okta.env
+# Google Workspace test values (template: deploy/dev/google.env.example)
+/deploy/dev/google.env
 compose.override.yml
 
 # --- Python ------------------------------------------------------------------
