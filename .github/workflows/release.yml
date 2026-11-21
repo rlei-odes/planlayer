@@ -49,12 +49,21 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      # The registries to push to, one per line: metadata-action refuses an empty name, even
+      # disabled, so Docker Hub is listed only when it is set.
+      - id: images
+        run: |
+          {
+            echo "list<<EOF"
+            echo "$GHCR_IMAGE"
+            if [ -n "$DOCKERHUB_IMAGE" ]; then echo "$DOCKERHUB_IMAGE"; fi
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - id: meta
         uses: docker/metadata-action@v5
         with:
-          images: |
-            name=${{ env.GHCR_IMAGE }}
-            name=${{ env.DOCKERHUB_IMAGE }},enable=${{ env.DOCKERHUB_IMAGE != '' }}
+          images: ${{ steps.images.outputs.list }}
           # 0.5.0, 0.5 and latest; a pre-release (v1.0.0-rc.1) gets only its own tag.
           tags: |
             type=semver,pattern={{version}}
