@@ -10,6 +10,8 @@ as plain, documented tables in the warehouse, where any BI tool reads it.
 [planlayer.app](https://planlayer.app) · [Try the demo](#try-it) · [Install](docs/install.md) ·
 [Scope](docs/scope.md)
 
+![The status page of a budget round: progress per status and per hierarchy node, with actions per cost center](docs/assets/status-dark.png)
+
 ## What it does
 
 **Planning**
