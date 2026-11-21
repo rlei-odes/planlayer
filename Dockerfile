@@ -1,7 +1,7 @@
 # Planlayer image: the API serves the built frontend (ADR 0031).
 
 # The built frontend is the same on every platform: built once, natively.
-FROM --platform=$BUILDPLATFORM node:24-slim AS frontend
+FROM --platform=$BUILDPLATFORM node:26-slim AS frontend
 WORKDIR /src
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci --no-fund --no-audit
