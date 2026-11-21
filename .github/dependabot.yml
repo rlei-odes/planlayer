@@ -1,0 +1,44 @@
+# Dependency updates as pull requests, weekly, grouped per ecosystem so a week brings a few PRs,
+# not dozens. Security updates come as soon as an advisory is published, whatever the schedule.
+version: 2
+updates:
+  - package-ecosystem: uv
+    directory: /backend
+    schedule:
+      interval: weekly
+    groups:
+      backend:
+        patterns: ["*"]
+
+  - package-ecosystem: uv
+    directory: /tools/gen_testdata
+    schedule:
+      interval: weekly
+    groups:
+      gen-testdata:
+        patterns: ["*"]
+
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+    groups:
+      frontend:
+        patterns: ["*"]
+
+  # The Dockerfile's base images: node, uv, python.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+
+  # The compose files are left out: postgres:18 takes its patch releases on every pull, and a
+  # new major version can't open an existing data directory.
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
