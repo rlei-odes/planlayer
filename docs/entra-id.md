@@ -90,6 +90,14 @@ Users without a mailbox may have no `email` claim. They are then matched and cre
 alone, and an owner the source names by e-mail isn't matched to them until the e-mail is set on
 the *Users* page.
 
+## 4. A tile in My Apps
+
+Users can open Planlayer from Microsoft's My Apps portal (myapps.microsoft.com) with one click:
+*App registrations › Planlayer › Branding & properties › Home page URL*
+`https://plan.example.com/api/auth/oidc/login`. The tile opens Planlayer's login address;
+Planlayer starts a login at Microsoft, which finds the user's session and sends them straight
+back, logged in. With *Assignment required*, only assigned users see the tile.
+
 ## A test installation next to the development one
 
 The development compose file has a production-like installation for this, in the `entra`

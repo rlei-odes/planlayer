@@ -103,6 +103,11 @@ secret from `PLANLAYER_OIDC_CLIENT_SECRET` (sent as HTTP Basic). The issuer must
 | Hosted domain | | Google Workspace: the ID token's `hd` claim must be this domain |
 | CA certificate | | PEM, for a provider signed by the company's own CA |
 
+A tile in the provider's portal (Okta dashboard, Microsoft My Apps) opens
+`<address>/api/auth/oidc/login`, which starts the login there; a user with a session at the provider
+is logged in with one click (OpenID Connect's third-party initiated login). Planlayer always starts
+the login itself, so a link to that address only logs someone in as themselves.
+
 ### Microsoft Entra ID
 
 The app registration, roles by app role name or by group, and a local test installation:

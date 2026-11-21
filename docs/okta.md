@@ -83,6 +83,24 @@ your login (`preferred_username`, your Okta username, usually your e-mail addres
 groups, the Planlayer roles they give, and the user you would log in as. *Save* after the test
 passed.
 
+## 4. A tile on the Okta dashboard
+
+Users can open Planlayer from their Okta dashboard with one click. Okta opens Planlayer's login
+address; Planlayer starts a login at Okta, which finds the user's session and sends them straight
+back, logged in.
+
+*Applications › Planlayer › General › General Settings › Edit*, under *Login*:
+
+| Setting | Value |
+|---|---|
+| Login initiated by | *Either Okta or App* |
+| Application visibility | *Display application icon to users* |
+| Login flow | *Redirect to app to initiate login (OIDC Compliant)* |
+| Initiate login URI | `https://plan.example.com/api/auth/oidc/login` (test installation: `http://localhost:8002/api/auth/oidc/login`) |
+
+Planlayer always starts the login itself, so the tile needs nothing else: a link to this address
+only ever logs someone in as themselves.
+
 ## A test installation next to the development one
 
 The development compose file has a production-like installation for this, in the `okta`
