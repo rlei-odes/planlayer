@@ -1,6 +1,6 @@
 # Planlayer backlog
 
-Working backlog for the architecture phase and the v1 build. Source brief: [planning-app-brief.md](planning-app-brief.md).
+Backlog for the v1 build and after.
 Decision records go in `docs/adr/NNNN-title.md`. Each `D-` item is done when its ADR is merged.
 
 ---
@@ -30,7 +30,7 @@ Decision records go in `docs/adr/NNNN-title.md`. Each `D-` item is done when its
 | T-19 | **Hierarchy changes restate (v1).** Plan and actuals always roll up under the current hierarchy. A moved cost center takes all its values, past and future, to its new parent. | It's what planners expect, and it's the simplest correct model. As-of roll-up can be added later, because members keep their validity dates. |
 | T-20 | **Approval happens per cost center.** A status page shows the state of every cost center and rolls it up by department and any hierarchy node. | Cost centers are what owners plan and approvers sign off. A roll-up shows the controller where the round stands. |
 | T-21 | **Publishing to `planlayer_out` is an explicit action by the controller.** Nothing is published automatically. | Controllers decide when plan data becomes visible to BI, and what reaches it is never a half-finished draft by accident. |
-| T-22 | **Login: OIDC and LDAPS,** taken over from the sister repos `lancy` and `lancy-next` ([ADR 0030](docs/adr/0030-login.md)). A demo installation logs in without passwords. | Both cover the identity providers companies run. Reusing a proven implementation saves building it twice, and a fake login keeps early iterations moving. |
+| T-22 | **Login: OIDC and LDAPS** ([ADR 0030](docs/adr/0030-login.md)). A demo installation logs in without passwords. | Both cover the identity providers companies run. A demo login lets people try Planlayer without an identity provider. |
 | T-23 | **`layer` and `measure` are in the fact key from day one.** v1 uses only the `base` layer, and the `amount` and `quantity` measures. | Adding either column later means migrating every plan row. |
 | T-24 | **Planning is set up per fiscal year from modules.** On a setup page, the controller defines for a fiscal year *what* is planned (planning areas, e.g. cost centers, sales; later headcount) and *in what form* per area or account group: full-year values only; monthly values; a full-year value spread evenly; a full-year value spread by a seasonality profile; or a full-year value spread by a reference (e.g. prior-year actuals). The form decides which cells are editable and how a typed value turns into stored months. Planning modules share one framework (setup, grid, spreading, workflow), so a module such as headcount planning is added without a new architecture. | Companies plan different things in different detail, and the detail changes from year to year. A per-year composition keeps that configuration, not code. |
 | T-25 | **The planning page shows one planning unit at a time:** typically one cost center, with its accounts × months. The planner switches between the units they may plan. Overviews across units are separate pages (the status page, T-20; reports). | It's how cost center owners plan. It keeps grids small: a cost center grid reads in about 2 ms on the large dataset (S-01, Q1b). |
@@ -51,14 +51,7 @@ Decision records go in `docs/adr/NNNN-title.md`. Each `D-` item is done when its
 
 ## 1. Discovery
 
-- [x] **R-1** Read the Konsolidat schema, the budget-layer model and the dbt assertion suite. Notes: [docs/research/konsolidat.md](docs/research/konsolidat.md).
-- [x] **R-2** Read the Budget & Forecast for Claude Code schema: version locking, roll-forecast, change log, import dry-run. Notes: [docs/research/budget-forecast.md](docs/research/budget-forecast.md).
-- [x] **R-7** Read Konsolidat's Frappe app (`konsol`): budget doctypes, entry modes, spreading, concurrency, signs. Notes: [docs/research/konsol-app.md](docs/research/konsol-app.md).
-- [ ] **R-3** Check Plannifico activity. Note any concepts worth keeping (top-down/bottom-up mechanics).
 - [ ] **R-4** Interview 3–5 controllers / FP&A people about their current Excel process. Use a fixed question list: planning areas, grain, cycle length, number of planners, how approvals work, where the data ends up.
-- [x] **R-5** One-page scope statement: [docs/scope.md](docs/scope.md).
-- [x] **R-6** Licence: Apache 2.0 (T-8).
-- [x] **R-8** Apache 2.0 `LICENSE` file in the repo (https://github.com/rlei-odes/planlayer).
 
 ## 2. Architecture decisions (ADRs)
 
@@ -113,7 +106,7 @@ Each item lists the options and how to decide. Items marked ⚙ are decided by a
 - [x] **D-17 Grid component.** Decided: [ADR 0006](docs/adr/0006-grid-component.md). RevoGrid with `applyOnClose` and `range`; edits go through the planning model; undo and copy shaping are built in the app.
 - [x] **D-18 Grid API shape.** Decided: [ADR 0010](docs/adr/0010-grid-api-and-concurrency.md). The whole cost center sheet in one response, with editability per row decided by the server; edits as a list applied all or nothing.
 - [x] **D-19 Concurrency.** Decided: [ADR 0010](docs/adr/0010-grid-api-and-concurrency.md). Optimistic per cell with `row_version`; on a conflict nothing is saved and the grid reloads; no live push.
-- [x] **D-20 Auth.** Decided: T-22 (OIDC and LDAPS from `lancy-next`; fake development login first).
+- [x] **D-20 Auth.** Decided: T-22, [ADR 0030](docs/adr/0030-login.md).
 - [x] **D-21 Permissions model.** Decided: [ADR 0009](docs/adr/0009-roles-and-scopes.md). Roles admin, controller and viewer as flags; planners from the matched owner (e-mail or login), the controller's override and deputies on cost centers or nodes; approvers read below their node; forced RLS over a per-user access view; hashed session tokens in a cookie.
 - [x] **D-22 Workflow.** Decided: [ADR 0008](docs/adr/0008-workflow.md). One-step approval per round × cost center (not started → in progress → submitted → approved, reject and reopen with comment); approvers assigned to hierarchy nodes, nearest one above wins, controller as fallback; round status setup / open / closed; the lock trigger reads the status.
 - [x] **D-23 Audit / change log.** Decided: [ADR 0005](docs/adr/0005-request-context-rls-audit.md). Statement-level triggers with transition tables; actor and batch from the per-transaction context. Retention and partitioning: E-14.
@@ -163,7 +156,7 @@ Mid-size manufacturer of industrial pumps and valves, ~400 employees.
 - [x] **TD-27 Notes in a round** (`planlayer seed-dev-notes --round CODE`, development only): note threads written by owners, approvers, the controller and the CFO on cost sheet lines, a capacity line and investments, with replies, @mentions, tasks and resolved threads, and a gridnote. Lines come from the seeded sheets (TD-19, TD-26); a thread whose first note the line already has is skipped.
 - [x] **TD-28 Item lists** (`planlayer seed-dev-item-lists`, development only; ADR 0017): ten lists of two to seven items on lines of Pump Production and Valve Production, by Anna Keller, Luca Meier and the controller, in all three visibilities, so that Anna sees her own, one shared with her cost center by the controller and Luca's where she is deputy, but not Luca's private one. A line that has a list already is skipped.
 - [ ] **TD-17 Seasonality profiles:** a set covering the edge cases: even; retail (Q4 peak); manufacturing with an August shutdown (a zero month); one entered as percentages summing to exactly 100; one entered as raw unit counts; one derived from prior-year actuals; and invalid ones (percentages summing to 99.9 or 100.1, a negative value, all zeros, 11 values instead of 12).
-- [x] **TD-20 Next-year scenario** ([docs/scenarios/next-round-2027.md](docs/scenarios/next-round-2027.md)): a cost center created ahead of the next fiscal year (DE1290), one closed at the end of the current year (DE1100), an account without bookings (6950), and the walkthrough for preparing Budget 2027 from Budget 2026.
+- [x] **TD-20 Next-year scenario:** a cost center created ahead of the next fiscal year (DE1290), one closed at the end of the current year (DE1100), an account without bookings (6950), for preparing Budget 2027 from Budget 2026.
 - [ ] **TD-16 Documented demo defects.** The `standard` dataset contains a deliberate, listed set of process problems for the demo and smoke tests to find: a cost center with no submitted plan, a plan above the prior year by >50%, unexplained variances, a forecast not rolled after a close, and a version past its start date that isn't approved. The list lives in the generator's README, and the smoke test asserts exactly these are flagged.
 - [ ] **TD-12 Dirty-data fixtures** (each a small, separate dataset with a known expected error): actuals on unmapped accounts; a duplicate member code; a circular parent reference; an orphan parent code; source-provided subtotals that **don't** reconcile with leaves; Unicode/umlaut names and codes with leading zeros (`0420`); a period outside the open range; mixed decimal separators in CSV.
 - [ ] **TD-13 Grid input fixtures:** clipboard payloads as copied from Excel and LibreOffice (TSV, locale-formatted numbers, empty cells, trailing newline, a 2,000-cell block) for S-04 and later end-to-end tests.
@@ -219,7 +212,6 @@ Mid-size manufacturer of industrial pumps and valves, ~400 employees.
     - [x] Rounds planned by quarter: Q1–Q4 on the sheet, a quarter spreads over its months by the line's basis (ADR 0015).
     - [x] *Refresh actuals* on a forecast's setup: the actuals sync for its fiscal year, with the sync's preview.
     - [x] The capacity sheet follows the round ([ADR 0016](docs/adr/0016-capacity-in-rounds-and-forecasts.md)): prepared by the controller in setup, actual hours in a forecast's closed months, a full-year total, quarters, the round's comparison columns.
-    - [x] A walkthrough of `docs/scenarios/forecast-2026.md` with the user (quarter run; publish not yet walked).
     - [x] In quarter grain, the entry forms speak of quarters: "Quarterly" for the monthly form, in step 3, the setup preview and the sheet's badges (ADR 0015).
     - [x] Account sets per round, assigned to cost center nodes or cost centers (nearest wins): sheets list the set's accounts, "add account" offers only them, the store refuses values outside ([ADR 0014](docs/adr/0014-preparing-a-round.md)).
     - [x] The setup page's *Cost centers* tab: planned, account set, productive (by work centers, by workforce), prior-year actuals and the source round's plan per cost center; new and no longer delivered marked.
@@ -527,6 +519,8 @@ How potential users find and try Planlayer.
 - [ ] **G-4 Integrations as a door:** a dbt package that reads `planlayer_out`, and examples for common BI tools.
 
 ### Various
+
+- [ ] **Backlog cleanup:** keep decisions and open items; ticked items whose decision lives in an ADR or the docs reduced to a link or dropped, the *Suggested order* replaced by what comes next, finished spikes and test data folded into one line each.
 
 **Later (not v1):** layers beyond `base`, rolling forecast, price × volume drivers, simple formulas, non-Postgres sources and targets (C-1 to C-5), balance sheet, an "attention" list (everything that needs a person: missing submissions, unexplained variances, unrolled forecast, unapproved version), variance commentary thresholds, and a default spread profile per account group.
 
