@@ -106,4 +106,7 @@ security applies.
 The user owns all git operations. Propose commit messages; do not commit or push unless asked,
 every time. Conventional Commits: `<type>(<scope>): <description>`, types `feat`, `fix`,
 `refactor`, `docs`, `chore`, `test`; scopes `backend`, `frontend`, `domain`, `store`,
-`adapters`, `testdata`, `deploy`, `ci`, `docs`.
+`adapters`, `testdata`, `deploy`, `ci`, `docs`. `feat`, `fix` and `perf` messages go into the
+changelog and release notes as written (`docs/releasing.md`): one line saying what changed for an
+admin or a user, not how it was built. Releases come from release-please's release PR, never from
+a version bumped by hand.

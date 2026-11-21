@@ -37,6 +37,15 @@ A migration that reads or rewrites rows of a table under row-level security does
 triggers off for that block, both restored after it. The app role owns the tables, but forced
 row-level security would show it no rows, and a rewrite must not trip a lock or the audit log.
 
+## Commit messages and the changelog
+
+Commits follow Conventional Commits, and they are the changelog's first draft: `feat`, `fix` and
+`perf` messages appear in `CHANGELOG.md` and the release notes as written, under *Features*,
+*Bug Fixes* and *Performance*; `refactor`, `docs`, `test` and `chore` don't. So a `feat` or `fix`
+message says what changed for an admin or a user, in one line, not how it was built. A breaking
+change is marked `feat!:` (or a `BREAKING CHANGE:` footer); before 1.0.0 it makes a minor
+release.
+
 ## Release notes
 
 Each GitHub release says:
@@ -48,12 +57,24 @@ Each GitHub release says:
 
 ## Making a release
 
-1. `backend/pyproject.toml` and `frontend/package.json` declare the version (`0.6.0`).
-2. A tag `v0.6.0` on that commit, pushed. The release workflow refuses a tag that doesn't match
-   `pyproject.toml`; it builds and pushes the images (`0.6.0`, `0.6`, `latest`) and signs them.
-3. The GitHub release with its notes, from the tag.
-4. Check the published image: `cosign verify ghcr.io/rlei-odes/planlayer:0.6.0
+release-please (`.github/workflows/release-please.yml`, `release-please-config.json`) keeps one
+release PR open on main, titled `chore: release 0.6.0`. On every push it recomputes the next
+version from the commits since the last release (`fix` → patch, `feat` → minor) and updates the
+PR: the version in `backend/pyproject.toml`, `backend/uv.lock`, `frontend/package.json` and its
+lock file, `version.txt`, and the new section of `CHANGELOG.md`.
+
+1. Just before releasing, edit the release PR: the `CHANGELOG.md` section and the PR's
+   description, which becomes the release notes. Add whether it migrates and *Action required*.
+   A push to main rewrites the PR, so edit last. A `Release-As: 0.6.0` footer on a commit sets
+   the version by hand.
+2. Merge it. release-please tags `v0.6.0` and publishes the GitHub release; the release workflow
+   (`release.yml`, called from release-please's) builds and pushes the images (`0.6.0`, `0.6`,
+   `latest`) and signs them. It refuses a tag that doesn't match `pyproject.toml`.
+3. Check the published image: `cosign verify ghcr.io/rlei-odes/planlayer:0.6.0
    --certificate-identity-regexp 'https://github.com/rlei-odes/planlayer/' --certificate-oidc-issuer
    https://token.actions.githubusercontent.com`.
+
+Releases are immutable once published: a mistake is fixed by the next release. A tag pushed by
+hand (`v0.6.0`, on a commit that declares that version) also runs `release.yml`.
 
 Admins see the new version in Planlayer's update notice once the GitHub release is published.

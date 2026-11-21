@@ -1,6 +1,7 @@
 name: Release
 
-# On a version tag (v0.5.0): the image for amd64 and arm64 on GHCR as 0.5.0, 0.5 and latest, with
+# For a version tag (v0.5.0), called by release-please.yml when its release PR is merged, or on a
+# tag pushed by hand: the image for amd64 and arm64 on GHCR as 0.5.0, 0.5 and latest, with
 # an SBOM and build provenance attached, signed keyless with cosign (ADR 0031). Mirrored to
 # Docker Hub when the repository variable DOCKERHUB_IMAGE is set (e.g. planlayer/planlayer),
 # with the secrets DOCKERHUB_USERNAME and DOCKERHUB_TOKEN.
@@ -8,6 +9,12 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  workflow_call:
+    inputs:
+      tag:
+        description: The version tag to build, e.g. v0.6.0
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -22,15 +29,18 @@ jobs:
     env:
       GHCR_IMAGE: ghcr.io/${{ github.repository }}
       DOCKERHUB_IMAGE: ${{ vars.DOCKERHUB_IMAGE }}
+      TAG: ${{ inputs.tag || github.ref_name }}
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.TAG }}
 
       # The tag is the version the backend declares; a mismatch is a tag on the wrong commit.
       - name: Tag matches the version
         run: |
           declared=$(grep -m1 '^version = ' backend/pyproject.toml | cut -d'"' -f2)
-          if [ "v$declared" != "$GITHUB_REF_NAME" ]; then
-            echo "::error::tag $GITHUB_REF_NAME, backend/pyproject.toml declares $declared"
+          if [ "v$declared" != "$TAG" ]; then
+            echo "::error::tag $TAG, backend/pyproject.toml declares $declared"
             exit 1
           fi
 
@@ -66,8 +76,8 @@ jobs:
           images: ${{ steps.images.outputs.list }}
           # 0.5.0, 0.5 and latest; a pre-release (v1.0.0-rc.1) gets only its own tag.
           tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{version}},value=${{ env.TAG }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ env.TAG }}
           flavor: |
             latest=auto
 

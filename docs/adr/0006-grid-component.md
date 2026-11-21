@@ -18,7 +18,7 @@ The planning grid uses **RevoGrid** (`@revolist/react-datagrid`, MIT), configure
 
 ## Reasons
 
-From spike S-04 ([spikes/s04_grid](../../spikes/s04_grid/README.md)), one cost center with real data:
+From spike S-04, one cost center with real data:
 - **Hands-on scores are about even** (24 vs. 23 of 28). Both pass typing, keyboard flow, locale-mixed paste, fill-drag, spreading on group and year cells, locked rows, and 58k-cell scrolling.
 - **Keystrokes:** the other candidate intermittently drops the first keystroke when typing straight into a selected cell, a defect a planner entering numbers would hit daily. RevoGrid kept every key in every test.
 - **Maintenance:** RevoGrid releases monthly and supports React 19. The other candidate has had no stable release since February 2024, and supports React 19 only in alpha builds.

@@ -1,0 +1,42 @@
+name: Release Please
+
+# On every push to main: keeps one release PR open that sets the next version from the commits
+# since the last release (fix → patch, feat → minor) and adds their `feat`, `fix` and `perf`
+# messages to CHANGELOG.md (docs/releasing.md). Merging it tags the version and publishes the
+# GitHub release; the image is then built and signed by release.yml, called from here, because
+# a tag pushed with the workflow's own token starts no other workflow.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # the tag, the release and CHANGELOG.md
+      pull-requests: write # the release PR
+    outputs:
+      created: ${{ steps.release.outputs.release_created }}
+      tag: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - id: release
+        uses: googleapis/release-please-action@v5
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  image:
+    needs: release-please
+    if: needs.release-please.outputs.created == 'true'
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    uses: ./.github/workflows/release.yml
+    with:
+      tag: ${{ needs.release-please.outputs.tag }}
+    secrets: inherit
