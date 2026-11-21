@@ -89,4 +89,4 @@ cd frontend && npm run lint && npm run typecheck && npm run build
 
 ## Licence
 
-[Apache License 2.0](LICENSE)
+[Apache License 2.0](LICENSE). Forks and derivative works keep the [NOTICE](NOTICE) file with its copyright and attribution.

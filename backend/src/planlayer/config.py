@@ -46,6 +46,10 @@ class Settings(BaseSettings):
     backup_dir: Path | None = None
     backup_keep: int = Field(default=14, ge=1)
 
+    # Ask GitHub for the latest release, for the admins' notice of a newer version. Off for a
+    # server without outbound access.
+    update_check: bool = True
+
     # Built frontend served by the API; unset in development, where Vite serves it.
     frontend_dist: Path | None = None
 

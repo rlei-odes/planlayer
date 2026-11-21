@@ -45,6 +45,9 @@ RUN uv pip install --python /app/.venv/bin/python --no-deps /tmp/gen_testdata \
 # The DBA's install script, and the bundled database's and the demo's first start, which runs it.
 COPY deploy/sql/install.sql deploy/bundled-init.sh /app/deploy/
 
+# The licence and its notice travel with the image (Apache 2.0, Section 4).
+COPY LICENSE NOTICE /app/
+
 # Where backups go (ADR 0032); a volume mounted here takes this owner.
 RUN mkdir /backups
 

@@ -1,5 +1,6 @@
 """Installation settings (E-12) for the admin: the sign convention of published amounts
-(ADR 0019), the default number format, and the databases Planlayer connects to."""
+(ADR 0019), the default number format, the databases Planlayer connects to, and whether a newer
+release is out."""
 
 import logging
 from typing import Literal
@@ -9,7 +10,7 @@ from pydantic import BaseModel
 from sqlalchemy import Engine, make_url, text
 from sqlalchemy.exc import DBAPIError
 
-from planlayer import number_format, signs
+from planlayer import __version__, number_format, releases, signs
 from planlayer.access import AccessError
 from planlayer.api.auth import CurrentUser, NumberFormatIO, engine_of, format_io, settings_of
 
@@ -137,3 +138,26 @@ def connections(request: Request, user: CurrentUser) -> list[ConnectionOut]:
             )
         )
     return found
+
+
+class ReleaseOut(BaseModel):
+    current: str
+    latest: str | None = None  # a newer release, when there is one
+    notes_url: str | None = None
+    upgrade_url: str = releases.UPGRADE_URL
+
+
+@router.get("/settings/release", responses={403: {}})
+def release(request: Request, user: CurrentUser) -> ReleaseOut:
+    """The running version, and a newer release for the admins' notice (none when the check is
+    off or failed)."""
+    try:
+        user.require_admin()
+    except AccessError as e:
+        raise HTTPException(403, str(e)) from None
+    found = releases.newer(releases.latest()) if settings_of(request).update_check else None
+    return ReleaseOut(
+        current=__version__,
+        latest=found.version if found else None,
+        notes_url=found.notes_url if found else None,
+    )

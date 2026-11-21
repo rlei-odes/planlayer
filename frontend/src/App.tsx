@@ -43,6 +43,7 @@ import ResponsibilitiesPage from './ResponsibilitiesPage'
 import SetupPage from './SetupPage'
 import StatusPage from './StatusPage'
 import SettingsPage from './SettingsPage'
+import UpdateNotice from './UpdateNotice'
 import UsersPage from './UsersPage'
 import WorkforcePage from './WorkforcePage'
 
@@ -499,6 +500,7 @@ export default function App() {
         </main>
         </ScaleContext>
       </div>
+      {me.is_admin && <UpdateNotice />}
     </div>
   )
 }

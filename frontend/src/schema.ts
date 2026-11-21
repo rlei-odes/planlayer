@@ -1175,6 +1175,13 @@ export type ReceiverOut = {
   status: "not_started" | "in_progress" | "submitted" | "approved"
 }
 
+export type ReleaseOut = {
+  current: string
+  latest?: string | null
+  notes_url?: string | null
+  upgrade_url?: string
+}
+
 export type ResolveIn = {
   version: string
   resolved: boolean

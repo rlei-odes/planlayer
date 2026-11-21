@@ -126,14 +126,29 @@ only those who may read pay can reach them.
 
 ## Upgrades
 
-Pin a minor version in `.env` (`PLANLAYER_VERSION=0.5`): `docker compose pull && docker compose
-up -d` then brings the latest patch release of it. For a new minor version, read its release
-notes, set it, and run the same two commands.
+Admins see a notice in Planlayer when a newer release is out. To upgrade, on the server, in the
+directory with `compose.yaml`:
+
+1. Read the release notes: https://github.com/rlei-odes/planlayer/releases
+2. For a new minor version (0.5 → 0.6), set it in `.env`: `PLANLAYER_VERSION=0.6`. A patch
+   release (0.5.1 → 0.5.2) needs no change: `0.5` always means its latest patch.
+3. Pull and restart:
+
+   ```
+   docker compose pull
+   docker compose up -d
+   ```
+
+4. Check: `docker compose logs app` shows the backup and the migrations; the version is at the
+   bottom of Planlayer's sidebar.
 
 At start, the container backs up the app store when its schema is older than the image, then
 migrates it (`planlayer migrate`), then serves. Without backup settings it refuses to upgrade
 in production: set them, or run `docker compose run --rm app planlayer migrate --without-backup`
 once on purpose.
+
+The notice asks GitHub for the latest release, from the server, at most twice a day. A server
+without outbound access sets `PLANLAYER_UPDATE_CHECK=false` in `planlayer.env`.
 
 ### Rolling back
 

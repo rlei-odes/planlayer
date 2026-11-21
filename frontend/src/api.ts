@@ -180,6 +180,7 @@ export const api = {
     post('/api/auth/login', { login, password }).then((res) => loginJson<Me>(res)),
   setup: (body: S.SetupIn) => post('/api/auth/setup', body).then((res) => loginJson<Me>(res)),
   connections: () => fetch('/api/settings/connections').then((res) => json<S.ConnectionOut[]>(res)),
+  release: () => fetch('/api/settings/release').then((res) => json<S.ReleaseOut>(res)),
   sourceStatus: () => fetch('/api/source/status').then((res) => json<S.SourceStatusOut>(res)),
   loginSettings: () => fetch('/api/settings/login').then((res) => json<LoginPage>(res)),
   saveLoginSettings: (settings: LoginSettings) =>
