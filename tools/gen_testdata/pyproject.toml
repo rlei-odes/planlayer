@@ -7,7 +7,7 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     # Loading via COPY.
-    "psycopg[binary]==3.3.8",
+    "psycopg[binary]==3.3.9",
     # Parquet export of the gold views; Arrow is also the adapters' interchange format (D-10).
     "pyarrow==26.0.1",
 ]
@@ -43,5 +43,5 @@ addopts = "-ra"
 dev = [
     "mypy==2.4.1",
     "pytest==9.2.0",
-    "ruff==0.17.4",
+    "ruff==0.17.5",
 ]
