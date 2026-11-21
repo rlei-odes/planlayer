@@ -89,7 +89,7 @@ def bind(settings: LoginSettings, login: str, password: str) -> Bound:
             )
             entries = list(conn.entries)
         finally:
-            conn.unbind()  # type: ignore[no-untyped-call]
+            conn.unbind()
     except LDAPException as e:
         raise LoginError(f"{settings.ldap_url}: {type(e).__name__}: {e}") from e
     if not entries:
