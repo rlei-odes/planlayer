@@ -9,18 +9,18 @@ dependencies = [
     "alembic==1.20.1",
     # AES-256-GCM for pay and the OpenID Connect client secret at rest (planlayer.secrets, ADR 0029).
     "cryptography==50.0.2",
-    "fastapi==0.162.2",
+    "fastapi==0.164.0",
     # Login against the company's directory over LDAPS (planlayer.login.ldap, ADR 0030).
     "ldap3==2.9.1",
     # Excel files of HR's salary upload and its template (ADR 0025).
     "openpyxl==3.1.5",
     # Postgres driver for SQLAlchemy; the pool keeps connections per process.
-    "psycopg[binary,pool]==3.3.8",
+    "psycopg[binary,pool]==3.3.9",
     # Interchange format of the adapters (ADR 0004).
     "pyarrow==26.0.1",
     # Settings from environment variables (planlayer.config).
-    "pydantic-settings==2.16.2",
-    "sqlalchemy==2.1.8",
+    "pydantic-settings==2.16.3",
+    "sqlalchemy==2.1.9",
     "uvicorn==0.54.0",
 ]
 
@@ -34,18 +34,18 @@ build-backend = "uv_build"
 [dependency-groups]
 dev = [
     # FastAPI's TestClient runs on httpx2.
-    "httpx2==2.16.0",
+    "httpx2==2.16.2",
     "mypy==2.4.1",
     "pytest==9.2.0",
     # Runs the tests on every core; each database test has schemas of its own.
     "pytest-xdist==3.8.0",
-    "ruff==0.17.4",
+    "ruff==0.17.5",
     # ldap3 and openpyxl ship without types; mypy --strict checks the login and the salary
     # files with these. types-pyasn1 comes with types-ldap3, pinned below its newest release,
     # which is younger than two weeks.
-    "types-ldap3==2.9.13.20250622",
-    "types-openpyxl==3.1.5.20250919",
-    "types-pyasn1==0.6.0.20260724",
+    "types-ldap3==2.9.13.20261107",
+    "types-openpyxl==3.1.5.20261017",
+    "types-pyasn1==0.6.0.20261113",
 ]
 
 [tool.ruff]
