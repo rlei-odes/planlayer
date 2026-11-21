@@ -34,8 +34,8 @@ Workspace:
      `http://localhost:8003/api/auth/oidc/callback` (Google accepts plain `http` for
      `localhost`).
 5. Note the **Client ID** and copy the **Client secret** at once (Google shows it only when the
-   client is created; a lost one is replaced by adding a new secret). It becomes
-   `PLANLAYER_OIDC_CLIENT_SECRET`.
+   client is created; a lost one is replaced by adding a new secret). It goes in
+   Planlayer's *Client secret* field (step 2).
 
 The scopes Planlayer asks for (`openid profile email`) need no entry under *Data access* and no
 verification by Google.
@@ -53,10 +53,10 @@ On *Settings › Login* (as an admin), choose *OpenID Connect*:
 | Claims › Login | `email` (Google sends no `preferred_username`) |
 | Groups | all empty |
 
-The client secret is not entered on the page: set `PLANLAYER_OIDC_CLIENT_SECRET` in the server's
-environment. Then *Test*: you sign in at Google and come back to the steps: the claims received
-(`hd` among them), your login (your e-mail address), the user you would log in as. *Save* after
-the test passed.
+The client secret goes in the *Client secret* field (saved encrypted with `PLANLAYER_PAY_KEY`, never
+shown again), or in `PLANLAYER_OIDC_CLIENT_SECRET` in the server's environment, which wins. Then
+*Test*: you sign in at Google and come back to the steps: the claims received (`hd` among them),
+your login (your e-mail address), the user you would log in as. *Save* after the test passed.
 
 The hosted domain is also sent to Google with the login (`hd=`), so Google offers only that
 domain's accounts. One domain is checked. In a Workspace with several domains, *Test* with an

@@ -503,14 +503,15 @@ def save_pay(
             conn, ctx.round, ctx.cost_center_id, given.charged_to
         ):
             raise AccessError("only HR charges a position to another cost center")
-        hr_salary = found.hr_salary
+        values: dict[str, Any] = {}
         if given.hr_salary_given:
             # HR corrects HR's salary (ADR 0023); nobody else changes it.
             if not user.is_hr:
                 raise AccessError("only HR changes HR's salary")
-            hr_salary = _amount(given.hr_salary, "salary")
-        values = {
-            "hr_salary": hr_salary,
+            values["hr_salary"] = _amount(given.hr_salary, "salary")
+        # Otherwise HR's salary isn't written at all: sealed again, it would differ from what is
+        # stored, and the lock on pay would take it for a change (ADR 0029).
+        values |= {
             "salary": _amount(given.salary, "salary"),
             "bonus": _amount(given.bonus, "bonus"),
             "charged_to_id": charged,
@@ -521,7 +522,10 @@ def save_pay(
         if excluded is not None:
             values["excluded_rules"] = excluded
         stmt = pg_insert(position_pay).values(
-            position_id=position_id, version_id=ctx.version_id, module=MODULE_PERSONNEL, **values
+            position_id=position_id,
+            version_id=ctx.version_id,
+            module=MODULE_PERSONNEL,
+            **({"hr_salary": found.hr_salary} | values),
         )
         conn.execute(
             stmt.on_conflict_do_update(index_elements=[position_pay.c.position_id], set_=values)

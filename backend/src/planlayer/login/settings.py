@@ -2,6 +2,7 @@
 ``PLANLAYER_LOGIN_*`` environment variables, which then win as a whole and make the page read-only.
 """
 
+import os
 from dataclasses import asdict, dataclass, fields
 from typing import Literal, Self, cast
 
@@ -14,6 +15,7 @@ from planlayer.store.schema import login_setting
 Method = Literal["none", "oidc", "ldap"]
 METHODS: tuple[Method, ...] = ("none", "oidc", "ldap")
 ROLES = ("admin", "controller", "viewer", "hr")
+CLIENT_SECRET_ENV = "PLANLAYER_OIDC_CLIENT_SECRET"
 GOOGLE_ISSUER = "https://accounts.google.com"
 
 
@@ -202,3 +204,37 @@ def save(engine: Engine, actor: User, settings: LoginSettings, *, development: b
         raise ValueError("; ".join(problems))
     with engine.begin() as conn:
         conn.execute(update(login_setting).values(**settings.as_dict(), updated_at=func.now()))
+
+
+# --- The OpenID Connect client secret: the environment's, or the one saved sealed (ADR 0029) ----
+
+
+def secret_source(engine: Engine) -> Literal["env", "saved"] | None:
+    """Where the client secret comes from, without opening a saved one."""
+    if os.environ.get(CLIENT_SECRET_ENV):
+        return "env"
+    with engine.connect() as conn:
+        saved = conn.execute(select(login_setting.c.oidc_client_secret.is_not(None))).scalar()
+    return "saved" if saved else None
+
+
+def client_secret(engine: Engine) -> str | None:
+    """The client secret in use: the environment's, else the saved one (needs the pay key)."""
+    if env := os.environ.get(CLIENT_SECRET_ENV):
+        return env
+    with engine.connect() as conn:
+        secret: str | None = conn.execute(select(login_setting.c.oidc_client_secret)).scalar()
+    return secret
+
+
+def save_secret(engine: Engine, actor: User, secret: str | None) -> None:
+    """Save the client secret sealed, or remove it (None or empty)."""
+    actor.require_admin()
+    if os.environ.get(CLIENT_SECRET_ENV):
+        raise ValueError(f"{CLIENT_SECRET_ENV} is set and used instead")
+    with engine.begin() as conn:
+        conn.execute(
+            update(login_setting).values(
+                oidc_client_secret=(secret or "").strip() or None, updated_at=func.now()
+            )
+        )

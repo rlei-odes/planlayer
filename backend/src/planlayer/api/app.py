@@ -10,9 +10,9 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from sqlalchemy import Engine, text
-from sqlalchemy.exc import DBAPIError, SQLAlchemyError
+from sqlalchemy.exc import DBAPIError, SQLAlchemyError, StatementError
 
-from planlayer import __version__
+from planlayer import __version__, crypto
 from planlayer.adapters.source import PostgresSource
 from planlayer.api.access import router as access_router
 from planlayer.api.auth import router as auth_router
@@ -92,6 +92,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def too_large(_: Request, e: DBAPIError) -> JSONResponse:
         if getattr(e.orig, "sqlstate", None) in TOO_LARGE_SQLSTATES:
             return JSONResponse({"detail": "a value is too large for its field"}, status_code=422)
+        raise e
+
+    # Pay and the client secret without their key (ADR 0029): those pages fail, the rest works.
+    # Writing wraps the error in a StatementError, reading doesn't.
+    def no_key(e: Exception) -> JSONResponse:
+        log.error("%s", e)
+        return JSONResponse({"detail": str(e)}, status_code=503)
+
+    @app.exception_handler(crypto.PayKeyError)
+    def pay_key(_: Request, e: crypto.PayKeyError) -> JSONResponse:
+        return no_key(e)
+
+    @app.exception_handler(StatementError)
+    def pay_key_on_write(_: Request, e: StatementError) -> JSONResponse:
+        if isinstance(e.orig, crypto.PayKeyError):
+            return no_key(e.orig)
         raise e
 
     app.include_router(auth_router)

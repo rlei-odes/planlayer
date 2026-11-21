@@ -86,8 +86,10 @@ Session cookies are sent with `Secure` outside development, so production is ser
 ## OpenID Connect
 
 Planlayer runs the authorization code flow with PKCE from the server; the browser never holds a
-token. It is a public client by default. A provider that requires a confidential client gets the
-secret from `PLANLAYER_OIDC_CLIENT_SECRET` (sent as HTTP Basic). The issuer must use `https://`
+token. It is a public client by default. A provider that requires a confidential client gets its
+client secret, sent as HTTP Basic, from the *Client secret* field, saved encrypted with
+`PLANLAYER_PAY_KEY` ([ADR 0029](adr/0029-pay-encryption-at-rest.md)) and never shown again, or
+from `PLANLAYER_OIDC_CLIENT_SECRET`, which wins when set. The issuer must use `https://`
 (plain `http://` is accepted in development only).
 
 | Field | Default | |
@@ -113,12 +115,12 @@ the login itself, so a link to that address only logs someone in as themselves.
 The app registration, roles by app role name or by group, and a local test installation:
 [entra-id.md](entra-id.md). In short: issuer `https://login.microsoftonline.com/<tenant ID>/v2.0`
 (the tenant's own, never `common`), a *Web* redirect URI with a client secret in
-`PLANLAYER_OIDC_CLIENT_SECRET`, and *Claims › Groups* `roles` to match app roles by name.
+the *Client secret* field, and *Claims › Groups* `roles` to match app roles by name.
 
 ### Okta
 
 The app integration, roles by group name, and a local test installation: [okta.md](okta.md). In
-short: a *Web Application* integration with a client secret in `PLANLAYER_OIDC_CLIENT_SECRET`,
+short: a *Web Application* integration with a client secret in the *Client secret* field,
 issuer `https://<org>.okta.com` (without `-admin`), a groups claim filter on the app's *Sign On*
 tab, and scopes `openid profile email groups`.
 
@@ -126,7 +128,7 @@ tab, and scopes `openid profile email groups`.
 
 The OAuth client, the hosted domain, and a local test installation:
 [google-workspace.md](google-workspace.md). In short: an *Internal* app with a *Web application*
-client and its secret in `PLANLAYER_OIDC_CLIENT_SECRET`, issuer `https://accounts.google.com`,
+client and its secret in the *Client secret* field, issuer `https://accounts.google.com`,
 *Hosted domain* the Workspace's domain (required for Google: every Google account has this
 issuer), *Claims › Login* `email`. Google sends no groups, so roles are set on the *Users* page.
 

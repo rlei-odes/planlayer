@@ -539,7 +539,12 @@ def _lock_fact_cost_center(s: str) -> None:
 
 
 def _lock_position_pay(
-    s: str, *, hr_edits_hr_salary: bool, handover: bool = False, exclusions: bool = False
+    s: str,
+    *,
+    hr_edits_hr_salary: bool,
+    handover: bool = False,
+    exclusions: bool = False,
+    salary_type: str = "numeric",
 ) -> None:
     """The lock on pay; HR's salary changes only by the system user, or also by HR (ADR 0023);
     with ``handover``, others change pay only once HR has handed the cost center over; with
@@ -586,7 +591,7 @@ def _lock_position_pay(
             k {s}.position_pay;
             cc int;
             problem text;
-            was_hr numeric;
+            was_hr {salary_type};
             was_charged int;{declare_excluded}
             system boolean := EXISTS (SELECT 1 FROM {s}.app_user u
                                       WHERE u.user_id = {USER} AND u.is_system);

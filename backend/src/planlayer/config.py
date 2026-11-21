@@ -40,6 +40,10 @@ class Settings(BaseSettings):
     # callback is under it. Unset: the address of each request.
     public_url: str | None = None
 
+    # The key pay and the login's client secret are encrypted with (ADR 0029): 32 bytes, base64
+    # (planlayer new-pay-key). Needed once the app store holds any; a lost key loses them.
+    pay_key: SecretStr | None = None
+
     # Backups (ADR 0032): pg_dump as a role with BYPASSRLS that only reads the app store, into
     # this directory, keeping the newest backup_keep files. Unset: no backups.
     backup_database_url: SecretStr | None = None

@@ -9,7 +9,7 @@ from pathlib import Path
 
 import uvicorn
 
-from planlayer import access, backup, devdata, publish, rounds, sync
+from planlayer import access, backup, crypto, devdata, publish, rounds, sync
 from planlayer.adapters.source import PostgresSource
 from planlayer.config import Settings
 from planlayer.login import local
@@ -64,6 +64,10 @@ def main(argv: list[str] | None = None) -> None:
         help="upgrade an existing app store without taking a backup first",
     )
 
+    commands.add_parser(
+        "new-pay-key",
+        help="print a new key for PLANLAYER_PAY_KEY, which encrypts pay and the client secret",
+    )
     commands.add_parser("backup", help="back up the app store into PLANLAYER_BACKUP_DIR")
     restore_cmd = commands.add_parser(
         "restore", help="load a backup into the empty app schema, then republish the output"
@@ -180,6 +184,9 @@ def main(argv: list[str] | None = None) -> None:
                         engine.dispose()
                     print(f"backup before upgrading from {at}: {written}")
             migrate.upgrade(settings, args.revision)
+        case "new-pay-key":
+            # Nothing is stored: the key exists only where it is printed and then kept.
+            print(crypto.new_key())
         case "backup":
             settings = Settings()  # type: ignore[call-arg]
             engine = create_app_engine(settings)

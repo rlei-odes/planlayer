@@ -157,3 +157,13 @@
 .lg-local {
   margin-top: 10px;
 }
+
+/* The client secret: the field, Save and Remove in a row. */
+.ls-secret {
+  display: flex;
+  gap: 8px;
+}
+
+.ls-secret .su-input {
+  flex: 1;
+}

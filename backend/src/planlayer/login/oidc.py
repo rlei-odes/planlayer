@@ -3,8 +3,8 @@
 The authorization code flow with PKCE. ``start`` sends the browser to the provider with a fresh
 state, nonce and code challenge; the provider sends it back to the callback, where ``finish``
 exchanges the code at the token endpoint and reads the person from the ID token and the userinfo
-endpoint. The client is public; ``PLANLAYER_OIDC_CLIENT_SECRET`` makes it confidential for a
-provider that requires that.
+endpoint. The client is public, or confidential with a client secret for a provider that
+requires one (``PLANLAYER_OIDC_CLIENT_SECRET``, or the one saved on the Settings page).
 
 The ID token's signature is not verified: the token comes straight from the token endpoint over
 TLS (certificate verified), in exchange for a code bound to this login by the PKCE verifier, which
@@ -15,7 +15,6 @@ expiry and nonce are checked.
 import base64
 import hashlib
 import json
-import os
 import secrets
 import ssl
 import time
@@ -35,7 +34,6 @@ from planlayer.store.schema import oidc_login
 PENDING = timedelta(minutes=10)
 TIMEOUT_S = 10
 LEEWAY_S = 60  # clock difference accepted between Planlayer and the provider
-CLIENT_SECRET_ENV = "PLANLAYER_OIDC_CLIENT_SECRET"
 
 
 class LoginError(Exception):
@@ -210,8 +208,11 @@ def _text(claims: dict[str, Any], name: str) -> str | None:
     return value.strip() if isinstance(value, str) and value.strip() else None
 
 
-def finish(settings: LoginSettings, p: Pending, code: str) -> tuple[Identity, list[str]]:
-    """Exchange the code of the pending login ``p``: the identity and the claims' names."""
+def finish(
+    settings: LoginSettings, p: Pending, code: str, secret: str | None
+) -> tuple[Identity, list[str]]:
+    """Exchange the code of the pending login ``p``, with the client secret if there is one:
+    the identity and the claims' names."""
     doc = discovery(settings)
     form = {
         "grant_type": "authorization_code",
@@ -220,7 +221,7 @@ def finish(settings: LoginSettings, p: Pending, code: str) -> tuple[Identity, li
         "code_verifier": p.verifier,
     }
     headers: dict[str, str] = {}
-    if secret := os.environ.get(CLIENT_SECRET_ENV):
+    if secret:
         basic = f"{urllib.parse.quote(settings.oidc_client_id)}:{urllib.parse.quote(secret)}"
         headers["Authorization"] = "Basic " + base64.b64encode(basic.encode()).decode()
     else:

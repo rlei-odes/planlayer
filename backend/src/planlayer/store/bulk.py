@@ -3,6 +3,7 @@
 from typing import Any
 
 from sqlalchemy import Connection, Table, column, insert, select, text
+from sqlalchemy.types import TypeDecorator
 
 CHUNK = 50_000
 
@@ -21,6 +22,13 @@ def insert_all(conn: Connection, table: Table, rows: list[dict[str, Any]]) -> No
     stmt = insert(table).from_select(
         columns, select(*(column(c) for c in columns)).select_from(source)
     )
+    sealed = {c: t for c in columns if isinstance(t := table.c[c].type, TypeDecorator)}
+
+    def value(c: str, v: Any) -> Any:
+        return sealed[c].process_bind_param(v, dialect) if c in sealed else v
+
     for start in range(0, len(rows), CHUNK):
         chunk = rows[start : start + CHUNK]
-        conn.execute(stmt, {c: [r[c] for r in chunk] for c in columns})
+        # The arrays pass as text parameters, past the columns' types: a sealed column (ADR 0029)
+        # is sealed here.
+        conn.execute(stmt, {c: [value(c, r[c]) for r in chunk] for c in columns})

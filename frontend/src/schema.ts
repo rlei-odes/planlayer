@@ -203,6 +203,10 @@ export type ChangesIn = {
   update?: ItemChangeIn[]
 }
 
+export type ClientSecretIn = {
+  secret: string | null
+}
+
 export type CodeName = {
   code: string
   name: string
@@ -593,7 +597,7 @@ export type LoginPageOut = {
   settings: LoginSettingsIO
   from_env: boolean
   redirect_uri: string
-  client_secret: boolean
+  client_secret: "env" | "saved" | null
   problems: string[]
   suggested?: LoginSettingsIO | null
 }

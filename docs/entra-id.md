@@ -16,7 +16,8 @@ In the Entra admin center (entra.microsoft.com):
      `http://localhost:8001/api/auth/oidc/callback` (Entra accepts plain `http` for `localhost`).
 2. On the app's *Overview*, note the **Application (client) ID** and the **Directory (tenant) ID**.
 3. *Certificates & secrets › Client secrets › New client secret*. Copy its **Value** at once (it is
-   shown only once; the *Secret ID* is something else). It becomes `PLANLAYER_OIDC_CLIENT_SECRET`.
+   shown only once; the *Secret ID* is something else). It goes in Planlayer's *Client secret*
+   field (step 3).
    Note the expiry date: Planlayer's Microsoft login stops working when the secret expires.
 4. *Token configuration › Add optional claim › ID › email*, and allow the Microsoft Graph email
    permission when asked.
@@ -78,10 +79,11 @@ On *Settings › Login* (as an admin), choose *OpenID Connect*:
 | Claims › Groups | `roles` (app roles) or `groups` (object IDs) |
 | Admin, Controller, … | the app role values or the groups' object IDs |
 
-The client secret is not entered on the page: set `PLANLAYER_OIDC_CLIENT_SECRET` in the server's
-environment. Then *Test*: you sign in at Microsoft and come back to the steps: the claims
-received, your login (`preferred_username`, your UPN), e-mail, groups or roles, the Planlayer roles
-they give, and the user you would log in as. *Save* after the test passed.
+The client secret goes in the *Client secret* field (saved encrypted with `PLANLAYER_PAY_KEY`, never
+shown again), or in `PLANLAYER_OIDC_CLIENT_SECRET` in the server's environment, which wins. Then
+*Test*: you sign in at Microsoft and come back to the steps: the claims received, your login
+(`preferred_username`, your UPN), e-mail, groups or roles, the Planlayer roles they give, and the
+user you would log in as. *Save* after the test passed.
 
 The issuer must be the tenant's own. `common` or `organizations` would let users of any tenant
 log in and claim any e-mail address.

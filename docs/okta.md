@@ -32,7 +32,7 @@ In the Okta admin console:
    - Controlled access: **Limit access to selected groups**, and pick the groups whose members
      may log in (e.g. *Planlayer*). Okta then refuses everyone else before Planlayer is asked.
 3. *Save*. On the app's *General* tab, note the **Client ID** and copy the **Client secret**. It
-   becomes `PLANLAYER_OIDC_CLIENT_SECRET`.
+   goes in Planlayer's *Client secret* field (step 3).
 4. Optional, on the same tab under *Client Credentials › Edit*: tick *Require PKCE as additional
    verification*. Planlayer always sends PKCE.
 
@@ -77,11 +77,11 @@ On *Settings › Login* (as an admin), choose *OpenID Connect*:
 | Allowed group | optional, e.g. `Planlayer`; Okta's assignment already limits who logs in |
 | Admin, Controller, … | the group names |
 
-The client secret is not entered on the page: set `PLANLAYER_OIDC_CLIENT_SECRET` in the server's
-environment. Then *Test*: you sign in at Okta and come back to the steps: the claims received,
-your login (`preferred_username`, your Okta username, usually your e-mail address), e-mail,
-groups, the Planlayer roles they give, and the user you would log in as. *Save* after the test
-passed.
+The client secret goes in the *Client secret* field (saved encrypted with `PLANLAYER_PAY_KEY`, never
+shown again), or in `PLANLAYER_OIDC_CLIENT_SECRET` in the server's environment, which wins. Then
+*Test*: you sign in at Okta and come back to the steps: the claims received, your login
+(`preferred_username`, your Okta username, usually your e-mail address), e-mail, groups, the
+Planlayer roles they give, and the user you would log in as. *Save* after the test passed.
 
 ## 4. A tile on the Okta dashboard
 

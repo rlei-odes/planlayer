@@ -3,8 +3,7 @@ and LDAP), OpenID Connect; and the provider's settings for the admin, with a tes
 
 import json
 import logging
-import os
-from typing import Annotated
+from typing import Annotated, Literal
 from urllib.parse import parse_qs, urlencode, urlsplit
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response
@@ -281,7 +280,7 @@ def oidc_callback(
     claims: list[str] = []
     if not error:
         try:
-            found, claims = oidc.finish(s, p, code)
+            found, claims = oidc.finish(s, p, code, login_settings.client_secret(engine))
             steps.append(
                 Step(label="ID token", ok=True, detail="issuer, audience, expiry and nonce checked")
             )
@@ -360,7 +359,8 @@ class LoginPageOut(BaseModel):
     settings: LoginSettingsIO
     from_env: bool  # set by PLANLAYER_LOGIN_* variables: read-only here
     redirect_uri: str  # to register at the OpenID Connect provider
-    client_secret: bool  # PLANLAYER_OIDC_CLIENT_SECRET is set: a confidential client
+    # A confidential client's secret: from PLANLAYER_OIDC_CLIENT_SECRET, or saved (sealed) here.
+    client_secret: Literal["env", "saved"] | None
     problems: list[str]
     # The saved settings filled in from PLANLAYER_LOGIN_* variables set without the method: a
     # draft to test and save.
@@ -414,7 +414,7 @@ def _page(request: Request) -> LoginPageOut:
         suggested=_io(draft) if draft else None,
         from_env=from_env,
         redirect_uri=redirect_uri(request),
-        client_secret=bool(os.environ.get(oidc.CLIENT_SECRET_ENV)),
+        client_secret=login_settings.secret_source(engine_of(request)),
         problems=s.problems(development=settings_of(request).development),
     )
 
@@ -435,6 +435,25 @@ def put_login(request: Request, user: CurrentUser, body: LoginSettingsIO) -> Log
     except ValueError as e:
         raise HTTPException(422, str(e)) from None
     log.warning("login settings changed by %s: method %s", user.login, body.method)
+    return _page(request)
+
+
+class ClientSecretIn(BaseModel):
+    secret: LongText | None  # None or empty: remove the saved one
+
+
+@router.put("/settings/login/client-secret", responses={403: {}, 422: {}, 503: {}})
+def put_client_secret(request: Request, user: CurrentUser, body: ClientSecretIn) -> LoginPageOut:
+    """Save the OpenID Connect client secret, sealed with the pay key (ADR 0029), or remove it.
+    It is never sent back."""
+    _admin(user)
+    try:
+        login_settings.save_secret(engine_of(request), user, body.secret)
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from None
+    log.warning(
+        "OpenID Connect client secret %s by %s", "saved" if body.secret else "removed", user.login
+    )
     return _page(request)
 
 

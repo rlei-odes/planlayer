@@ -36,6 +36,19 @@ compose file itself needs: the image version, the address it listens on, and the
 Postgres's superuser password. Passwords: letters and digits only (`openssl rand -hex 24`), as
 they stand inside URLs.
 
+Salaries and the login's client secret are encrypted with a key of the installation's own
+([ADR 0029](adr/0029-pay-encryption-at-rest.md)). Make it and put it in `planlayer.env` as
+`PLANLAYER_PAY_KEY`:
+
+```
+docker compose run --rm --no-deps app planlayer new-pay-key
+```
+
+Keep a copy where only those who may read pay reach it (HR's password manager), apart from the
+backups. The database never sees the key, so a DBA or a backup can't read salaries; without
+the key, Planlayer can't either. A lost key loses the salaries typed in Planlayer: those from the
+source or HR's upload come back with the next sync or upload.
+
 ### 2a. With the bundled Postgres
 
 For a company without a Postgres of its own. In `.env`, set `POSTGRES_PASSWORD`. In
@@ -121,8 +134,8 @@ docker compose cp app:/backups ./backups-copy
 or point your backup tool (restic, borg, the VM's snapshots) at the volume's directory
 (`docker volume inspect planlayer_backups`).
 
-Backups hold everything in the app store, salaries included, in plain numbers. Keep them where
-only those who may read pay can reach them.
+Salaries in the backups are encrypted with `PLANLAYER_PAY_KEY`. A restore with another key, or
+none, gets everything back but pay: keep the key, and apart from the backups.
 
 ## Upgrades
 
@@ -182,4 +195,5 @@ Whatever was entered after the backup is lost.
 ### Moving to another server
 
 Run the install script there (the same schema names), copy a backup over, and run `planlayer
-restore` against the new database. Its roles may have other names than the old ones.
+restore` against the new database, with the same `PLANLAYER_PAY_KEY`. Its roles may have other
+names than the old ones.

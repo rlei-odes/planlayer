@@ -1,8 +1,8 @@
 # 0029: Pay encrypted at rest
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Closes:** the encryption part of W-18
-- **Date:** 2026-11-19
+- **Date:** 2026-11-21
 
 ## Context
 
@@ -33,46 +33,58 @@ pay unreadable.
 
 ### Encrypted in the app
 
-- The pay columns above become `bytea` and hold ciphertext. The app encrypts before writing and
-  decrypts after reading, in Python, with AES-256-GCM (`cryptography`). The database never sees
-  a key or a plain salary.
-- Each value is encrypted with a fresh random 96-bit nonce, so equal salaries give different
-  ciphertexts.
-- The associated data binds a value to its place: table, column and the row's key
-  (`hr_pay.code`; `position_pay` version, position and module). A ciphertext copied into another
-  row or column fails to decrypt.
-- A stored value is `version byte ‖ key id ‖ nonce ‖ ciphertext and tag`. Blank pay stays `NULL`;
-  zero is encrypted like any other amount (zero and blank are different values).
-- Amounts are encrypted as their exact decimal text, so `Decimal` survives unchanged (T-12).
+- The pay columns above are `bytea` and hold sealed values. The app seals before writing and
+  opens after reading, in Python, with AES-256-GCM (`cryptography`). The database never sees a
+  key or a plain salary.
+- The columns have SQLAlchemy types (`SealedAmount`, `SealedText` in `planlayer.crypto`) that
+  seal what a statement writes and open what it reads, so queries name pay like any column.
+  Bulk inserts, which pass arrays past the column types, seal through the same types.
+- Each value gets a fresh random 96-bit nonce, so equal salaries look different.
+- The associated data is the value's column (`position_pay.salary`): a value copied into another
+  column fails to open. It does not name the row, which the column types can't see; someone who
+  can write to the database could swap two sealed salaries between rows, but nobody without the
+  key can read one.
+- A stored value is `version byte ‖ key id ‖ nonce ‖ ciphertext and tag`. Blank pay stays `NULL`
+  and needs no key; zero is sealed like any other amount (zero and blank are different values).
+- Amounts are sealed as their exact decimal text, so `Decimal` survives unchanged (T-12).
 
 ### What moves out of SQL
 
-- The `>= 0` checks on pay move to Python, next to the existing size check (`sheet.fits`).
-- The lock trigger compares the stored `hr_salary` bytes. The app writes an unchanged value back
-  as the bytes it read, never re-encrypted, so the trigger still sees "unchanged".
-- Copying pay between rounds, or any statement that moves pay from one row to another, decrypts
-  and re-encrypts in Python, since the associated data names the row. No pay is copied with
-  `INSERT … SELECT`.
-- The audit trigger is unchanged: it logs the ciphertext, and reading the log decrypts it.
+- The `>= 0` checks on pay are in Python, next to the size check (`sheet.fits`).
+- The lock trigger compares the stored `hr_salary` bytes. The app writes HR's salary only when HR
+  changes it, never an unchanged value sealed again, so the trigger still sees "unchanged".
+- Pay moves between rows only through Python (a new round's positions, a transfer, HR's salaries
+  taken into positions): read, opened, sealed for its new column. No pay is copied with
+  `INSERT … SELECT` from another column.
+- The audit trigger is unchanged: it logs the sealed bytes, as `\x…` text in the JSON.
+
+### The client secret
+
+The OpenID Connect client secret (ADR 0030) is sealed with the same key in
+`login_setting.oidc_client_secret`, so an admin can enter it on the Settings page instead of
+setting `PLANLAYER_OIDC_CLIENT_SECRET`. The page never shows it again. The environment variable,
+when set, is used instead.
 
 ### The key
 
 - One key per installation, 256 bits, from the environment variable `PLANLAYER_PAY_KEY`
-  (base64), like the other credentials. The guided installation (E-11) generates it and shows it
-  once, for HR to keep in a password manager.
-- The key id is the first 4 bytes of its SHA-256. `PLANLAYER_PAY_KEY_PREVIOUS` holds the old key
-  during a rotation; `planlayer rotate-pay-key` re-encrypts every value with the current key in
-  one transaction, and the previous key can then be removed.
-- Without the key, or with a key whose id no stored value carries, pay pages and personnel cost
-  calculations fail with an error naming the missing key. The rest of the app works.
+  (base64), like the other credentials. `planlayer new-pay-key` prints a new one; it is kept
+  where only those who may read pay reach it, such as HR's password manager.
+- The key id is the first 4 bytes of its SHA-256, so a value sealed with another key is named as
+  such rather than failing as damaged.
+- Without the key, pay pages, personnel cost calculations and a saved client secret fail with
+  HTTP 503 naming the missing key. The rest of the app works, as does an installation that holds
+  no pay.
 - A lost key means lost pay. The salaries come back from the source's next sync or HR's upload;
   pay typed in Planlayer must be entered again. The installation docs say so.
 
 ### Migration
 
-- A migration adds the `bytea` columns. `planlayer encrypt-pay` (needs the key) encrypts the
-  existing values and empties the numeric columns; a later migration drops them. Until then the
-  app reads ciphertext where present and the numeric column otherwise.
+One migration seals the existing pay in place, the pay log's salaries included, and needs the
+key when there is any pay; without it, the upgrade refuses and says how to make one. It reads
+the pay tables past their forced row-level security (as their owner, for the migration's
+transaction) and with their triggers off, so every row is sealed and no lock or audit entry
+fires.
 
 ## Reasons
 
@@ -99,6 +111,9 @@ pay unreadable.
   Planlayer's control.
 - The salary upload and the source preview handle plain pay in memory only; neither writes it
   anywhere but the encrypted columns.
-- Backups need the key to be useful for pay: the backup docs (D-30) say where it is kept.
-- New: the setting `PLANLAYER_PAY_KEY` (and `_PREVIOUS`), the commands `encrypt-pay` and
-  `rotate-pay-key`, and a dependency on `cryptography`.
+- Backups hold pay sealed and need the key to be useful for it: the install docs say to keep the
+  key apart from them.
+- New: the setting `PLANLAYER_PAY_KEY`, the command `new-pay-key`, and a dependency on
+  `cryptography`.
+- Key rotation is not built: the key id in every value leaves room for a previous key and a
+  command that seals everything again with the new one.

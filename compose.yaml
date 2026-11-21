@@ -34,6 +34,8 @@ services:
     logging: *logging
     environment:
       PLANLAYER_ENVIRONMENT: development
+      # Development only, never an installation's: the key pay is encrypted with (ADR 0029).
+      PLANLAYER_PAY_KEY: cGxhbmxheWVyLWRldmVsb3BtZW50LW9ubHkta2V5ISE=
       PLANLAYER_DEMO: "true"
       PLANLAYER_APP_DATABASE_URL: postgresql+psycopg://planlayer:planlayer@db/planlayer
       PLANLAYER_SOURCE_DATABASE_URL: postgresql+psycopg://planlayer:planlayer@db/dwh
@@ -120,6 +122,8 @@ services:
     environment:
       # Development: plain-http cookies on localhost.
       PLANLAYER_ENVIRONMENT: development
+      # Development only, never an installation's: the key pay is encrypted with (ADR 0029).
+      PLANLAYER_PAY_KEY: cGxhbmxheWVyLWRldmVsb3BtZW50LW9ubHkta2V5ISE=
       PLANLAYER_APP_DATABASE_URL: postgresql+psycopg://planlayer_entra:planlayer_entra@db/planlayer_entra
       # The address of the redirect URI registered in Entra ID.
       PLANLAYER_PUBLIC_URL: http://localhost:8001
@@ -166,6 +170,8 @@ services:
     environment:
       # Development: plain-http cookies on localhost.
       PLANLAYER_ENVIRONMENT: development
+      # Development only, never an installation's: the key pay is encrypted with (ADR 0029).
+      PLANLAYER_PAY_KEY: cGxhbmxheWVyLWRldmVsb3BtZW50LW9ubHkta2V5ISE=
       PLANLAYER_APP_DATABASE_URL: postgresql+psycopg://planlayer_okta:planlayer_okta@db/planlayer_okta
       # The address of the redirect URI registered in Okta.
       PLANLAYER_PUBLIC_URL: http://localhost:8002
@@ -213,6 +219,8 @@ services:
     environment:
       # Development: plain-http cookies on localhost.
       PLANLAYER_ENVIRONMENT: development
+      # Development only, never an installation's: the key pay is encrypted with (ADR 0029).
+      PLANLAYER_PAY_KEY: cGxhbmxheWVyLWRldmVsb3BtZW50LW9ubHkta2V5ISE=
       PLANLAYER_APP_DATABASE_URL: postgresql+psycopg://planlayer_google:planlayer_google@db/planlayer_google
       # The address of the redirect URI registered at Google.
       PLANLAYER_PUBLIC_URL: http://localhost:8003

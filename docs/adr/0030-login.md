@@ -41,7 +41,8 @@ give) without creating a session, so a wrong setting is seen before anyone is lo
 No secret is stored there:
 
 - OpenID Connect runs the authorization code flow with PKCE as a public client. A provider that
-  insists on a confidential client gets its secret from `PLANLAYER_OIDC_CLIENT_SECRET`.
+  insists on a confidential client gets its secret from the Settings page, sealed with the pay
+  key (ADR 0029), or from `PLANLAYER_OIDC_CLIENT_SECRET`.
 - LDAP binds as the user logging in, with their own password, and reads their entry with that
   bind; no service account.
 

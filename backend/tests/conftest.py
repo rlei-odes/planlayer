@@ -26,6 +26,8 @@ from planlayer.store.db import create_app_engine
 
 TEST_DATABASE_URL = os.environ.get("PLANLAYER_TEST_DATABASE_URL")
 APP_ROLE = "planlayer_test"
+# The tests' pay key (ADR 0029); never one of an installation.
+PAY_KEY = "dGVzdC1rZXktdGVzdC1rZXktdGVzdC1rZXktdGVzdC0="
 
 
 def _app_url() -> str:
@@ -64,6 +66,7 @@ def db_settings() -> Iterator[Settings]:
             app_schema=app_schema,
             output_schema=output_schema,
             demo=True,
+            pay_key=PAY_KEY,  # type: ignore[arg-type]
         )
     finally:
         with admin.begin() as conn:

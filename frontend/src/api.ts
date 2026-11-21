@@ -183,6 +183,8 @@ export const api = {
   release: () => fetch('/api/settings/release').then((res) => json<S.ReleaseOut>(res)),
   sourceStatus: () => fetch('/api/source/status').then((res) => json<S.SourceStatusOut>(res)),
   loginSettings: () => fetch('/api/settings/login').then((res) => json<LoginPage>(res)),
+  saveClientSecret: (secret: string | null) =>
+    send('PUT', '/api/settings/login/client-secret', { secret }).then((res) => json<LoginPage>(res)),
   saveLoginSettings: (settings: LoginSettings) =>
     send('PUT', '/api/settings/login', settings).then((res) => json<LoginPage>(res)),
   testLdap: (settings: LoginSettings, login: string, password: string) =>

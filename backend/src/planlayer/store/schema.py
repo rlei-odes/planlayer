@@ -28,6 +28,8 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 
+from planlayer.crypto import SealedAmount, SealedText
+
 APP_SCHEMA = "planlayer_app"
 
 # Constraint names are deterministic, so migrations can refer to them.
@@ -416,6 +418,8 @@ login_setting = Table(
     Column("oidc_name_claim", Text, nullable=False, server_default="name"),
     Column("oidc_groups_claim", Text, nullable=False, server_default="groups"),
     Column("oidc_hosted_domain", Text, nullable=False, server_default=""),  # Google's hd claim
+    # Sealed (ADR 0029); PLANLAYER_OIDC_CLIENT_SECRET, when set, is used instead.
+    Column("oidc_client_secret", SealedText("login_setting.oidc_client_secret")),
     Column("ldap_url", Text, nullable=False, server_default=""),
     Column("ldap_bind_dn", Text, nullable=False, server_default=""),  # with {login}
     Column("ldap_base_dn", Text, nullable=False, server_default=""),
@@ -1167,7 +1171,7 @@ hr_pay = Table(
     metadata,
     Column("code", Text, primary_key=True),
     Column("cost_center_id", Integer, ForeignKey("member.member_id"), nullable=False),
-    Column("monthly_salary", AMOUNT_TYPE, nullable=False),
+    Column("monthly_salary", SealedAmount("hr_pay.monthly_salary"), nullable=False),  # ADR 0029
 )
 
 pay_setting = Table(
@@ -1236,9 +1240,10 @@ position_pay = Table(
     ),
     Column("version_id", SmallInteger, nullable=False),
     *_personnel(),
-    Column("hr_salary", AMOUNT_TYPE),  # taken from HR, read only
-    Column("salary", AMOUNT_TYPE),  # planned, monthly; None: HR's
-    Column("bonus", AMOUNT_TYPE),  # yearly
+    # Sealed (ADR 0029): readable only with PLANLAYER_PAY_KEY.
+    Column("hr_salary", SealedAmount("position_pay.hr_salary")),  # taken from HR, read only
+    Column("salary", SealedAmount("position_pay.salary")),  # planned, monthly; None: HR's
+    Column("bonus", SealedAmount("position_pay.bonus")),  # yearly
     Column("charged_to_id", Integer, ForeignKey("member.member_id")),
     # Rules of the round HR excluded the position from (ADR 0026); ids of removed rules are
     # ignored.

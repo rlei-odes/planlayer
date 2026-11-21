@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { api, type LoginPage, type LoginSettings, type LoginTest } from './api'
+import ClientSecret from './ClientSecret'
 import { LIMIT } from './limits'
 
 // The login provider (ADR 0030), for the admin: OpenID Connect or LDAP, tested with the unsaved
@@ -236,11 +237,9 @@ export default function LoginSettingsCard() {
           <div className="su-field ls-wide">
             Redirect URI
             <code className="ls-code">{page.redirect_uri}</code>
-            <span className="lg-hint">
-              Register it at the provider.{' '}
-              {page.client_secret ? 'Confidential client: PLANLAYER_OIDC_CLIENT_SECRET is set.' : 'Public client with PKCE; no secret.'}
-            </span>
+            <span className="lg-hint">Register it at the provider.</span>
           </div>
+          <ClientSecret page={page} onSaved={setPage} />
           <Fold title="Claims">
             {field('oidc_login_claim', 'Login', LIMIT.name)}
             {field('oidc_email_claim', 'E-mail', LIMIT.name)}

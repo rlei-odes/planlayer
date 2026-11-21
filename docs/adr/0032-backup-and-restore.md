@@ -38,16 +38,16 @@ the system user (ADR 0023). A dump taken as the app role would be incomplete, or
   lock and audit triggers don't fire. Then the app role grants the backup role its read access
   again (dropping the schema dropped it), migrations bring an older backup up to the running
   version, and the output is republished.
-- **Pay:** a backup holds every row past row-level security, salaries included. Until pay is
-  encrypted at rest (ADR 0029, proposed), they are plain numbers in it; with the encryption, a
-  restore needs the same key, kept apart from the backups.
+- **Pay:** a backup holds every row past row-level security, salaries included, sealed with
+  `PLANLAYER_PAY_KEY` (ADR 0029). Their use after a restore needs the same key, which is kept
+  apart from the backups.
 - **Admin UI:** no backup status yet. It comes with D-24, whose job history will show the last
   backup.
 
 ## Consequences
 
 - One more credential (the backup role's URL) in the deployment's environment. A leaked backup
-  URL reads everything, pay included, so it is handled like the app's.
+  URL reads everything, pay sealed, so it is handled like the app's.
 - The restore is tested in CI against the backup role (`tests/test_backup.py`): every row back,
   row-level security forced again, the app role the owner, the next backup working.
 - A restore into a different schema name isn't possible (`pg_restore` can't rename schemas); the

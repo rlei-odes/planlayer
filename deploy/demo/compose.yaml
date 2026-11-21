@@ -17,6 +17,9 @@ x-planlayer: &planlayer
     PLANLAYER_DEMO: "true"
     PLANLAYER_APP_DATABASE_URL: postgresql+psycopg://planlayer:planlayer-demo@db/planlayer
     PLANLAYER_SOURCE_SCHEMA: gold
+    # The demo's made-up salaries are encrypted like real ones (ADR 0029), with a public key:
+    # never use it for an installation.
+    PLANLAYER_PAY_KEY: ZGVtby1vbmx5LW5vdC1hLXNlY3JldC1wbGFubGF5ZXI=
 
 services:
   db:

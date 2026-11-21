@@ -7,6 +7,8 @@ requires-python = ">=3.13"
 dependencies = [
     # Schema migrations of planlayer_app (planlayer.store.migrations).
     "alembic==1.20.1",
+    # AES-256-GCM for pay and the OpenID Connect client secret at rest (planlayer.secrets, ADR 0029).
+    "cryptography==50.0.2",
     "fastapi==0.162.2",
     # Login against the company's directory over LDAPS (planlayer.login.ldap, ADR 0030).
     "ldap3==2.9.1",
