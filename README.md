@@ -1,14 +1,57 @@
 # Planlayer
 
-An open-source, self-hosted web app for corporate budgeting and forecasting. Planners enter plan values in an Excel-like grid next to their actuals. The data lives in plain Postgres tables that any BI tool can read.
+**Budgeting and forecasting for companies that have outgrown their Excel files, on the Postgres
+they already run.**
 
-Status: early development. A first end-to-end slice runs: sync from Postgres views, a budget version, and a planning grid for one cost center.
+Planlayer is an open-source, self-hosted planning app. Cost center owners plan in an Excel-like
+grid next to their actuals, controllers run the round from setup to approval, and the result lands
+as plain, documented tables in the warehouse, where any BI tool reads it.
 
-- [docs/scope.md](docs/scope.md): what v1 does and does not do
-- [BACKLOG.md](BACKLOG.md): decisions, spikes, test data and epics
-- [planning-app-brief.md](planning-app-brief.md): the original product brief
-- [docs/adr/](docs/adr/): architecture decision records
-- [docs/research/](docs/research/): notes on related projects
+[planlayer.app](https://planlayer.app) · [Try the demo](#try-it) · [Install](docs/install.md) ·
+[Scope](docs/scope.md)
+
+## What it does
+
+**Planning**
+- A grid for one cost center at a time: paste from Excel, fill-drag, keyboard flow, undo and redo,
+  subtotals, actuals and other versions in comparison columns.
+- Spreading that ties exactly to the total you enter: evenly, by a seasonality profile, or in
+  proportion to last year's actuals or another version.
+- Budgets planned by month or year, forecasts by quarter, with the closed months showing actuals.
+- Notes with replies, @mentions and tasks on any line; item lists for lines planned item by item.
+
+**Running the round**
+- A setup page that composes a round from modules, entry forms per account group and account sets
+  per cost center, with a live preview of the sheet planners will get.
+- New rounds carried over from an earlier one, plan values optionally with an uplift.
+- Submit, approve, reject and reopen per cost center; a status page that rolls progress up the
+  hierarchy; locks enforced by the database.
+
+**Modules**
+- **Capacity:** work centers, activity types and hourly rates; planned hours credit their accounts.
+- **Cost forwarding:** a cost center's costs passed on in full or as a fixed amount by shares, or
+  at a rate per unit (m², PCs, licences), with the over- or under-coverage shown.
+- **Workforce:** FTE, headcount or positions, with HR's people as the starting point, and personnel
+  costs from salaries, raises, bonuses and contributions. Pay is read only by HR and the owner,
+  and encrypted at rest.
+- **Capex:** investments and large projects, confirmations by the approver, cash-out schedules.
+
+**Data in and out**
+- Master data, hierarchies and actuals synced from your Postgres views, after a preview of what
+  changes. Without a source, the controller enters master data by hand.
+- Publishing into a schema of its own (`planlayer_out`), after a preview of the rows it adds,
+  changes and removes. The same data downloads as CSV or Parquet.
+
+**Built for finance IT**
+- Row-level security, audit log and locks live in Postgres, not only in the app.
+- Login through OpenID Connect (Microsoft Entra ID, Okta, Google Workspace, Keycloak) or LDAP
+  (Active Directory, OpenLDAP).
+- One container, signed images for amd64 and arm64, migrations with a backup first, built-in
+  scheduled backups.
+
+Planned next: sales planning, plan reports as PDF, access for AI assistants through MCP
+([BACKLOG.md](BACKLOG.md)). Out of scope: consolidation, FX translation, balance sheet planning
+and multi-tenant hosting ([docs/scope.md](docs/scope.md)).
 
 ## Try it
 
@@ -17,11 +60,21 @@ curl -fsSLO https://raw.githubusercontent.com/rlei-odes/planlayer/main/deploy/de
 docker compose up -d
 ```
 
-Then http://localhost:8000: the Nordwerk test company in an open budget round, logged in as any of its users. Installing for real: [docs/install.md](docs/install.md).
+Then open http://localhost:8000: Nordwerk Industrietechnik, a fictional manufacturer, in an open
+budget round, with plans begun, positions, investments and notes. Log in as any of its users, no
+password needed.
 
 ## How it runs
 
-One container, connected to an existing Postgres 18 (or newer). Planlayer keeps its own data in a schema `planlayer_app`, and publishes plan data to a schema `planlayer_out`, typically in the warehouse database next to the gold layer. It reads master data and actuals from views the admin points it to. A DBA creates the schemas and roles with [deploy/sql/install.sql](deploy/sql/install.sql); Planlayer then migrates its own schema.
+One container, against Postgres 18 or newer: the company's existing server or one bundled with
+it. Planlayer keeps its data in one schema (`planlayer_app`) and publishes to another
+(`planlayer_out`), typically in the warehouse next to the gold layer. It reads master data and
+actuals from views the admin points it to. A DBA creates the schemas and roles with
+[deploy/sql/install.sql](deploy/sql/install.sql); Planlayer never creates them itself.
+
+Installing, backups, upgrades and rollback: [docs/install.md](docs/install.md). Login:
+[docs/login.md](docs/login.md). The published tables: [docs/output.md](docs/output.md).
+Versioning: [docs/releasing.md](docs/releasing.md).
 
 | Variable | Meaning |
 |---|---|
@@ -29,14 +82,14 @@ One container, connected to an existing Postgres 18 (or newer). Planlayer keeps 
 | `PLANLAYER_SOURCE_DATABASE_URL` | Source views connection (default: app store) |
 | `PLANLAYER_OUTPUT_DATABASE_URL` | Published output connection (default: app store) |
 | `PLANLAYER_APP_SCHEMA`, `PLANLAYER_OUTPUT_SCHEMA` | Schema names (default `planlayer_app`, `planlayer_out`) |
+| `PLANLAYER_PAY_KEY` | Key that encrypts pay and the OIDC client secret ([ADR 0029](docs/adr/0029-pay-encryption-at-rest.md)) |
 | `PLANLAYER_PUBLIC_URL` | The address users open, e.g. `https://plan.example.com` (default: each request's) |
 | `PLANLAYER_DEMO` | `true` for a demo installation: log in as any user without a password |
 | `PLANLAYER_BACKUP_DATABASE_URL`, `PLANLAYER_BACKUP_DIR`, `PLANLAYER_BACKUP_KEEP` | Backups of the app store ([ADR 0032](docs/adr/0032-backup-and-restore.md)) |
+| `PLANLAYER_UPDATE_CHECK` | `false` turns off the admins' notice of a new release |
 | `PLANLAYER_LOGIN_*`, `PLANLAYER_OIDC_CLIENT_SECRET` | The login provider, instead of the Settings page ([docs/login.md](docs/login.md)) |
 
 URLs use the form `postgresql+psycopg://user:password@host:5432/database`.
-
-On first start the server logs a setup code; the login page takes it to create the first admin, a local account. The admin then connects OpenID Connect (Microsoft Entra ID, Okta, Google Workspace, Keycloak, …) or LDAP (Active Directory, OpenLDAP) on the Settings page: [docs/login.md](docs/login.md).
 
 ## Development
 
@@ -56,26 +109,19 @@ cd backend && cp .env.example .env && uv sync && uv run planlayer migrate && uv 
 cd frontend && npm ci && npm run dev        # http://localhost:5173, /api goes to the backend
 ```
 
-Test data (the fictional manufacturer Nordwerk, see [tools/gen_testdata](tools/gen_testdata/README.md)) into the `dwh` database:
+Test data (Nordwerk, see [tools/gen_testdata](tools/gen_testdata/README.md)) into the `dwh`
+database, then the demo's plans into an empty app store:
 
 ```
 cd tools/gen_testdata && uv run gen-testdata --db postgresql://postgres:postgres@localhost:5432/dwh
+docker compose exec app planlayer seed-demo
 ```
 
-Sync the test company into the app and create a budget to plan (the planning page is on http://localhost:8000, or :5173 with Vite):
-
-```
-docker compose exec app planlayer seed-dev-mappings     # map the datasets to the gold views
-docker compose exec app planlayer sync --entity DE
-docker compose exec app planlayer create-version B2026 --name "Budget 2026" --fiscal-year 2026
-docker compose exec app planlayer seed-dev-users
-```
-
-Or all of it, with plans begun, investments, positions, forwardings, notes and item lists, into an empty app store: `docker compose exec app planlayer seed-demo`.
-
-`compose.yaml` runs a demo installation (`PLANLAYER_DEMO`), whose login lists the users and logs in as any of them without a password: the cost center owners, `controller@nordwerk.example`, `admin@nordwerk.example`, `cfo@nordwerk.example` and `auditor@nordwerk.example`. A new planning round starts in status `setup`; the controller opens it on the status page. Mappings, sync previews and master data are on the "Master data" page; `planlayer sync --dry-run` shows the plan without writing. The controller sets up rounds on "Setup" and publishes them on "Publish" into `planlayer_out` (documented in [docs/output.md](docs/output.md)); `planlayer republish` rebuilds the output.
-
-Keycloak and lldap to develop the login against: `docker compose --profile auth up -d keycloak lldap` ([docs/login.md](docs/login.md#developing-against-real-providers)).
+`compose.yaml` runs a demo installation: the login lists the users, among them
+`controller@nordwerk.example`, `admin@nordwerk.example`, `cfo@nordwerk.example` and
+`auditor@nordwerk.example`. Keycloak and lldap to develop the login against:
+`docker compose --profile auth up -d keycloak lldap`
+([docs/login.md](docs/login.md#developing-against-real-providers)).
 
 Checks, as run in CI:
 
@@ -85,8 +131,11 @@ PLANLAYER_TEST_DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:543
 cd frontend && npm run lint && npm run typecheck && npm run build
 ```
 
-`pre-commit install` enables ruff and oxlint on commit.
+`pre-commit install` enables ruff and oxlint on commit. Design decisions are recorded in
+[docs/adr/](docs/adr/), open work in [BACKLOG.md](BACKLOG.md). Bugs and security issues:
+[GitHub issues](https://github.com/rlei-odes/planlayer/issues).
 
 ## Licence
 
-[Apache License 2.0](LICENSE). Forks and derivative works keep the [NOTICE](NOTICE) file with its copyright and attribution.
+[Apache License 2.0](LICENSE). Forks and derivative works keep the [NOTICE](NOTICE) file with its
+copyright and attribution to [planlayer.app](https://planlayer.app).
