@@ -1,0 +1,59 @@
+# Planlayer demo: the Nordwerk test company in a budget round, from this file alone.
+#   docker compose up -d     then http://localhost:8000 (the first start takes about a minute)
+#   docker compose down -v   removes it with its data
+# Anyone who reaches the page logs in as anyone, without a password: keep it on localhost.
+name: planlayer-demo
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "3"
+
+x-planlayer: &planlayer
+  image: ${PLANLAYER_IMAGE:-ghcr.io/rlei-odes/planlayer:0.5}
+  logging: *logging
+  environment: &env
+    PLANLAYER_DEMO: "true"
+    PLANLAYER_APP_DATABASE_URL: postgresql+psycopg://planlayer:planlayer-demo@db/planlayer
+    PLANLAYER_SOURCE_SCHEMA: gold
+
+services:
+  db:
+    image: postgres:18
+    logging: *logging
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: planlayer-demo
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 2s
+      retries: 30
+
+  # Once: the database, the test warehouse and the demo's data.
+  init:
+    <<: *planlayer
+    environment:
+      <<: *env
+      PGHOST: db
+      PGUSER: postgres
+      PGPASSWORD: planlayer-demo
+    command: ["sh", "/app/deploy/bundled-init.sh", "--demo"]
+    depends_on:
+      db:
+        condition: service_healthy
+
+  app:
+    <<: *planlayer
+    restart: unless-stopped
+    command: ["sh", "-c", "planlayer migrate && planlayer serve"]
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      init:
+        condition: service_completed_successfully
+
+volumes:
+  pgdata:

@@ -1,0 +1,70 @@
+# Planlayer in production (docs/install.md). The settings go in planlayer.env next to this file
+# (from planlayer.env.example); this file needs no changes.
+#
+#   With the bundled Postgres:          docker compose --profile postgres up -d
+#   With the company's own Postgres:    docker compose up -d   (after the DBA ran install.sql)
+#
+# Upgrade: set PLANLAYER_VERSION in .env (or edit the default below), then the same command
+# again. The app takes a backup and migrates on start (ADR 0031).
+name: planlayer
+
+# Container logs rotate at 10 MB, five files per container, so they can't fill the disk.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "5"
+
+services:
+  app:
+    image: ghcr.io/rlei-odes/planlayer:${PLANLAYER_VERSION:-0.5}
+    restart: unless-stopped
+    logging: *logging
+    env_file: planlayer.env
+    environment:
+      PLANLAYER_BACKUP_DIR: /backups
+    command: ["sh", "-c", "planlayer migrate && planlayer serve"]
+    ports:
+      # Behind the company's reverse proxy, which serves HTTPS (docs/install.md).
+      - "${PLANLAYER_LISTEN:-127.0.0.1:8000}:8000"
+    volumes:
+      - backups:/backups
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+        required: false # only with the postgres profile
+
+  # The bundled Postgres, for a company without one (profile postgres).
+  db:
+    image: postgres:18
+    profiles: [postgres]
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
+    volumes:
+      # The postgres:18 image keeps its data in a versioned directory below /var/lib/postgresql.
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 2s
+      retries: 30
+
+  # Once, at the bundled Postgres's first start: the database and roles, by the install script.
+  db-init:
+    image: ghcr.io/rlei-odes/planlayer:${PLANLAYER_VERSION:-0.5}
+    profiles: [postgres]
+    logging: *logging
+    env_file: planlayer.env
+    environment:
+      PGHOST: db
+      PGUSER: postgres
+      PGPASSWORD: ${POSTGRES_PASSWORD:-}
+    command: ["sh", "/app/deploy/bundled-init.sh"]
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  backups:

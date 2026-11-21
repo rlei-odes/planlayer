@@ -40,6 +40,19 @@ def upgrade(settings: Settings, revision: str = "head") -> None:
         engine.dispose()
 
 
+def behind(settings: Settings) -> str | None:
+    """The revision of an app store that migrations would upgrade, or None when there is
+    nothing to keep (a new, empty app store) or nothing to do (at head)."""
+    engine = create_app_engine(settings)
+    try:
+        _require_schema(engine, settings.app_schema)
+        with engine.connect() as conn:
+            revision = current_revision(conn, settings.app_schema)
+    finally:
+        engine.dispose()
+    return None if revision in (None, head_revision()) else revision
+
+
 def downgrade(settings: Settings, revision: str) -> None:
     engine = create_app_engine(settings)
     try:

@@ -10,6 +10,15 @@ Status: early development. A first end-to-end slice runs: sync from Postgres vie
 - [docs/adr/](docs/adr/): architecture decision records
 - [docs/research/](docs/research/): notes on related projects
 
+## Try it
+
+```
+curl -fsSLO https://raw.githubusercontent.com/rlei-odes/planlayer/main/deploy/demo/compose.yaml
+docker compose up -d
+```
+
+Then http://localhost:8000: the Nordwerk test company in an open budget round, logged in as any of its users. Installing for real: [docs/install.md](docs/install.md).
+
 ## How it runs
 
 One container, connected to an existing Postgres 18 (or newer). Planlayer keeps its own data in a schema `planlayer_app`, and publishes plan data to a schema `planlayer_out`, typically in the warehouse database next to the gold layer. It reads master data and actuals from views the admin points it to. A DBA creates the schemas and roles with [deploy/sql/install.sql](deploy/sql/install.sql); Planlayer then migrates its own schema.
@@ -22,6 +31,7 @@ One container, connected to an existing Postgres 18 (or newer). Planlayer keeps 
 | `PLANLAYER_APP_SCHEMA`, `PLANLAYER_OUTPUT_SCHEMA` | Schema names (default `planlayer_app`, `planlayer_out`) |
 | `PLANLAYER_PUBLIC_URL` | The address users open, e.g. `https://plan.example.com` (default: each request's) |
 | `PLANLAYER_DEMO` | `true` for a demo installation: log in as any user without a password |
+| `PLANLAYER_BACKUP_DATABASE_URL`, `PLANLAYER_BACKUP_DIR`, `PLANLAYER_BACKUP_KEEP` | Backups of the app store ([ADR 0032](docs/adr/0032-backup-and-restore.md)) |
 | `PLANLAYER_LOGIN_*`, `PLANLAYER_OIDC_CLIENT_SECRET` | The login provider, instead of the Settings page ([docs/login.md](docs/login.md)) |
 
 URLs use the form `postgresql+psycopg://user:password@host:5432/database`.

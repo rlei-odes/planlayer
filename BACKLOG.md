@@ -118,18 +118,8 @@ Each item lists the options and how to decide. Items marked ⚙ are decided by a
 - [x] **D-22 Workflow.** Decided: [ADR 0008](docs/adr/0008-workflow.md). One-step approval per round × cost center (not started → in progress → submitted → approved, reject and reopen with comment); approvers assigned to hierarchy nodes, nearest one above wins, controller as fallback; round status setup / open / closed; the lock trigger reads the status.
 - [x] **D-23 Audit / change log.** Decided: [ADR 0005](docs/adr/0005-request-context-rls-audit.md). Statement-level triggers with transition tables; actor and batch from the per-transaction context. Retention and partitioning: E-14.
 - [ ] **D-24 Background jobs.** Syncs, exports and large spreads need a job runner. Options: in-process scheduler (APScheduler), a Postgres-backed queue (procrastinate, pgqueuer), or Celery/RQ + Redis. Recommendation: Postgres-backed, so there's no extra service in compose.
-- [ ] **D-25 Deployment shape.** The app store location is decided (T-14). Still to define:
-  - **The container image:** the API serves the built frontend, background jobs run in-process (D-24), images are published to GHCR, and configuration comes from env vars.
-  - **What the customer's DBA must grant:** create the two schemas (in one database or two), triggers and RLS policies in `planlayer_app`, and `SELECT` on the source views. Write this as an install checklist plus a SQL script the DBA can review and run.
-  - **Connection settings:** three URLs (app store, source, output); source and output default to the app store URL when unset.
-  - **Migrations:** whether they run on start or as a separate `planlayer migrate` command, and how an upgrade is rolled back.
-- [ ] **D-30 Backup and restore.** The scheduled backup of `planlayer_app` from T-14. `planlayer_out` is not backed up, because a "republish all" command rebuilds it from the app store. Decide:
-  - the mechanism (`pg_dump --schema` from inside the container);
-  - the targets (a mounted volume, S3-compatible storage);
-  - the schedule and retention;
-  - a tested restore command into an empty schema, followed by a republish;
-  - whether the admin UI shows the last successful backup.
-  Restore must also work into a different database (moving an installation).
+- [x] **D-25 Deployment shape.** Decided: [ADR 0031](docs/adr/0031-deployment-shape.md). One image for amd64 and arm64 on GHCR with the Postgres 18 client and the demo's generator; the install script, optional source part and backup role; three connection URLs plus the backup role's; migrations at start, after a backup; rollback by restoring that backup with the previous image, no downgrades in production.
+- [x] **D-30 Backup and restore.** Decided: [ADR 0032](docs/adr/0032-backup-and-restore.md). `pg_dump` of the app schema as a read-only `BYPASSRLS` backup role into a volume, the newest 14 kept; before every upgrade and daily from the host's scheduler until D-24; `planlayer restore` into an empty schema of the same name, then migrations and a republish; tested in CI. Open: S3-compatible targets; the last backup on the admin UI (with D-24).
 
 ## 3. Spikes
 
@@ -300,6 +290,11 @@ Mid-size manufacturer of industrial pumps and valves, ~400 employees.
         - [x] Typed quantities and rates (the forwarding page) are read by the user's separators too (`parseNumber`), and its fields start in them.
     - [ ] Real users' walkthroughs (R-4).
 - [ ] **E-11** Self-host packaging: container image on GHCR, the DBA install script and checklist (D-25), upgrade/migration procedure, the scheduled backup and restore (D-30), install docs.
+    - [x] Release workflow (`.github/workflows/release.yml`): on a `v*` tag matching `backend/pyproject.toml`, the image for amd64 and arm64 on GHCR as `X.Y.Z`, `X.Y`, `latest`, with SBOM, provenance and a keyless cosign signature; Docker Hub mirror behind the variable `DOCKERHUB_IMAGE`.
+    - [x] `deploy/compose.yaml` (own Postgres, or bundled with the profile `postgres`), `planlayer.env.example`, log rotation; [docs/install.md](docs/install.md): install, HTTPS, backups, upgrades, rollback, moving.
+    - [ ] First release: make the GHCR package public after the first push, and check `cosign verify` and the SBOM on the published image.
+    - [ ] Docker Hub: apply for the Sponsored Open Source programme, then set `DOCKERHUB_IMAGE` and the two secrets.
+    - [ ] Managed Postgres (Azure Database for PostgreSQL, RDS, Cloud SQL): whether their admin can grant `BYPASSRLS` to the backup role, and what else `install.sql` needs there (C-2).
     - [ ] A guided installation in the app for the admin: connections, the first sync, the first users and roles (an HR user among them), and the encryption key for pay (W-18), generated in the app and shown once for HR to keep in a password manager, with a check that it was saved before going on.
     - [ ] Container logs rotated by default: the shipped compose file and the install docs set the `json-file` driver to 10 MB × 5 files per container (as the development `compose.yaml` does), and say how to set it in Docker's `daemon.json` or for Podman and Kubernetes, so logs can't fill a disk.
 - [ ] **E-14 Audit log retention.** The audit and change logs (`change_log`, `capacity_change_log`, `workforce_change_log`, `workforce_position_log`, `capacity_line_log`, `capacity_staff_log`, `capex_log`, `position_pay_log`, `annotation_log`, `workflow_event`, `pay_access_log`, the login log below) only grow today (D-23 left retention open).
@@ -461,7 +456,7 @@ Many companies run their warehouse on SQL Server, Azure SQL, Fabric, BigQuery, D
   - **Order:** by demand from actual users. SQL Server and Azure SQL are likely first for mid-size companies on Microsoft, and the same TDS adapter may reach Fabric and Synapse.
   - **Drivers:** SQLAlchemy dialects keep `Relation`/`Query` and the wrapped filter and limit unchanged. Arrow-native clients (BigQuery Storage API, Databricks SQL connector, Snowflake connector) or ADBC where a driver exists skip the row-by-row conversion. Each driver's size and licence in the image (SQL Server's ODBC driver comes under Microsoft's licence terms); drivers as optional extras if the image grows too much.
   - **Login per backend:** user and password, Entra ID tokens (Azure SQL, Fabric), service account keys or workload identity (BigQuery), OAuth or tokens (Databricks), key pairs (Snowflake). Credentials only from environment variables or the connection settings, never logged.
-- [ ] **C-2 A Postgres for companies without one.** A compose profile running Postgres 18 next to the app for the app store, and the managed services that fit (Azure Database for PostgreSQL, RDS, Cloud SQL) in the install docs, with their extension and role requirements against `deploy/sql/install.sql`. The scheduled backup (D-30) is the only copy of plan data then, so restore is tested in this setup.
+- [ ] **C-2 A Postgres for companies without one.** Built: the bundled Postgres in `deploy/compose.yaml` (profile `postgres`, first start by `deploy/bundled-init.sh`) and its tested restore ([ADR 0031](docs/adr/0031-deployment-shape.md), [ADR 0032](docs/adr/0032-backup-and-restore.md)). Still open: the managed services that fit (Azure Database for PostgreSQL, RDS, Cloud SQL) in the install docs, with their extension and role requirements against `deploy/sql/install.sql`.
 - [ ] **C-3 Source adapters.** One per backend, behind the existing `SourceAdapter`:
   - `describe()`: database, user, version and readable schemas from the backend's catalog;
   - read-only access and a statement timeout for admin-entered queries (ADR 0012), or what the backend offers instead (a read-only role, a query timeout or job limit);
@@ -524,7 +519,7 @@ How potential users find and try Planlayer.
 
 - [ ] **G-1 Who it is for and where they look:** controllers and finance IT of mid-size companies with a Postgres warehouse; list the channels they use (communities, conferences, the dbt and Postgres ecosystems, FP&A forums) and what each needs from us.
 - [ ] **G-2 Cloud marketplaces:** assess listing the container in the AWS, Azure and Google Cloud marketplaces (and DigitalOcean, Hetzner app catalogues): a one-click deployment next to a managed Postgres, what each requires (images, templates, billing for a free listing, support terms), and the effort to keep listings current.
-- [ ] **G-3 Try it in minutes:** a public demo with the Nordwerk test data, and `docker compose up` with demo data as the first page of the docs. `PLANLAYER_DEMO` and `planlayer seed-demo` are built (ADR 0030); still needed: the generator's warehouse in the demo compose file without a local checkout (an image or an init step), so `seed-demo` has data to read.
+- [ ] **G-3 Try it in minutes:** a public demo with the Nordwerk test data, and `docker compose up` with demo data as the first page of the docs. Built: `deploy/demo/compose.yaml` alone gives the demo (the image carries `gen-testdata`; a first-start step generates the warehouse, migrates and runs `seed-demo`), first in the README and [docs/install.md](docs/install.md). Still open: the public demo.
 - [ ] **G-4 Integrations as a door:** a dbt package that reads `planlayer_out`, and examples for common BI tools.
 
 ### Various
@@ -548,7 +543,7 @@ How potential users find and try Planlayer.
 11. ✓ E-03 setup page: new rounds (set up like an earlier one), deadline, starting points Simple / Medium / Full, default entry form and exceptions per account group or account, comparison columns in order, hidden accounts, seasonality profiles; a draft saved all or nothing; beside it a live preview of the planner's sheet with example values, in the design language E-13 starts from. Open items are listed under E-03.
 12. ✓ E-10 first cut: CSV and Parquet downloads; preview of rows added, changed and removed per cost center and row; a run that replaces the round's rows in `planlayer_out` and refuses if anything changed since the preview; run history; `planlayer republish`; tables and view documented in [docs/output.md](docs/output.md). Open items are listed under E-10.
 13. E-13 UI/UX design phase over the main flows, backend mostly frozen.
-14. Remaining ADRs (D-13, D-24, D-25, D-27, D-28, D-29, D-30) and F-items, then epics E-01 → E-05 → E-06 → E-09 → E-11 → the rest.
+14. Remaining ADRs (D-13, D-24, D-27, D-28, D-29; ✓ D-25, ✓ D-30) and F-items, then epics E-01 → E-05 → E-06 → E-09 → E-11 → the rest.
 15. Building out cost center planning: ✓ seasonality profiles (edit, delete, working-day and calendar-day presets), ✓ a line's own spread on the sheet, ✓ first cut of K-1 and K-2 (productive cost centers, capacity planning, [ADR 0013](docs/adr/0013-capacity-planning.md)); open items under K-1 and K-2; ✓ first cut of K-3 (cost forwarding, [ADR 0018](docs/adr/0018-cost-forwarding.md)); open items under K-1, K-2 and K-3.
 16. ✓ First cut of workforce planning ([ADR 0020](docs/adr/0020-workforce-planning.md)): FTE, headcount or positions per round; open items under W-6 to W-17.
 17. ✓ Transfers of positions between cost centers and the *Home* start page ([ADR 0021](docs/adr/0021-position-transfers-and-home.md)).

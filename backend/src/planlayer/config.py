@@ -5,7 +5,7 @@ from functools import cached_property
 from pathlib import Path
 from typing import Literal
 
-from pydantic import SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _IDENTIFIER = re.compile(r"^[a-z_][a-z0-9_]{0,62}$")
@@ -39,6 +39,12 @@ class Settings(BaseSettings):
     # The address users open Planlayer at, e.g. https://plan.example.com; the OpenID Connect
     # callback is under it. Unset: the address of each request.
     public_url: str | None = None
+
+    # Backups (ADR 0032): pg_dump as a role with BYPASSRLS that only reads the app store, into
+    # this directory, keeping the newest backup_keep files. Unset: no backups.
+    backup_database_url: SecretStr | None = None
+    backup_dir: Path | None = None
+    backup_keep: int = Field(default=14, ge=1)
 
     # Built frontend served by the API; unset in development, where Vite serves it.
     frontend_dist: Path | None = None

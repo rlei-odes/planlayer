@@ -16,6 +16,8 @@ docker-compose.override.yml
 /deploy/dev/okta.env
 # Google Workspace test values (template: deploy/dev/google.env.example)
 /deploy/dev/google.env
+# A production installation's settings (template: deploy/planlayer.env.example)
+/deploy/planlayer.env
 compose.override.yml
 
 # --- Python ------------------------------------------------------------------
@@ -132,3 +134,5 @@ desktop.ini
 
 # --- Claude Code local settings ----------------------------------------------------
 .claude/settings.local.json
+# Notes for Claude Code about one developer's machine
+/CLAUDE.local.md

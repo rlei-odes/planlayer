@@ -5,10 +5,11 @@ import getpass
 import logging
 import os
 from datetime import date
+from pathlib import Path
 
 import uvicorn
 
-from planlayer import access, devdata, publish, rounds, sync
+from planlayer import access, backup, devdata, publish, rounds, sync
 from planlayer.adapters.source import PostgresSource
 from planlayer.config import Settings
 from planlayer.login import local
@@ -57,6 +58,17 @@ def main(argv: list[str] | None = None) -> None:
 
     migrate_cmd = commands.add_parser("migrate", help="upgrade the app store schema")
     migrate_cmd.add_argument("--revision", default="head")
+    migrate_cmd.add_argument(
+        "--without-backup",
+        action="store_true",
+        help="upgrade an existing app store without taking a backup first",
+    )
+
+    commands.add_parser("backup", help="back up the app store into PLANLAYER_BACKUP_DIR")
+    restore_cmd = commands.add_parser(
+        "restore", help="load a backup into the empty app schema, then republish the output"
+    )
+    restore_cmd.add_argument("file", type=Path, help="a planlayer-….dump file")
 
     sync_cmd = commands.add_parser("sync", help="sync master data and actuals from the source")
     sync_cmd.add_argument("--entity", help="only this entity's actuals")
@@ -150,7 +162,49 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
     match args.command:
         case "migrate":
-            migrate.upgrade(Settings(), args.revision)  # type: ignore[call-arg]
+            settings = Settings()  # type: ignore[call-arg]
+            # An upgrade is rolled back by the previous image and this backup (ADR 0031).
+            if (at := migrate.behind(settings)) is not None and not args.without_backup:
+                if settings.backup_dir is None and settings.development:
+                    print(f"no backup before upgrading from {at}: PLANLAYER_BACKUP_DIR is unset")
+                else:
+                    engine = create_app_engine(settings)
+                    try:
+                        written = backup.backup(settings, engine)
+                    except backup.BackupError as e:
+                        raise SystemExit(
+                            f"no backup, so no upgrade from {at}: {e} "
+                            "(or planlayer migrate --without-backup)"
+                        ) from None
+                    finally:
+                        engine.dispose()
+                    print(f"backup before upgrading from {at}: {written}")
+            migrate.upgrade(settings, args.revision)
+        case "backup":
+            settings = Settings()  # type: ignore[call-arg]
+            engine = create_app_engine(settings)
+            try:
+                print(backup.backup(settings, engine))
+            except backup.BackupError as e:
+                raise SystemExit(f"backup failed: {e}") from None
+            finally:
+                engine.dispose()
+        case "restore":
+            settings = Settings()  # type: ignore[call-arg]
+            engine, output = create_app_engine(settings), create_output_engine(settings)
+            try:
+                backup.restore(settings, engine, args.file)
+                # Migrations bring an older backup up to this version before the republish.
+                migrate.upgrade(settings)
+                codes = publish.republish_all(
+                    engine, output, settings.output_schema, access.system_user(engine)
+                )
+            except backup.BackupError as e:
+                raise SystemExit(f"restore failed: {e}") from None
+            finally:
+                engine.dispose()
+                output.dispose()
+            print(f"restored {args.file.name}; republished {', '.join(codes) or 'nothing'}")
         case "sync":
             settings = Settings()  # type: ignore[call-arg]
             engine, source = create_app_engine(settings), PostgresSource(settings.source_url)
