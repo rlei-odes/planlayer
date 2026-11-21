@@ -133,5 +133,51 @@ services:
       entra-db:
         condition: service_completed_successfully
 
+  # The same for Okta (docs/okta.md): docker compose --profile okta up -d --build app-okta, then
+  # http://localhost:8002. Database planlayer_okta; the values from deploy/dev/okta.env.
+  okta-db:
+    image: postgres:18
+    profiles: [okta]
+    environment:
+      PGHOST: db
+      PGUSER: postgres
+      PGPASSWORD: postgres
+    volumes:
+      - ./deploy/sql/install.sql:/planlayer/install.sql:ro
+    command:
+      - sh
+      - -c
+      - |
+        if [ -z "$(psql -tAc "SELECT 1 FROM pg_database WHERE datname = 'planlayer_okta'")" ]; then
+          psql -v ON_ERROR_STOP=1 -c "CREATE DATABASE planlayer_okta"
+          psql -v ON_ERROR_STOP=1 -d planlayer_okta -c "CREATE SCHEMA gold"
+          psql -v ON_ERROR_STOP=1 -v app_db=planlayer_okta -v output_db=planlayer_okta \
+               -v source_db=planlayer_okta -v source_schema=gold -v app_role=planlayer_okta \
+               -v bi_role=planlayer_okta_bi -v app_password=planlayer_okta -f /planlayer/install.sql
+        fi
+    depends_on:
+      db:
+        condition: service_healthy
+
+  app-okta:
+    build: .
+    profiles: [okta]
+    logging: *logging
+    environment:
+      # Development: plain-http cookies on localhost.
+      PLANLAYER_ENVIRONMENT: development
+      PLANLAYER_APP_DATABASE_URL: postgresql+psycopg://planlayer_okta:planlayer_okta@db/planlayer_okta
+      # The address of the redirect URI registered in Okta.
+      PLANLAYER_PUBLIC_URL: http://localhost:8002
+    env_file:
+      - path: ./deploy/dev/okta.env
+        required: true
+    command: ["sh", "-c", "planlayer migrate && planlayer serve"]
+    ports:
+      - "127.0.0.1:8002:8000"
+    depends_on:
+      okta-db:
+        condition: service_completed_successfully
+
 volumes:
   pgdata:

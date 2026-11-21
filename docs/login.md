@@ -109,6 +109,13 @@ The app registration, roles by app role name or by group, and a local test insta
 (the tenant's own, never `common`), a *Web* redirect URI with a client secret in
 `PLANLAYER_OIDC_CLIENT_SECRET`, and *Claims › Groups* `roles` to match app roles by name.
 
+### Okta
+
+The app integration, roles by group name, and a local test installation: [okta.md](okta.md). In
+short: a *Web Application* integration with a client secret in `PLANLAYER_OIDC_CLIENT_SECRET`,
+issuer `https://<org>.okta.com` (without `-admin`), a groups claim filter on the app's *Sign On*
+tab, and scopes `openid profile email groups`.
+
 ### Keycloak
 
 A client with *Client authentication* off (public), *Standard flow* on, the redirect URI from the

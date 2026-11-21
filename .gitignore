@@ -12,6 +12,8 @@
 docker-compose.override.yml
 # Microsoft Entra ID test values (template: deploy/dev/entra.env.example)
 /deploy/dev/entra.env
+# Okta test values (template: deploy/dev/okta.env.example)
+/deploy/dev/okta.env
 compose.override.yml
 
 # --- Python ------------------------------------------------------------------
