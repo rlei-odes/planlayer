@@ -10,7 +10,7 @@ RUN npm run build
 
 FROM ghcr.io/astral-sh/uv:0.13.1 AS uv
 
-FROM python:3.13-slim
+FROM python:3.15-slim
 COPY --from=uv /uv /usr/local/bin/uv
 
 # The Postgres 18 client tools from the PostgreSQL project's repository (Debian's are older):
