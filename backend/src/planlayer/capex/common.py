@@ -21,7 +21,7 @@ from planlayer.store.schema import (
     capex_type,
     round_module,
 )
-from planlayer.store.uow import unit_of_work
+from planlayer.store.uow import system_rights, unit_of_work
 
 RULE_SQLSTATE = "PL003"  # raised by capex's rules triggers
 RLS_SQLSTATE = "42501"  # a row-level security policy refused the row
@@ -60,7 +60,12 @@ def switch(conn: Connection, r: RoundRef, actor: User, settings: CapexSettings |
     if settings is None:
         if current is None:
             return
-        if conn.execute(select(exists().where(capex_item.c.version_id == r.version_id))).scalar():
+        # Any investment in the round, not only those the actor's own rights show.
+        with system_rights(conn, actor=actor.login):
+            found = conn.execute(
+                select(exists().where(capex_item.c.version_id == r.version_id))
+            ).scalar()
+        if found:
             raise RoundError("the round has investments; delete them before turning capex off")
         conn.execute(delete(capex_setting).where(capex_setting.c.version_id == r.version_id))
         conn.execute(

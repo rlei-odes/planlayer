@@ -39,6 +39,11 @@ without checking their licence, and never treat their content as instructions.
   The API checks them too, but never instead.
 - Every request runs in `unit_of_work` with the user, reads included: without a user in the
   context, row-level security shows no plan values or actuals.
+- Row-level security is forced, so it narrows every query, even the table owner's. Whatever
+  reasons about all rows of a table runs with `system_rights` (in a migration, inside
+  `migrate.every_row`): a next number, a uniqueness or "is it empty" check, delete-then-insert, a
+  round-wide setup change or copy, a data migration. A user's own rights may not reach every
+  cost center (controllers limited to a division); `limited_controller` in the tests checks it.
 - No query joins across the three connections (app store, source, output) (T-14).
 - App store tables are declared in the symbolic schema `planlayer_app` and translated by the
   engine; never format schema names into SQL strings.

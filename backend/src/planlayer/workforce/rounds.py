@@ -31,6 +31,7 @@ from planlayer.store.schema import (
     workforce_line,
     workforce_position,
 )
+from planlayer.store.uow import system_rights
 from planlayer.workforce.common import MEASURE_ID, _plain_context, mode_of
 from planlayer.workforce.positions import write_rollup
 
@@ -59,18 +60,22 @@ def set_mode(conn: Connection, r: RoundRef, mode: Mode | None) -> None:
         return
     if mode != "positions" and module_on(conn, r.version_id):
         raise RoundError("personnel costs need positions: turn them off first")
-    if now is not None and has_workforce(conn, r.version_id):
-        if r.status != "setup":
-            raise RoundError(
-                "the round has workforce values or positions; its workforce mode can change "
-                "only in setup, where they are cleared"
-            )
-        for table, column in (
-            (fact_workforce, fact_workforce.c.version_id),
-            (workforce_line, workforce_line.c.version_id),
-            (workforce_position, workforce_position.c.version_id),
-        ):
-            conn.execute(delete(table).where(column == r.version_id))
+    # Every cost center's workforce is checked and cleared, not only what the actor's own rights
+    # reach; the audit keeps naming the actor.
+    actor = conn.execute(select(func.current_setting("app.actor", True))).scalar() or None
+    with system_rights(conn, actor=actor):
+        if now is not None and has_workforce(conn, r.version_id):
+            if r.status != "setup":
+                raise RoundError(
+                    "the round has workforce values or positions; its workforce mode can change "
+                    "only in setup, where they are cleared"
+                )
+            for table, column in (
+                (fact_workforce, fact_workforce.c.version_id),
+                (workforce_line, workforce_line.c.version_id),
+                (workforce_position, workforce_position.c.version_id),
+            ):
+                conn.execute(delete(table).where(column == r.version_id))
     if mode is None:
         conn.execute(
             delete(round_module).where(

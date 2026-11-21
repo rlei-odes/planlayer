@@ -52,7 +52,7 @@ from planlayer.store.schema import (
     sheet_account,
     version,
 )
-from planlayer.store.uow import unit_of_work
+from planlayer.store.uow import system_rights, unit_of_work
 
 
 @dataclass
@@ -117,7 +117,9 @@ def create_round(
     """
     actor.require_controller()
     carry = carry or CarryOver()
-    with unit_of_work(engine, actor) as conn:
+    # The whole round, whichever cost centers the controller's own rights reach: what is
+    # copied from the source round must be all of it. The audit names the controller.
+    with unit_of_work(engine, actor) as conn, system_rights(conn, actor=actor.login):
         if conn.execute(select(version.c.version_id).where(version.c.code == code)).first():
             raise RoundError(f"a round or version {code} exists")
         _check_periods(conn, kind, fiscal_year, grain, actuals_through)

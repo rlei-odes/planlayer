@@ -46,7 +46,7 @@ from planlayer.store.schema import (
     seasonality_profile,
     version,
 )
-from planlayer.store.uow import unit_of_work
+from planlayer.store.uow import system_rights, unit_of_work
 
 
 @dataclass
@@ -263,7 +263,9 @@ def set_account_planned(
     """Mark an account planned or not planned in a round (ADR 0014). Not planned is refused while
     any cost center has plan values on it."""
     actor.require_controller()
-    with unit_of_work(engine, actor) as conn:
+    # Every cost center's values are cleared and checked, not only those the controller's own
+    # rights reach.
+    with unit_of_work(engine, actor) as conn, system_rights(conn, actor=actor.login):
         r = get_round(conn, code)
         if planned:
             _include(conn, r, account_code)

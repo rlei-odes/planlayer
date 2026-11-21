@@ -184,7 +184,7 @@ REVOKE ALL ON SCHEMA planlayer_app FROM PUBLIC;
 Then, with `PLANLAYER_VERSION` set back to the previous version in `.env`:
 
 ```
-docker compose run --rm app planlayer restore /backups/planlayer-20261121T020000Z-0031.dump
+docker compose run --rm app planlayer restore /backups/planlayer-20261121T020000Z-0001.dump
 docker compose up -d
 ```
 

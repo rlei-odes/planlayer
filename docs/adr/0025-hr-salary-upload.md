@@ -56,7 +56,7 @@ HR's salaries reach Planlayer through the dataset `staff` and its optional field
 
 ## Consequences
 
-- `installation.pay_from_source` (migration 0024); `sync.PAY_FIELDS`, `pay_from_source`, `staff_mapping`.
+- `installation.pay_from_source`; `sync.PAY_FIELDS`, `pay_from_source`, `staff_mapping`.
 - Endpoints `PUT /api/datasets/staff/pay-from-source` (admin) and, under `/api/versions/{code}/personnel/salaries`, the summary, `template.{csv,xlsx,parquet}`, `check` and `apply` (HR). The uploaded file is the request body.
 - `openpyxl` for Excel files.
 - `planlayer seed-dev-mappings` switches the setting on, because the test warehouse delivers salaries.

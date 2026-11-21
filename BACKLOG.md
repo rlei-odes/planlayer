@@ -293,6 +293,7 @@ Mid-size manufacturer of industrial pumps and valves, ~400 employees.
     - [x] Release workflow (`.github/workflows/release.yml`): on a `v*` tag matching `backend/pyproject.toml`, the image for amd64 and arm64 on GHCR as `X.Y.Z`, `X.Y`, `latest`, with SBOM, provenance and a keyless cosign signature; Docker Hub mirror behind the variable `DOCKERHUB_IMAGE`.
     - [x] `deploy/compose.yaml` (own Postgres, or bundled with the profile `postgres`), `planlayer.env.example`, log rotation; [docs/install.md](docs/install.md): install, HTTPS, backups, upgrades, rollback, moving.
     - [x] A notice for admins when a newer release is out (bottom right, 20 seconds, once per browser session), linking to the upgrade steps in [docs/install.md](docs/install.md); the latest release read from GitHub at most every 12 hours, off with `PLANLAYER_UPDATE_CHECK=false`.
+    - [x] The migrations squashed into a baseline `0001` (the 0.5.0 schema as SQL, checked identical to the 33 migrations it replaces, owners and privileges included); later changes are migrations from `0002` ([docs/releasing.md](docs/releasing.md)).
     - [ ] First release: make the GHCR package public after the first push, and check `cosign verify` and the SBOM on the published image.
     - [ ] Docker Hub: apply for the Sponsored Open Source programme, then set `DOCKERHUB_IMAGE` and the two secrets.
     - [ ] Managed Postgres (Azure Database for PostgreSQL, RDS, Cloud SQL): whether their admin can grant `BYPASSRLS` to the backup role, and what else `install.sql` needs there (C-2).

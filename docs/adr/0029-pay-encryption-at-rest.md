@@ -80,11 +80,8 @@ when set, is used instead.
 
 ### Migration
 
-One migration seals the existing pay in place, the pay log's salaries included, and needs the
-key when there is any pay; without it, the upgrade refuses and says how to make one. It reads
-the pay tables past their forced row-level security (as their owner, for the migration's
-transaction) and with their triggers off, so every row is sealed and no lock or audit entry
-fires.
+The app store's baseline (migration 0001, Planlayer 0.5.0) creates the pay columns sealed: no
+installation ever held pay in plain numbers.
 
 ## Reasons
 

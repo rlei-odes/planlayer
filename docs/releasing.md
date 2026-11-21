@@ -25,6 +25,18 @@ Before 1.0.0 a breaking change goes into a minor release, marked *Action require
 - **The install script stays runnable on a new installation**, and a change existing
   installations need is shipped as its own script the DBA runs, named in the release notes.
 
+## Migrations
+
+Migration `0001` is the baseline: the app store of 0.5.0 in one step, as SQL
+(`0001_baseline.sql`, the schema as `__SCHEMA__`) with its seed rows. Every change after it is a
+migration of its own, numbered on from `0002`, with an `upgrade` and a `downgrade`; the baseline's
+downgrade empties the schema. A released migration, the baseline included, is never edited.
+
+A migration that reads or rewrites rows of a table under row-level security does it inside
+`migrate.every_row(conn, schema, tables)`: forced row-level security lifted and the tables'
+triggers off for that block, both restored after it. The app role owns the tables, but forced
+row-level security would show it no rows, and a rewrite must not trip a lock or the audit log.
+
 ## Release notes
 
 Each GitHub release says:

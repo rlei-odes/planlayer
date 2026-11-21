@@ -189,5 +189,10 @@ def test_backup_needs_its_settings(migrated: Settings) -> None:
 
 def test_behind_names_the_revision_an_upgrade_starts_from(migrated: Settings) -> None:
     assert migrate.behind(migrated) is None
-    migrate.downgrade(migrated, "0031")
-    assert migrate.behind(migrated) == "0031"
+    # An app store at an older revision, as a later release's migrations would find it.
+    assert TEST_DATABASE_URL
+    admin = create_engine(TEST_DATABASE_URL)
+    with admin.begin() as conn:
+        conn.execute(text(f"UPDATE {migrated.app_schema}.alembic_version SET version_num = '0000'"))
+    admin.dispose()
+    assert migrate.behind(migrated) == "0000"

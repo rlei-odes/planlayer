@@ -15,7 +15,7 @@ from dataclasses import replace
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, make_url, text
+from sqlalchemy import Engine, create_engine, make_url, text
 
 from planlayer import access, rounds, sync
 from planlayer.adapters.source import PostgresSource
@@ -244,3 +244,12 @@ def plan(grid: dict, code: str) -> list[str | None]:  # type: ignore[type-arg]
 
 def versions_of(grid: dict, code: str) -> list[int | None]:  # type: ignore[type-arg]
     return [c["row_version"] for c in rows(grid)[code]["plan"]]
+
+
+def limited_controller(engine: Engine) -> access.User:
+    """A controller whose own rights reach no cost center, as one limited to another division
+    would be: Bob with the controller flag in Python only. Round-wide work must still see every
+    cost center when such a user runs it."""
+    with engine.connect() as conn:
+        bob = access.user_by_login(conn, NOBODY)
+    return replace(bob, is_controller=True)

@@ -16,7 +16,7 @@ from sqlalchemy.exc import DBAPIError
 from planlayer import access, capex
 from planlayer.config import Settings
 from planlayer.domain import capex as rules
-from planlayer.store import migrate
+from planlayer.rounds import RoundError, get_round
 from planlayer.store.db import create_app_engine
 from planlayer.store.output import (
     create_output_engine,
@@ -24,10 +24,10 @@ from planlayer.store.output import (
     fact_plan_capex,
     fact_plan_cash_out,
 )
-from planlayer.store.schema import capex_item, capex_log, note, note_thread
+from planlayer.store.schema import capex_item, capex_log
 from planlayer.store.uow import unit_of_work
 
-from .conftest import APPROVER, CONTROLLER, NOBODY, OWNER, VIEWER, login
+from .conftest import APPROVER, CONTROLLER, NOBODY, OWNER, VIEWER, limited_controller, login
 
 R = "B2026"
 BASE = f"/api/rounds/{R}/capex"
@@ -399,28 +399,6 @@ def test_notes_on_an_investment(on: TestClient) -> None:
     assert response.status_code == 404
 
 
-def test_notes_survive_a_downgrade_and_upgrade(migrated: Settings, on: TestClient) -> None:
-    """Migration 0028 turns comments into notes and back."""
-    login(on, OWNER)
-    item = _add(on, name="Lathe", cost_center="CC1", amount="1000")
-    _note(on, item["item_id"], "Quote from A")
-    migrate.downgrade(migrated, "0027")
-    migrate.upgrade(migrated)
-    engine = create_app_engine(migrated)
-    try:
-        with engine.connect() as conn:
-            owner = access.user_by_login(conn, OWNER)
-        with unit_of_work(engine, owner) as conn:
-            bodies = conn.execute(
-                select(note.c.body)
-                .join(note_thread, note_thread.c.thread_id == note.c.thread_id)
-                .where(note_thread.c.capex_item_id == item["item_id"])
-            ).scalars()
-            assert list(bodies) == ["Quote from A"]
-    finally:
-        engine.dispose()
-
-
 def test_a_decision_with_a_reason_starts_a_note(on: TestClient) -> None:
     login(on, OWNER)
     item = _add(on, name="Lathe", cost_center="CC1", amount="1000")
@@ -519,3 +497,18 @@ def test_publishing_writes_investments_and_cash_out(migrated: Settings, on: Test
             assert (p["capex_changed"], p["added"] + p["changed"] + p["removed"]) == (True, 0)
     finally:
         output.dispose()
+
+
+def test_capex_stays_on_while_any_cost_center_has_investments(
+    migrated: Settings, on: TestClient
+) -> None:
+    _add(on, name="Lathe", cost_center="CC1", amount="50000")
+    engine = create_app_engine(migrated)
+    limited = limited_controller(engine)
+    try:
+        with unit_of_work(engine, limited) as conn:
+            r = get_round(conn, R)
+            with pytest.raises(RoundError, match="has investments"):
+                capex.switch(conn, r, limited, None)
+    finally:
+        engine.dispose()

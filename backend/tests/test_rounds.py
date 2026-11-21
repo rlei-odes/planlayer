@@ -10,13 +10,12 @@ from decimal import Decimal
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine, create_engine, insert, select, text
+from sqlalchemy import Engine, create_engine, func, insert, select
 from sqlalchemy.exc import DBAPIError
 
 from planlayer import access, rounds, workflow
 from planlayer.config import Settings
 from planlayer.domain.spreading import Profile
-from planlayer.store import migrate
 from planlayer.store.db import create_app_engine
 from planlayer.store.schema import (
     fact_cost_center,
@@ -36,6 +35,7 @@ from .conftest import (
     OWNER,
     TEST_DATABASE_URL,
     URL,
+    limited_controller,
     plan,
     rows,
     run_sync,
@@ -372,37 +372,6 @@ def test_copy_setup_from_round(engine: Engine, client: TestClient) -> None:
     assert sorted(c for c in copied if c is not None) == [2]
 
 
-# --- Migration of existing versions ---------------------------------------------------------------
-
-
-def test_existing_plan_versions_become_open_rounds(db_settings: Settings) -> None:
-    migrate.upgrade(db_settings, "0002")
-    admin = create_engine(TEST_DATABASE_URL or "")
-    s = db_settings.app_schema
-    with admin.begin() as conn:
-        conn.execute(
-            text(f"""
-            INSERT INTO {s}.member (dim_id, code, name, is_group, valid_from, valid_to) VALUES
-                (2, 'CC1', 'Machining', false, '2010-01-01', '9999-12-31'),
-                (2, 'OLD', 'Closed', false, '2010-01-01', '2024-12-31'),
-                (2, 'NW', 'Group', true, NULL, NULL);
-            INSERT INTO {s}.version (code, name, kind, fiscal_year)
-                VALUES ('ACT', 'Actuals', 'actuals', NULL), ('B2026', 'Budget', 'budget', 2026);
-        """)
-        )
-    migrate.upgrade(db_settings)
-    with admin.connect() as conn:
-        found = conn.execute(
-            text(f"""
-            SELECT v.code, r.fiscal_year, r.status, m.code
-            FROM {s}.planning_round r JOIN {s}.version v USING (version_id)
-            JOIN {s}.round_member rm USING (version_id) JOIN {s}.member m USING (member_id)
-        """)
-        ).all()
-    admin.dispose()
-    assert [tuple(f) for f in found] == [("B2026", 2026, "open", "CC1")]
-
-
 # --- A line's own spread ------------------------------------------------------------------------
 
 
@@ -470,3 +439,31 @@ def test_line_spread_is_enforced_in_the_database(engine: Engine, client: TestCli
     with pytest.raises(DBAPIError, match="the cost center is submitted"):
         write(system(engine), "CC1")
     write(system(engine), "CC2")
+
+
+# --- Round-wide work sees every cost center -------------------------------------------------------
+
+
+def test_round_wide_work_sees_every_cost_center(engine: Engine, client: TestClient) -> None:
+    post(client, month("6010", 0, "5"))
+    limited = limited_controller(engine)
+    # Values on CC1, which the limited controller's own rights don't show, still count.
+    with pytest.raises(rounds.RoundError, match="still has plan values on CC1"):
+        rounds.set_account_planned(engine, limited, R, "6010", False)
+    # A new round takes every cost center's values from the one it is set up like.
+    rounds.create_round(
+        engine, limited, "B2027", "Budget 2027", "budget", 2027, copy_from=R,
+        carry=rounds.CarryOver(values=True),
+    )  # fmt: skip
+    assert TEST_DATABASE_URL
+    schemas = engine.get_execution_options()["schema_translate_map"]
+    admin = create_engine(TEST_DATABASE_URL).execution_options(schema_translate_map=schemas)
+    with admin.connect() as conn:  # the superuser, past row-level security
+        copied = conn.execute(
+            select(func.count())
+            .select_from(fact_cost_center)
+            .join(version, version.c.version_id == fact_cost_center.c.version_id)
+            .where(version.c.code == "B2027")
+        ).scalar_one()
+    admin.dispose()
+    assert copied > 0

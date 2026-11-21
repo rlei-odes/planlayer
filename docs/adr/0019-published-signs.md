@@ -38,5 +38,5 @@ The role is published on leaf accounts in `dim_account.role` and in `v_plan_cost
 
 ## Consequences
 
-- `installation.published_signs` (migration 0015); `amount_signed` and `dim_account.role` in the output, added to existing output tables when a run finds them missing.
+- `installation.published_signs`; `amount_signed` and `dim_account.role` in the output, added to existing output tables when a run finds them missing.
 - Not in this decision: converting signs of the source at sync (actuals are read natural); per-group or per-account overrides; signing hours. They stay under E-12.

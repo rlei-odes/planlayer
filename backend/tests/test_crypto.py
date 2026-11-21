@@ -1,6 +1,5 @@
 """Pay and the client secret encrypted at rest (ADR 0029)."""
 
-import json
 from collections.abc import Iterator
 from dataclasses import replace
 from decimal import Decimal
@@ -15,7 +14,6 @@ from planlayer.api.app import create_app
 from planlayer.config import Settings
 from planlayer.login import local
 from planlayer.login import settings as login_settings
-from planlayer.store import migrate
 from planlayer.store.db import create_app_engine
 from planlayer.store.schema import APP_SCHEMA, hr_pay
 
@@ -106,39 +104,6 @@ def test_pay_is_sealed_in_the_database(migrated: Settings, source_schema: str) -
     admin.dispose()
     assert stored and all(v[0] == crypto.VERSION for v in stored)
     assert not any(str(s).encode() in v for s, v in zip(salaries.values(), stored, strict=False))
-
-
-def test_the_migration_seals_existing_pay_and_its_log(
-    migrated: Settings, source_schema: str
-) -> None:
-    run_sync(migrated, source_schema)
-    before = _salaries(migrated.app_schema)
-    s = migrated.app_schema
-    migrate.downgrade(migrated, "0032")
-    admin = _admin_engine(s)
-    with admin.begin() as conn:
-        plain = dict(conn.execute(text(f"SELECT code, monthly_salary FROM {s}.hr_pay")).all())
-        assert plain == before  # numbers again, as before the encryption
-        conn.execute(
-            text(
-                f"INSERT INTO {s}.position_pay_log (id, op, version_id, cost_center_id, "
-                "position_id, old, new) VALUES (1, 'UPDATE', 1, 1, 1, CAST(:old AS jsonb), "
-                "CAST(:new AS jsonb))"
-            ),
-            {"old": json.dumps({"salary": 4100.5, "bonus": None}), "new": '{"salary": 4200.25}'},
-        )
-    # Without the key, an app store with pay isn't upgraded.
-    crypto.configure(None)
-    with pytest.raises(RuntimeError, match="PLANLAYER_PAY_KEY"):
-        migrate.upgrade(migrated.model_copy(update={"pay_key": None}))
-    migrate.upgrade(migrated)
-    assert _salaries(s) == before
-    with admin.connect() as conn:
-        old, new = conn.execute(text(f"SELECT old, new FROM {s}.position_pay_log")).one()
-    admin.dispose()
-    assert old["bonus"] is None
-    assert crypto.unseal(bytes.fromhex(old["salary"][2:]), "position_pay.salary") == "4100.5"
-    assert crypto.unseal(bytes.fromhex(new["salary"][2:]), "position_pay.salary") == "4200.25"
 
 
 # --- The client secret ----------------------------------------------------------------------------

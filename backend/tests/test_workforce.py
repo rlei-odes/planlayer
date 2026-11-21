@@ -17,6 +17,7 @@ from sqlalchemy.exc import DBAPIError
 
 from planlayer import access
 from planlayer.config import Settings
+from planlayer.rounds import RoundError, get_round
 from planlayer.store.db import create_app_engine
 from planlayer.store.output import create_output_engine, fact_plan_workforce
 from planlayer.store.schema import (
@@ -28,8 +29,9 @@ from planlayer.store.schema import (
     workforce_position_log,
 )
 from planlayer.store.uow import unit_of_work
+from planlayer.workforce.rounds import set_mode
 
-from .conftest import BLANK, CONTROLLER, OWNER, VIEWER, login
+from .conftest import BLANK, CONTROLLER, OWNER, VIEWER, limited_controller, login
 
 R = "B2026"
 SHEET = f"/api/versions/{R}/workforce/CC1"
@@ -401,3 +403,15 @@ def test_publish_aggregates_without_names(client: TestClient, migrated: Settings
     # December: two machinists and the freelancer; the planner has left.
     assert december == {"headcount": Decimal("3.00"), "fte": Decimal("1.50")}
     assert not {"person_name", "title"} & columns
+
+
+def test_a_mode_change_sees_every_cost_centers_positions(
+    engine: Engine, client: TestClient
+) -> None:
+    mode(client, "positions")
+    client.post(f"{SHEET}/hr")  # positions on CC1
+    limited = limited_controller(engine)
+    with unit_of_work(engine, limited) as conn:
+        r = get_round(conn, R)
+        with pytest.raises(RoundError, match="only in setup"):
+            set_mode(conn, r, "fte")
