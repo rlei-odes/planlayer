@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.5.2](https://github.com/rlei-odes/planlayer/compare/v0.5.1...v0.5.2) (2026-11-22)
+
+
+### Bug Fixes
+
+* **backend:** HR saves personnel rules in a round carrying values on cost centers it doesn't plan ([b9f2f13](https://github.com/rlei-odes/planlayer/commit/b9f2f132e1adb29396124ac3babc31a9b8f414bb))
+* **frontend:** a new budget round's code and name follow its fiscal year until edited ([215df02](https://github.com/rlei-odes/planlayer/commit/215df02ed52615748d19a80b56f07bcb46471e3d))
+* **frontend:** a planned switch on each cost center level in round setup turns all cost centers below it on or off ([4ead311](https://github.com/rlei-odes/planlayer/commit/4ead31114588a742cfb64f8bbbe2b572cfd3c29f))
+* **frontend:** a refused round setup save shows its reason in the save bar, where it is on screen ([c3ed35d](https://github.com/rlei-odes/planlayer/commit/c3ed35d35bc072f5729693d17604f79699201e9f))
+* **frontend:** capacity switches in round setup work per cost center level and only for planned cost centers ([eeca8e9](https://github.com/rlei-odes/planlayer/commit/eeca8e9a6df751b05a5a78318afad59b2af71932))
+* **frontend:** capacity's "Add work center" offers a work center not on the sheet yet, else a new one ([f46f45c](https://github.com/rlei-odes/planlayer/commit/f46f45c5532945f50f46af4eae89aa1c39dcf566))
+* **frontend:** new positions and workforce lines start with the cost center's usual staff type, else Employee ([7e3fccd](https://github.com/rlei-odes/planlayer/commit/7e3fccdaf1208fa67e4c327d0a026ddfceb03254))
+* **frontend:** workforce capacity in round setup needs the round's hours per FTE, and the error says where to set them ([5818be3](https://github.com/rlei-odes/planlayer/commit/5818be324f0eabe9cb899e3600b4c93185273ede))
+* workforce hours no longer replace a line's work center hours, and positions whose hours have no line are marked ([0f979ee](https://github.com/rlei-odes/planlayer/commit/0f979ee7e44e456869d44f5bc76535b0a3db1fae))
+
 ## [0.5.1](https://github.com/rlei-odes/planlayer/compare/v0.5.0...v0.5.1) (2026-11-22)
 
 
