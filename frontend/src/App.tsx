@@ -263,6 +263,13 @@ export default function App() {
     })
   }
 
+  /** Every login starts on Home, whatever page the address still names (an OpenID Connect login
+   * comes back to / and lands there anyway). */
+  function login(user: Me) {
+    go('home')
+    setMe(user)
+  }
+
   async function logout() {
     await api.logout().catch(() => undefined)
     setMe(null)
@@ -285,7 +292,7 @@ export default function App() {
       </div>
     )
   }
-  if (me === null) return <LoginPage onLogin={setMe} />
+  if (me === null) return <LoginPage onLogin={login} />
   if (!me || !health) return null
   // Before the pages render: every amount follows the user's number format (amounts.ts).
   setNumberFormat(me.number_format)
