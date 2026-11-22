@@ -289,7 +289,7 @@ export default function HomePage({
         (
           [
             ['mentioned', 'Notes mentioning me'],
-            ['started', 'Notes I started'],
+            ['started', 'My notes'],
           ] as const
         ).map(([reasonKey, title]) => {
           const list = threads.filter((t) => t.reason === reasonKey)

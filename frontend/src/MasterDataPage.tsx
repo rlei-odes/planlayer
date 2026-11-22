@@ -20,14 +20,14 @@ import Tile from './Tile'
 import { LIMIT } from './limits'
 import type * as S from './schema'
 
-// Master data (ADR 0012): the admin's query per dataset with named columns (Sources), the sync
-// preview with confirmation of matches (Sync), and the member tree with manual members and
-// local overrides (Members), which also builds master data from scratch.
+// Master data (ADR 0012): the member tree with manual members and local overrides (Records),
+// which also builds master data from scratch, the sync preview with confirmation of matches
+// (Sync), and the admin's query per dataset with named columns (Sources).
 
-type Section = 'sources' | 'sync' | 'members'
+type Section = 'records' | 'sync' | 'sources'
 type Note = { kind: 'ok' | 'error' | 'warn'; text: string }
 
-const SECTION_LABEL: Record<Section, string> = { sources: 'Sources', sync: 'Sync', members: 'Members' }
+const SECTION_LABEL: Record<Section, string> = { records: 'Records', sync: 'Sync', sources: 'Sources' }
 const DATASET_LABEL: Record<Dataset, string> = {
   entities: 'Entities',
   cost_centers: 'Cost centers',
@@ -107,7 +107,7 @@ function errorText(e: unknown) {
 }
 
 export default function MasterDataPage({ me }: { me: Me }) {
-  const sections: Section[] = [...(me.is_admin ? (['sources'] as const) : []), 'sync', 'members']
+  const sections: Section[] = ['records', 'sync', ...(me.is_admin ? (['sources'] as const) : [])]
   const [section, setSection] = useState<Section>(sections[0])
   return (
     <div className="su md">
@@ -119,7 +119,7 @@ export default function MasterDataPage({ me }: { me: Me }) {
             ? 'Where each dataset comes from: one query per dataset, run read-only on the source.'
             : section === 'sync'
               ? 'Bring members and actuals in from the source, after a preview of what changes.'
-              : 'The members planners see, synced or entered here, and their hierarchy.'
+              : 'The master data objects available to planners. Sync from source and edit as needed.'
         }
         tabs={
           <div className="seg" role="group" aria-label="Section">
@@ -131,9 +131,9 @@ export default function MasterDataPage({ me }: { me: Me }) {
           </div>
         }
       />
-      {section === 'sources' && <Sources />}
+      {section === 'records' && <Records />}
       {section === 'sync' && <Sync />}
-      {section === 'members' && <Members />}
+      {section === 'sources' && <Sources />}
     </div>
   )
 }
@@ -153,7 +153,7 @@ function Sources() {
       <SourceStatus />
       <div className="su-note">
         Name which result column is which field. Every dataset is optional: without a source, enter members by hand
-        under Members.
+        under Records.
       </div>
       {DATASET_GROUPS.map((g) => (
         <div className="md-group" key={g.title}>
@@ -809,7 +809,7 @@ function Changes({ label, items, open = false }: { label: string; items: string[
   )
 }
 
-// --- Members ------------------------------------------------------------------------------------
+// --- Records ------------------------------------------------------------------------------------
 
 const BLANK = {
   code: '',
@@ -824,7 +824,7 @@ const BLANK = {
   external: false,
 }
 
-function Members() {
+function Records() {
   const [dataset, setDataset] = useState<MemberDataset>('cost_centers')
   const [rows, setRows] = useState<MemberRow[]>([])
   const [note, setNote] = useState<Note | null>(null)

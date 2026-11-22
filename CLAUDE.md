@@ -100,6 +100,9 @@ security applies.
 - Code, comments, commit messages and docs in English.
 - Docs describe what is built and why, not how it came about.
 - No AI or tool branding in commits, PRs, docs or code.
+- UI hint text is short and to the point. Plain sentences: what the thing is, then what one does with it. Bad example: "The members planners see, synced or entered
+  here, and their hierarchy." Good example: "The master data objects available to planners. Sync from
+  source and edit as needed."
 
 ## Git
 
