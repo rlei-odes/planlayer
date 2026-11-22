@@ -346,3 +346,12 @@
 .md-source code {
   margin-right: 4px;
 }
+
+/* The Check button, and when the last check ran. */
+.md-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+  white-space: nowrap;
+}

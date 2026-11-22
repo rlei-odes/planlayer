@@ -152,7 +152,7 @@ function Sources() {
       {error && <div className="su-note error">{error}</div>}
       <SourceStatus />
       <div className="su-note">
-        Name which result column is which field. Every dataset is optional: without a source, enter members by hand
+        Map each query's result columns to their fields. Every dataset is optional: without a source, add records by hand
         under Records.
       </div>
       {DATASET_GROUPS.map((g) => (
@@ -173,16 +173,22 @@ function Sources() {
 }
 
 /** Whether the source connection works, and where it lands. */
+const CHECKED_AT = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit' })
+
 function SourceStatus() {
   const [status, setStatus] = useState<S.SourceStatusOut | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const fetchStatus = useCallback(() => {
-    api.sourceStatus().then(setStatus, (e: unknown) => setError(errorText(e)))
-  }, [])
-  useEffect(fetchStatus, [fetchStatus])
+  // A check asked for by the button keeps the last result shown and says when it ran.
+  const [checking, setChecking] = useState(false)
+  const [checkedAt, setCheckedAt] = useState<Date | null>(null)
+  const fetchStatus = useCallback(() => api.sourceStatus().then(setStatus, (e: unknown) => setError(errorText(e))), [])
+  useEffect(() => void fetchStatus(), [fetchStatus])
   const check = () => {
-    setStatus(null)
-    fetchStatus()
+    setChecking(true)
+    void fetchStatus().finally(() => {
+      setChecking(false)
+      setCheckedAt(new Date())
+    })
   }
   if (error) return <div className="su-note error">{error}</div>
   return (
@@ -202,9 +208,16 @@ function SourceStatus() {
           </>
         )}
       </span>
-      <button type="button" className="su-btn" disabled={status === null} onClick={check}>
-        Check
-      </button>
+      <span className="md-check">
+        {checkedAt && !checking && (
+          <span>
+            {status?.ok ? '✓ ' : ''}Checked {CHECKED_AT.format(checkedAt)}
+          </span>
+        )}
+        <button type="button" className="su-btn" disabled={status === null || checking} onClick={check}>
+          {checking ? 'Checking…' : 'Check'}
+        </button>
+      </span>
     </div>
   )
 }
