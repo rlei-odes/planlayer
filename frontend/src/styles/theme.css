@@ -54,6 +54,7 @@
   --bar-link: #c9d7ff;
   --bar-hover: rgb(255 255 255 / 8%);
   --bar-line: transparent;
+  --bar-danger: #ff9e9e;
   --radius: 10px;
   --radius-s: 6px;
   --shadow: 0 1px 2px rgb(16 24 40 / 5%), 0 1px 3px rgb(16 24 40 / 6%);
@@ -124,6 +125,7 @@
   --bar-link: #aac0ff;
   --bar-hover: rgb(255 255 255 / 8%);
   --bar-line: #3a4353;
+  --bar-danger: #f59a9a;
   --shadow: 0 1px 2px rgb(0 0 0 / 35%), 0 1px 3px rgb(0 0 0 / 30%);
   --shadow-lift: 0 4px 16px rgb(0 0 0 / 45%), 0 1px 3px rgb(0 0 0 / 35%);
 }

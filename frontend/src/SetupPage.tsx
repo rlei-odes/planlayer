@@ -51,6 +51,10 @@ export default function SetupPage({
   const [creating, setCreating] = useState(false)
   const [justCreated, setJustCreated] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  // A refused save shows in the save bar, which is on screen wherever the page is scrolled, for
+  // as long as the draft it refused is unchanged.
+  const [refused, setRefused] = useState<{ draft: SetupDraft; text: string } | null>(null)
+  const saveError = refused && refused.draft === draft ? refused.text : null
   const [tab, setTab] = useState<Tab>('forms')
   const [scope, setScope] = useState<Scope | null>(null)
 
@@ -89,7 +93,7 @@ export default function SetupPage({
       setNote({ kind: 'ok', text: 'Setup saved. Planners see it on their next load.' })
       onRoundsChanged()
     } catch (e) {
-      setNote({ kind: 'error', text: e instanceof Error ? e.message : String(e) })
+      setRefused({ draft, text: e instanceof Error ? e.message : String(e) })
     } finally {
       setSaving(false)
     }
@@ -310,6 +314,11 @@ export default function SetupPage({
       )}
 
       <div className={`su-savebar${dirty && !creating ? ' show' : ''}`} role="status">
+        {saveError && (
+          <span className="su-savebar-error" role="alert">
+            {saveError}
+          </span>
+        )}
         <span>Unsaved changes to {round?.name}</span>
         <button type="button" className="su-btn ghost" onClick={() => view && setDraft(view.setup)}>
           Discard

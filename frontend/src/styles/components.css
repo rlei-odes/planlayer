@@ -330,8 +330,9 @@
   bottom: 18px;
   transform: translateX(-50%) translateY(140%);
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 14px;
+  gap: 8px 14px;
   padding: 10px 12px 10px 18px;
   background: var(--bar-bg);
   color: var(--bar-ink);
@@ -344,6 +345,15 @@
 
 .su-savebar.show {
   transform: translateX(-50%) translateY(0);
+}
+
+/* A refused save: a line of its own above the buttons, so the bar grows upward and the buttons
+   stay put. It takes the bar's width without widening it. */
+.su-savebar-error {
+  flex-basis: 100%;
+  contain: inline-size;
+  color: var(--bar-danger);
+  font-weight: 600;
 }
 
 .su-savebar .su-btn.ghost {
