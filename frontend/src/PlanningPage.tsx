@@ -752,7 +752,8 @@ function listDiffers(row: Row): boolean {
  * their name only. */
 function accountCell(h: H, row: Row | undefined, profiles: ProfileRef[], quarters: boolean) {
   if (!row) return ''
-  if (row.kind === 'group') return h('span', { class: 'pl-acc-name' }, row.name)
+  // The name's tooltip shows it whole where the column cuts it off.
+  if (row.kind === 'group') return h('span', { class: 'pl-acc-name', title: row.name }, row.name)
   const form = row.entry_form
   // A line meant to follow a reference that has none spreads evenly and says so: "even". Its
   // tooltip tells why; a warning would contradict the badge.
@@ -765,17 +766,24 @@ function accountCell(h: H, row: Row | undefined, profiles: ProfileRef[], quarter
     ? 'pv-form charged'
     : `pv-form${form === 'monthly' ? ' monthly' : ''}${row.chosen_spread ? ' chosen' : ''}`
   const profile = row.spread === 'profile' ? profiles.find((p) => p.code === row.profile) : undefined
+  const basis = `${label}: ${basisText(row)}`
   const badge = !form
     ? ''
     : spreadChoosable(row)
       ? h(
           'button',
-          { type: 'button', class: `${classes} pl-spread`, 'data-spread': row.code, 'aria-label': `How ${row.code} spreads: ${label}` },
+          {
+            type: 'button',
+            class: `${classes} pl-spread`,
+            'data-spread': row.code,
+            'aria-label': `How ${row.code} spreads: ${label}`,
+            title: basis,
+          },
           label,
         )
-      : h('span', { class: classes }, label)
-  return h('span', { class: 'pl-acc-in', title: form ? `${label}: ${basisText(row)}` : undefined }, [
-    h('span', { class: 'pl-acc-name' }, [h('span', { class: 'pl-code' }, row.code), row.name]),
+      : h('span', { class: classes, title: basis }, label)
+  return h('span', { class: 'pl-acc-in' }, [
+    h('span', { class: 'pl-acc-name', title: `${row.code} ${row.name}` }, [h('span', { class: 'pl-code' }, row.code), row.name]),
     // By quarter, a profile shows as its four quarters; it is still entered by month.
     h('span', { class: 'pl-acc-tags' }, [
       profile ? profileBars(h, quarters ? quarterly(profile.values.map(Number)) : profile.values.map(Number)) : '',
