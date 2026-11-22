@@ -4,6 +4,7 @@ import { span } from './periods'
 import Select from './Select'
 import Tile from './Tile'
 import { LIMIT } from './limits'
+import { defaultStaffType } from './staffTypes'
 
 // The positions of a cost center in a positions round (ADR 0020): the build-up of heads over the
 // year, and the list of positions with their editor, transfers (ADR 0021) and removal.
@@ -30,10 +31,11 @@ type Draft = {
 const startingPercent = (external: boolean) => (external ? '' : '100')
 
 function draftOf(p: Position | null, sheet: WorkforceSheet): Draft {
+  const type = p?.staff_type_code ?? defaultStaffType(sheet)
   return {
     title: p?.title ?? '',
     person_name: p?.person_name ?? '',
-    staff_type_code: p?.staff_type_code ?? sheet.staff_types[0]?.code ?? '',
+    staff_type_code: type,
     staff_category_code: p?.staff_category_code ?? sheet.staff_categories[0]?.code ?? '',
     entry_date: p?.entry_date ?? '',
     leave_date: p?.leave_date ?? '',
@@ -41,7 +43,7 @@ function draftOf(p: Position | null, sheet: WorkforceSheet): Draft {
       ? String(Number(p.contract_percent))
       : p
         ? ''
-        : startingPercent(sheet.staff_types[0]?.external ?? false),
+        : startingPercent(sheet.staff_types.find((t) => t.code === type)?.external ?? false),
     is_plan: p?.is_plan ?? true,
     is_replacement: p?.is_replacement ?? false,
     description: p?.description ?? '',

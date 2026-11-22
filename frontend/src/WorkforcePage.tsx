@@ -20,6 +20,7 @@ import { byColumn, isClosed, monthsOf, periodColumns, type Layout } from './peri
 import Select from './Select'
 import TransferDialog from './TransferDialog'
 import Positions from './Positions'
+import { defaultStaffType } from './staffTypes'
 import { IncomingTransfers } from './Transfers'
 import { pickUnit } from './units'
 
@@ -598,7 +599,7 @@ function AddLine({
   onCancel: () => void
   onAdd: (staffType: string, category: string) => Promise<void>
 }) {
-  const [staffType, setStaffType] = useState(sheet.staff_types[0]?.code ?? '')
+  const [staffType, setStaffType] = useState(() => defaultStaffType(sheet))
   const [category, setCategory] = useState(sheet.staff_categories[0]?.code ?? '')
   return (
     <form
