@@ -421,18 +421,23 @@ button.cx-cash:hover,
   border-color: var(--accent-2);
 }
 
+/* The cash-out pill is an outline in neutral ink, so the filled status pill next to it stands out.
+   Only a rest still to schedule keeps a colour, in its text. */
+.cx-cash {
+  border-color: var(--line);
+  background: transparent;
+  font-weight: 500;
+}
+
 .cx-cash.full {
-  background: var(--ok-tint);
-  color: var(--ok);
+  color: var(--ink-2);
 }
 
 .cx-cash.part {
-  background: var(--warn-tint);
   color: var(--warn);
 }
 
 .cx-cash.none {
-  background: var(--line-2);
   color: var(--ink-3);
 }
 
