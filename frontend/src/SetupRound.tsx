@@ -267,18 +267,28 @@ export function NewRoundCard({
   const periods = fiscalPeriods(r.fiscal_year, startMonth)
   const grain = r.grain ?? 'month'
 
-  /** A forecast is named by its closed months, e.g. "Forecast 6+6 2026" (FC2026-6). */
+  // Code and name follow the type, year and closed months until the controller types their own;
+  // emptying a field makes it follow again.
+  const [typed, setTyped] = useState({ code: false, name: false })
+
+  /** A budget is named by its year (B2027, "Budget 2027"), a forecast also by its closed months
+   * (FC2026-6, "Forecast 6+6 2026"). */
   function named(next: NewRound): NewRound {
-    if (next.kind !== 'forecast') return next
-    const n = closedCount(fiscalPeriods(next.fiscal_year, startMonth), next.actuals_through)
     const year = next.fiscal_year
-    return { ...next, code: n ? `FC${year}-${n}` : `FC${year}`, name: n ? `Forecast ${n}+${12 - n} ${year}` : `Forecast ${year}` }
+    const n = next.kind === 'forecast' ? closedCount(fiscalPeriods(year, startMonth), next.actuals_through) : 0
+    const [code, name] =
+      next.kind === 'budget'
+        ? [`B${year}`, `Budget ${year}`]
+        : n
+          ? [`FC${year}-${n}`, `Forecast ${n}+${12 - n} ${year}`]
+          : [`FC${year}`, `Forecast ${year}`]
+    return { ...next, code: typed.code ? next.code : code, name: typed.name ? next.name : name }
   }
 
   function chooseKind(kind: NewRound['kind']) {
     if (kind === 'budget') {
       const year = (rounds[0]?.fiscal_year ?? new Date().getFullYear()) + 1
-      setR({ ...r, kind, fiscal_year: year, code: `B${year}`, name: `Budget ${year}`, actuals_through: null, copy_from: latestOf(rounds, kind), carry: { ...carry, values: false } })
+      setR(named({ ...r, kind, fiscal_year: year, actuals_through: null, copy_from: latestOf(rounds, kind), carry: { ...carry, values: false } }))
       return
     }
     // A forecast re-plans the year of the latest actuals, closed up to them, from its budget.
@@ -335,11 +345,28 @@ export function NewRoundCard({
         </label>
         <label className="su-field">
           Code
-          <input maxLength={20} className="su-input" value={r.code} onChange={(e) => setR({ ...r, code: e.target.value })} style={{ width: 90 }} />
+          <input
+            maxLength={20}
+            className="su-input"
+            value={r.code}
+            onChange={(e) => {
+              setTyped({ ...typed, code: e.target.value !== '' })
+              setR({ ...r, code: e.target.value })
+            }}
+            style={{ width: 90 }}
+          />
         </label>
         <label className="su-field" style={{ flex: 1 }}>
           Name
-          <input maxLength={LIMIT.name} className="su-input" value={r.name} onChange={(e) => setR({ ...r, name: e.target.value })} />
+          <input
+            maxLength={LIMIT.name}
+            className="su-input"
+            value={r.name}
+            onChange={(e) => {
+              setTyped({ ...typed, name: e.target.value !== '' })
+              setR({ ...r, name: e.target.value })
+            }}
+          />
         </label>
         <PeriodFields
           kind={r.kind}
