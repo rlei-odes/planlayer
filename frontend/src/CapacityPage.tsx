@@ -593,7 +593,7 @@ export default function CapacityPage({
             )}
             {open && !staffTab && (
               <button type="button" className="su-btn" aria-expanded={adding} onClick={() => setAdding((a) => !a)}>
-                <span className="pl-plus">+</span> Add line
+                <span className="pl-plus">+</span> Add work center
               </button>
             )}
             {canSubmit && (
@@ -769,7 +769,11 @@ function AddLine({
   onCancel: () => void
   onAdd: (line: { work_center_code: string; activity_type_code: string; rate: string; new_work_center_name: string | null }) => Promise<void>
 }) {
-  const [workCenter, setWorkCenter] = useState(sheet.work_centers[0]?.code ?? NEW_WORK_CENTER)
+  // The first of the cost center's work centers without a line yet, else a new one. An existing
+  // work center can still be chosen, for a second activity type.
+  const [workCenter, setWorkCenter] = useState(
+    () => sheet.work_centers.find((w) => !sheet.rows.some((r) => r.work_center_code === w.code))?.code ?? NEW_WORK_CENTER,
+  )
   const [code, setCode] = useState('')
   const [name, setName] = useState('')
   const [activityType, setActivityType] = useState(sheet.activity_types[0]?.code ?? '')
@@ -835,7 +839,7 @@ function AddLine({
           Cancel
         </button>
         <button type="submit" className="su-btn primary" disabled={!valid}>
-          Add line
+          Add work center
         </button>
       </div>
     </form>
