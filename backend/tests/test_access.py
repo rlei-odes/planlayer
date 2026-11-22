@@ -11,7 +11,7 @@ from decimal import Decimal
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine, func, insert, select
+from sqlalchemy import Engine, func, insert, select, text
 from sqlalchemy.exc import DBAPIError
 
 from planlayer import access
@@ -19,7 +19,7 @@ from planlayer.api.app import create_app
 from planlayer.config import Settings
 from planlayer.store.db import create_app_engine
 from planlayer.store.schema import fact_cost_center, member, version
-from planlayer.store.uow import unit_of_work
+from planlayer.store.uow import system_rights, unit_of_work
 
 from .conftest import APPROVER, BLANK, CONTROLLER, NOBODY, OWNER, OWNER_EMAIL, VIEWER, login
 
@@ -85,6 +85,19 @@ def test_demo_login_only_in_a_demo(migrated: Settings, client: TestClient) -> No
         assert c.get("/api/auth/options").json()["demo"] is False
         assert c.post("/api/auth/demo-login", json={"login": CONTROLLER}).status_code == 404
         assert c.get("/api/auth/demo-users").status_code == 404
+
+
+def test_a_failure_under_system_rights_keeps_its_error(client: TestClient, engine: Engine) -> None:
+    # The rights aren't restored in a failed transaction: that would hide the error behind
+    # "current transaction is aborted".
+    controller = user(engine, CONTROLLER)
+    with (
+        pytest.raises(DBAPIError) as raised,
+        unit_of_work(engine, controller) as conn,
+        system_rights(conn),
+    ):
+        conn.execute(text("SELECT 1 / 0"))
+    assert "division by zero" in str(raised.value)
 
 
 def test_demo_session_works_over_plain_http(migrated: Settings, client: TestClient) -> None:

@@ -11,6 +11,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 
+import psycopg
 from sqlalchemy import Connection, Engine, func, select
 
 from planlayer.store.schema import app_user
@@ -52,8 +53,25 @@ def system_rights(conn: Connection, *, actor: str | None = None) -> Iterator[Non
     ).scalar_one()
     for name, value in (("app.user_id", str(system_id)), ("app.actor", actor or SYSTEM_LOGIN)):
         conn.execute(select(func.set_config(name, value, True)))
-    try:
-        yield
-    finally:
+
+    def restore() -> None:
         for name, old in before.items():
             conn.execute(select(func.set_config(name, old or "", True)))
+
+    try:
+        yield
+    except BaseException:
+        # A failed transaction takes no more statements and rolls back, the settings with it;
+        # restoring there would hide the error with "current transaction is aborted".
+        if not _aborted(conn):
+            restore()
+        raise
+    restore()
+
+
+def _aborted(conn: Connection) -> bool:
+    raw = conn.connection.dbapi_connection
+    return (
+        isinstance(raw, psycopg.Connection)
+        and raw.info.transaction_status == psycopg.pq.TransactionStatus.INERROR
+    )

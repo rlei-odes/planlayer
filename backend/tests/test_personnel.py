@@ -18,7 +18,15 @@ from sqlalchemy.exc import DBAPIError
 from planlayer import access, rounds
 from planlayer.config import Settings
 from planlayer.store.db import create_app_engine
-from planlayer.store.schema import position_pay, position_pay_log
+from planlayer.store.schema import (
+    ACCOUNT,
+    COST_CENTER,
+    fact_cost_center,
+    member,
+    position_pay,
+    position_pay_log,
+    version,
+)
 from planlayer.store.uow import unit_of_work
 
 from .conftest import BLANK, CONTROLLER, OWNER, VIEWER, login, plan, rows
@@ -275,6 +283,37 @@ def test_module_off_in_an_open_round_with_values_is_refused(
     # Workforce can't leave positions while personnel costs are on.
     response = client.put(f"/api/rounds/{R}/setup", json={**setup, "workforce_mode": "fte"})
     assert response.status_code == 422
+
+
+def test_values_of_cost_centers_not_planned_stay(engine: Engine, client: TestClient) -> None:
+    # CC2 planned 6000 by hand, then left the round; personnel costs then write 6000.
+    edit = {"edits": [{"account_code": "6000", "month": 0, "value": "100", "expected": BLANK}]}
+    response = client.post(f"/api/versions/{R}/cost-centers/CC2/edits", json=edit)
+    assert response.status_code == 200, response.text
+    setup = client.get(f"/api/rounds/{R}/setup").json()["setup"]
+    body = {**setup, "planned_cost_centers": ["CC1"], "workforce_mode": "positions",
+            "personnel_costs": True}  # fmt: skip
+    assert client.put(f"/api/rounds/{R}/setup", json=body).status_code == 200
+    assert client.post(f"/api/versions/{R}/workforce/CC1/hr").status_code == 200
+    login(client, HR)
+    response = client.put(f"{PAY}/rules", json=rules())
+    assert response.status_code == 200, response.text
+    assert account(client.get(f"{PAY}/CC1").json(), "6000")[0] == "9200.00"
+    # CC2's value is kept, read only, as every value of a cost center the round doesn't plan.
+    with unit_of_work(engine, access.system_user(engine)) as conn:
+        f, m = fact_cost_center, member
+        cc2 = select(m.c.member_id).where(m.c.dim_id == COST_CENTER, m.c.code == "CC2")
+        acc = select(m.c.member_id).where(m.c.dim_id == ACCOUNT, m.c.code == "6000")
+        kept = conn.execute(
+            select(f.c.amount).where(
+                f.c.version_id
+                == select(version.c.version_id).where(version.c.code == R).scalar_subquery(),
+                f.c.dim_cost_center == cc2.scalar_subquery(),
+                f.c.dim_account == acc.scalar_subquery(),
+                f.c.amount.is_not(None),
+            )
+        ).scalars()
+        assert [str(v) for v in kept] == ["100.00"]
 
 
 def test_a_new_round_carries_rules_and_pay(engine: Engine, client: TestClient) -> None:

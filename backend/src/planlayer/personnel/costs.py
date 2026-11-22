@@ -128,6 +128,7 @@ def recompute(
         wanted, sizes = _wanted(conn, r, periods)
         wanted = {k: v for k, v in wanted.items() if k[2] in open_periods and v}
         accounts = pay_accounts(conn, r.version_id)
+        enabled = [m for m, on in enabled_members(conn, r.version_id).items() if on]
         f = fact_cost_center
         scope = and_(
             f.c.version_id == r.version_id,
@@ -135,6 +136,9 @@ def recompute(
             f.c.measure_id == AMOUNT,
             f.c.dim_account.in_(accounts),
             f.c.period.in_(open_periods),  # a forecast's closed months hold actuals
+            # Values on cost centers the round doesn't plan are kept, read only (ADR 0014),
+            # e.g. carried from a round without personnel costs.
+            f.c.dim_cost_center.in_(enabled),
         )
         stored = {
             (cc, a, p): v
