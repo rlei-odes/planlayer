@@ -122,26 +122,45 @@ export function CostCentersTab({ draft, setDraft, rows, fiscalYear, sourceName }
     setDraft({ ...draft, planned_cost_centers: [...next].sort() })
   }
 
-  /** A node's switch, below the top level: on when all its cost centers are planned. */
-  function nodeSwitch(r: ScopeRow) {
+  // Capacity only for planned cost centers, workforce capacity only with positions. One already on
+  // can still be turned off.
+  const capacityBlock = (code: string, workforce: boolean): string | null =>
+    workforce && !positions ? 'Needs workforce planning by positions' : planned.has(code) ? null : 'Not planned'
+
+  /** A node's switch for one column, below the top level: on when it is on for all the cost
+   * centers below that may have it. On turns those on; off turns every one below off. */
+  function nodeSwitch(
+    r: ScopeRow,
+    on: Set<string>,
+    what: string,
+    set: (codes: string[], on: boolean) => void,
+    block: (code: string) => string | null = () => null,
+  ) {
     const codes = below.get(r.code) ?? []
     if (!r.parent || codes.length === 0) return null
-    const count = codes.filter((c) => planned.has(c)).length
-    const mixed = count > 0 && count < codes.length
+    const targets = codes.filter((c) => block(c) === null)
+    const count = targets.filter((c) => on.has(c)).length
+    const anyOn = codes.some((c) => on.has(c))
+    const all = targets.length > 0 && count === targets.length
+    const disabled = targets.length === 0 && !anyOn
     return (
       <Switch
-        on={count === codes.length}
-        mixed={mixed}
-        label={`All cost centers below ${r.code} planned`}
-        title={`${count} of ${codes.length} planned`}
-        onChange={(on) => setPlanned(codes, on)}
+        on={all}
+        mixed={anyOn && !all}
+        label={`${r.code}: ${what} for all cost centers below`}
+        title={disabled ? (block(codes[0]) ?? undefined) : `${what}: ${count} of ${targets.length}`}
+        disabled={disabled}
+        onChange={(next) => (next ? set(targets, true) : set(codes, false))}
       />
     )
   }
-  function setSource(key: 'capacity_work_centers' | 'capacity_workforce', code: string, on: boolean) {
-    const current = key === 'capacity_work_centers' ? typed : staffed
-    const next = on ? [...current, code] : [...current].filter((c) => c !== code)
-    setDraft({ ...draft, [key]: next.sort() })
+  function setSource(key: 'capacity_work_centers' | 'capacity_workforce', codes: string[], on: boolean) {
+    const next = new Set(key === 'capacity_work_centers' ? typed : staffed)
+    for (const c of codes) {
+      if (on) next.add(c)
+      else next.delete(c)
+    }
+    setDraft({ ...draft, [key]: [...next].sort() })
   }
 
   const labels: Record<CostCenterFilter, string> = {
@@ -199,7 +218,7 @@ export function CostCentersTab({ draft, setDraft, rows, fiscalYear, sourceName }
                   </td>
                   <td className="sc-switch-col">
                     {r.is_group ? (
-                      nodeSwitch(r)
+                      nodeSwitch(r, planned, 'planned', setPlanned)
                     ) : (
                       <Switch on={!off} label={`${r.code} planned`} onChange={(on) => setPlanned([r.code], on)} />
                     )}
@@ -220,22 +239,40 @@ export function CostCentersTab({ draft, setDraft, rows, fiscalYear, sourceName }
                     />
                   </td>
                   <td className="sc-switch-col">
-                    {!r.is_group && (
+                    {r.is_group ? (
+                      nodeSwitch(
+                        r,
+                        typed,
+                        'work center capacity',
+                        (codes, on) => setSource('capacity_work_centers', codes, on),
+                        (c) => capacityBlock(c, false),
+                      )
+                    ) : (
                       <Switch
                         on={typed.has(r.code)}
                         label={`${r.code}: work center capacity`}
-                        onChange={(on) => setSource('capacity_work_centers', r.code, on)}
+                        disabled={capacityBlock(r.code, false) !== null && !typed.has(r.code)}
+                        title={capacityBlock(r.code, false) ?? undefined}
+                        onChange={(on) => setSource('capacity_work_centers', [r.code], on)}
                       />
                     )}
                   </td>
                   <td className="sc-switch-col">
-                    {!r.is_group && (
+                    {r.is_group ? (
+                      nodeSwitch(
+                        r,
+                        staffed,
+                        'workforce capacity',
+                        (codes, on) => setSource('capacity_workforce', codes, on),
+                        (c) => capacityBlock(c, true),
+                      )
+                    ) : (
                       <Switch
                         on={staffed.has(r.code)}
                         label={`${r.code}: workforce capacity`}
-                        disabled={!positions && !staffed.has(r.code)}
-                        title={positions ? undefined : 'Needs workforce planning by positions'}
-                        onChange={(on) => setSource('capacity_workforce', r.code, on)}
+                        disabled={capacityBlock(r.code, true) !== null && !staffed.has(r.code)}
+                        title={capacityBlock(r.code, true) ?? undefined}
+                        onChange={(on) => setSource('capacity_workforce', [r.code], on)}
                       />
                     )}
                   </td>
