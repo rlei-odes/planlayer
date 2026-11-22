@@ -47,6 +47,13 @@
   --hatch-strong: rgb(24 32 44 / 12%);
   --scrim: rgb(16 24 40 / 35%);
   --topbar-bg: rgb(245 246 248 / 88%);
+  /* Floating bars (unsaved changes, update notice): dark on the light page, raised on the dark. */
+  --bar-bg: #18202c;
+  --bar-ink: #ffffff;
+  --bar-ink-2: #c9d0db;
+  --bar-link: #c9d7ff;
+  --bar-hover: rgb(255 255 255 / 8%);
+  --bar-line: transparent;
   --radius: 10px;
   --radius-s: 6px;
   --shadow: 0 1px 2px rgb(16 24 40 / 5%), 0 1px 3px rgb(16 24 40 / 6%);
@@ -111,6 +118,12 @@
   --hatch-strong: rgb(255 255 255 / 10%);
   --scrim: rgb(0 0 0 / 55%);
   --topbar-bg: rgb(18 22 29 / 88%);
+  --bar-bg: #2a3240;
+  --bar-ink: #e4e8ef;
+  --bar-ink-2: #b3bccb;
+  --bar-link: #aac0ff;
+  --bar-hover: rgb(255 255 255 / 8%);
+  --bar-line: #3a4353;
   --shadow: 0 1px 2px rgb(0 0 0 / 35%), 0 1px 3px rgb(0 0 0 / 30%);
   --shadow-lift: 0 4px 16px rgb(0 0 0 / 45%), 0 1px 3px rgb(0 0 0 / 35%);
 }
