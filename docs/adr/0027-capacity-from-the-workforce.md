@@ -26,7 +26,8 @@ A round with workforce planning by positions (ADR 0020) knows every position of 
 
 - Each position has a **productive share** (0–100 %): the part of its hours that is output. A manager gets 0 %, an assembly worker e.g. 80 % (the rest is meetings, cleaning up, preparing tools).
 - Each position's hours go to **one line** of its cost center (work center × activity type), and the line's plan rate prices them.
-- The cost center has a **default line and default share**; a position may have its own of either. A position without a share gives no hours.
+- A line with **work center hours** (typed hours in the round's open months, not from positions) takes no positions, as default or as a position's own line; the server refuses it, and the tab shows such lines disabled. Machine and operator hours on one work center go to two lines, one per activity type.
+- The cost center has a **default line and default share**; a position may have its own of either. A position without a share gives no hours, and neither does one without a line, its own or the default; the tab marks such positions *no line* and says how many there are.
 - A position **without a contract %** (e.g. a freelancer) takes its year's **hours**, typed, instead of a share; the default share doesn't apply to it.
 - Owners, deputies, controllers and capacity planners set them on the capacity page's **Workforce** tab, which shows the positions, their hours and the hours per line. Who reads the cost center's capacity reads the tab.
 
@@ -49,6 +50,8 @@ A round with workforce planning by positions (ADR 0020) knows every position of 
 ## Reasons
 
 - **Hours written to the existing lines:** the rate, the credits, the published hours, forecasts and comparisons exist once. A line staffed by positions differs from a typed one only in where its hours come from.
+- **No positions on a line with work center hours:** positions' hours replace a line's planned hours in the open months, so typed hours there would be lost without a word. A line is typed or staffed, never both.
+- **A default line of None stays possible:** where only a few positions are productive, they get their own line and the others rightly give no hours. The *no line* mark keeps that from happening unnoticed.
 - **One line per position:** the smallest model that covers assembly, mixed recording and most engineering departments, with one choice per person. A split of one person over several lines is on the backlog.
 - **A default per cost center:** most positions of a cost center share the line and share; only the exceptions need input.
 - **Typed hours without a contract %:** a freelancer's hours are agreed as a total, not as a share of a full-time year; the missing contract % already marks such positions in the workforce plan.

@@ -267,6 +267,7 @@ class StaffLine:
     activity_type_name: str
     rate: Decimal
     hours: Decimal | None  # the hours positions give it in the open months
+    typed: bool = False  # it has work center hours: positions can't take it
 
 
 @dataclass
@@ -312,6 +313,7 @@ def read_staff(engine: Engine, user: User, version_code: str, cc_code: str) -> S
         ctx = _staffed_context(conn, user, version_code, cc_code)
         unit = _unit(conn, ctx.version_id, ctx.cost_center_id)
         lines = _lines(conn, ctx)
+        typed = _typed(conn, ctx, lines)
         staff, cells = _computed(conn, ctx, unit, lines)
         ids = {i for k in lines for i in k}
         meta = {
@@ -347,7 +349,9 @@ def read_staff(engine: Engine, user: User, version_code: str, cc_code: str) -> S
     ):
         wc, at = meta[key[0]], meta[key[1]]
         hours_of = total(cells[key]) if key in cells else None
-        view.lines.append(StaffLine(wc[0], wc[1], at[0], at[1], lines[key].rate, hours_of))
+        view.lines.append(
+            StaffLine(wc[0], wc[1], at[0], at[1], lines[key].rate, hours_of, key in typed)
+        )
     for s in staff:
         year = None if s.months is None else total(s.months)
         view.positions.append(
@@ -379,18 +383,38 @@ def _percent(value: str | None) -> Decimal | None:
     return amount
 
 
+def _typed(conn: Connection, ctx: _Context, lines: dict[Key, _Line]) -> set[Key]:
+    """Lines with hours of their own in the open months: typed, not from positions. Read from the
+    stored lines, before a computation marks the ones positions feed."""
+    stored = _hours(conn, ctx.version_id, ctx.cost_center_id, ctx.periods)
+    return {
+        k
+        for k, row in stored.items()
+        if k in lines
+        and not lines[k].staffed
+        and any(row[m].value is not None for m in ctx.open_months)
+    }
+
+
 def _line(
     conn: Connection, ctx: _Context, actor: User, codes: tuple[str, str] | None
 ) -> Key | None:
-    """An active line of the cost center, kept with the round; None: no line."""
+    """An active line of the cost center without work center hours of its own, kept with the
+    round; None: no line. Positions' hours would replace the hours typed on a line."""
     if codes is None:
         return None
     wc, at = _member_id(conn, WORK_CENTER, codes[0]), _member_id(conn, ACTIVITY_TYPE, codes[1])
-    line = _lines(conn, ctx).get((wc, at)) if wc is not None and at is not None else None
+    lines = _lines(conn, ctx)
+    line = lines.get((wc, at)) if wc is not None and at is not None else None
     if line is None:
         raise EditError(f"{codes[0]} / {codes[1]} is not a line of {ctx.cost_center_code}")
     if not line.active:
         raise EditError(f"{codes[0]} / {codes[1]} is inactive in this round")
+    if (line.work_center_id, line.activity_type_id) in _typed(conn, ctx, lines):
+        raise EditError(
+            f"{codes[0]} / {codes[1]} has work center hours; clear them, or add a line for the "
+            "workforce"
+        )
     _keep(conn, ctx, line, actor)
     return (line.work_center_id, line.activity_type_id)
 

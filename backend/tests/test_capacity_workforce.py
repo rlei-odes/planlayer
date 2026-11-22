@@ -169,6 +169,32 @@ def test_position_changes_follow(engine: Engine, client: TestClient) -> None:
     assert next(x for x in view["lines"] if x["activity_type_code"] == "RW")["hours"] == "2520.00"
 
 
+def test_a_line_with_work_center_hours_takes_no_positions(
+    engine: Engine, client: TestClient
+) -> None:
+    view = start(client)
+    edit = {"work_center_code": "WC1", "activity_type_code": "MH", "month": 0, "value": "5",
+            "expected": BLANK}  # fmt: skip
+    assert client.post(f"{CAP}/edits", json={"edits": [edit]}).status_code == 200
+    view = client.get(STAFF).json()
+    typed = {
+        f"{x['work_center_code']}/{x['activity_type_code']}": x["typed"] for x in view["lines"]
+    }
+    assert typed == {"WC1/MH": True, "WC2/MH": False, "WC2/RW": False}
+    # Neither as the default nor as a position's own line: the typed hours stay.
+    response = client.put(STAFF, json={"line": WC1, "percent": "80"})
+    assert response.status_code == 422 and "has work center hours" in response.text
+    p001 = by_code(view)["P001"]["position_id"]
+    url = f"{STAFF}/positions/{p001}"
+    assert client.put(url, json={"line": WC1, "percent": "80"}).status_code == 422
+    assert months(client.get(CAP).json(), "WC1/MH")[0] == "5.00"
+    # A line positions feed stays theirs.
+    assert client.put(STAFF, json={"line": REPAIR, "percent": "80"}).status_code == 200
+    assert client.put(url, json={"line": REPAIR, "percent": "50"}).status_code == 200
+    repair = next(x for x in client.get(STAFF).json()["lines"] if x["activity_type_code"] == "RW")
+    assert repair["typed"] is False
+
+
 def test_setup_rules(engine: Engine, client: TestClient) -> None:
     # Hours from positions need positions and the hours per FTE.
     assert save(client, capacity_workforce=["CC1"], fte_hours="1800").status_code == 422  # type: ignore[attr-defined]

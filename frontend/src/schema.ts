@@ -1415,6 +1415,7 @@ export type StaffLineOut = {
   activity_type_name: string
   rate: string
   hours: string | null
+  typed: boolean
 }
 
 export type StaffOut = {

@@ -114,6 +114,12 @@ revo-grid.pl-revo .rgCell.cp-staffed {
   text-align: right;
 }
 
+/* A position whose hours have no line to go to. */
+.cw-noline {
+  color: var(--warn);
+  font-weight: 600;
+}
+
 .cw-line {
   min-width: 240px;
 }

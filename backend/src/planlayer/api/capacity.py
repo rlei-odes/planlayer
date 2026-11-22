@@ -348,6 +348,7 @@ class StaffLineOut(BaseModel):
     activity_type_name: str
     rate: str
     hours: str | None  # what the positions give it in the open months
+    typed: bool  # it has work center hours: positions can't take it (ADR 0027)
 
 
 class StaffPositionOut(BaseModel):
@@ -418,6 +419,7 @@ def _staff_out(v: capacity.StaffView, batch_id: str | None = None) -> StaffOut:
                 activity_type_name=x.activity_type_name,
                 rate=_rate_text(x.rate),
                 hours=_s(x.hours),
+                typed=x.typed,
             )
             for x in v.lines
         ],

@@ -118,10 +118,12 @@ export default function CapacityWorkforce({
   if (!view) return message ? <div className="su-note error pl-note">{message.text}</div> : null
 
   const open = view.lock_reason === null
+  // A line with work center hours takes no positions: their hours would replace the typed ones.
   const lines: Option[] = view.lines.map((l) => ({
     value: lineKey(l.work_center_code, l.activity_type_code),
     label: `${l.work_center_code} ${l.work_center_name} · ${l.activity_type_name}`,
-    hint: `${l.rate} / h`,
+    hint: l.typed ? 'Has work center hours' : `${l.rate} / h`,
+    disabled: l.typed,
   }))
   const fallback = view.lines.find(
     (l) => lineKey(l.work_center_code, l.activity_type_code) === lineKey(view.default_work_center_code, view.default_activity_type_code),
@@ -142,6 +144,13 @@ export default function CapacityWorkforce({
   }
   const own = (p: StaffPosition) => lineOf(lineKey(p.work_center_code, p.activity_type_code))
   const staffed = view.lines.filter((l) => l.hours !== null)
+  // Positions that would give hours but have no line, their own or the default: not counted.
+  const positive = (v: string | null) => v !== null && Number(v) > 0
+  const lineless = (p: StaffPosition) =>
+    !own(p) &&
+    !defaultLine &&
+    (p.contract_percent === null ? positive(p.typed_hours) : positive(p.productive_percent ?? view.default_percent))
+  const uncounted = view.positions.filter(lineless).length
 
   return (
     <>
@@ -188,6 +197,12 @@ export default function CapacityWorkforce({
           Hours = hours per FTE × contract % × productive share, for the days a position is active. Without a contract %:
           the year’s hours.
         </p>
+        {uncounted > 0 && (
+          <div className="su-note warn">
+            {uncounted === 1 ? '1 position has' : `${uncounted} positions have`} a productive share or hours but no line:
+            not counted. Choose a default line or a line per position.
+          </div>
+        )}
         {view.positions.length === 0 ? (
           <p className="su-empty">No positions on {view.cost_center_code}. They come from the Workforce page.</p>
         ) : (
@@ -253,7 +268,7 @@ export default function CapacityWorkforce({
                         onChange={(key) => savePosition(p, { line: lineOf(key) })}
                       />
                     </td>
-                    <td className="num">{detail(p.hours)}</td>
+                    <td className="num">{lineless(p) ? <span className="cw-noline">no line</span> : detail(p.hours)}</td>
                   </tr>
                 ))}
               </tbody>
