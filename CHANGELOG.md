@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.3](https://github.com/rlei-odes/planlayer/compare/v0.5.2...v0.5.3) (2026-11-22)
+
+
+### Bug Fixes
+
+* **backend:** personnel and forwarding accounts change in a round carrying values on cost centers it doesn't plan ([c5f7a77](https://github.com/rlei-odes/planlayer/commit/c5f7a77d62c72f0314ef2748e30a5d10b3a76830))
+* **backend:** publishing leaves out cost centers the round doesn't plan ([b015ac8](https://github.com/rlei-odes/planlayer/commit/b015ac8b0e13a9b579195b157c957c9550106829))
+
 ## [0.5.2](https://github.com/rlei-odes/planlayer/compare/v0.5.1...v0.5.2) (2026-11-22)
 
 
