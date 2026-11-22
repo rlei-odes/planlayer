@@ -17,29 +17,33 @@ type Props = {
   sourceName: string | null
 }
 
+/** A switch; mixed (a node whose cost centers differ) shows grey with the knob halfway and turns
+ * them all off. */
 function Switch({
   on,
   label,
   onChange,
   disabled,
   title,
+  mixed,
 }: {
   on: boolean
   label: string
   onChange: (on: boolean) => void
   disabled?: boolean
   title?: string
+  mixed?: boolean
 }) {
   return (
     <button
       type="button"
       role="switch"
-      aria-checked={on}
+      aria-checked={on && !mixed}
       aria-label={label}
-      className="pc-switch"
+      className={`pc-switch${mixed ? ' mixed' : ''}`}
       disabled={disabled}
       title={title}
-      onClick={() => onChange(!on)}
+      onClick={() => onChange(mixed ? false : !on)}
     >
       <i />
     </button>
@@ -102,10 +106,37 @@ export function CostCentersTab({ draft, setDraft, rows, fiscalYear, sourceName }
       (show === 'not_planned' && !planned.has(r.code)) ||
       (show === 'missing' && r.missing))
   const shown = filterTree(rows, matches)
+  // The cost centers below each node, whatever the filter shows: a node's switch plans them all.
+  const parent = new Map(rows.map((r) => [r.code, r.parent]))
+  const below = new Map<string, string[]>()
+  for (const leaf of leaves)
+    for (let node = parent.get(leaf.code) ?? null; node; node = parent.get(node) ?? null)
+      below.set(node, [...(below.get(node) ?? []), leaf.code])
 
-  function setPlanned(code: string, on: boolean) {
-    const next = on ? [...planned, code] : [...planned].filter((c) => c !== code)
-    setDraft({ ...draft, planned_cost_centers: next.sort() })
+  function setPlanned(codes: string[], on: boolean) {
+    const next = new Set(planned)
+    for (const c of codes) {
+      if (on) next.add(c)
+      else next.delete(c)
+    }
+    setDraft({ ...draft, planned_cost_centers: [...next].sort() })
+  }
+
+  /** A node's switch, below the top level: on when all its cost centers are planned. */
+  function nodeSwitch(r: ScopeRow) {
+    const codes = below.get(r.code) ?? []
+    if (!r.parent || codes.length === 0) return null
+    const count = codes.filter((c) => planned.has(c)).length
+    const mixed = count > 0 && count < codes.length
+    return (
+      <Switch
+        on={count === codes.length}
+        mixed={mixed}
+        label={`All cost centers below ${r.code} planned`}
+        title={`${count} of ${codes.length} planned`}
+        onChange={(on) => setPlanned(codes, on)}
+      />
+    )
   }
   function setSource(key: 'capacity_work_centers' | 'capacity_workforce', code: string, on: boolean) {
     const current = key === 'capacity_work_centers' ? typed : staffed
@@ -167,7 +198,11 @@ export function CostCentersTab({ draft, setDraft, rows, fiscalYear, sourceName }
                     <Name row={r} sourceName={sourceName} />
                   </td>
                   <td className="sc-switch-col">
-                    {!r.is_group && <Switch on={!off} label={`${r.code} planned`} onChange={(on) => setPlanned(r.code, on)} />}
+                    {r.is_group ? (
+                      nodeSwitch(r)
+                    ) : (
+                      <Switch on={!off} label={`${r.code} planned`} onChange={(on) => setPlanned([r.code], on)} />
+                    )}
                   </td>
                   <td className="sc-set-col">
                     <Select

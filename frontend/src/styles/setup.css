@@ -311,6 +311,11 @@
   transform: translateX(14px);
 }
 
+/* Mixed: some of a node's cost centers on, some off. */
+.pc-switch.mixed i {
+  transform: translateX(7px);
+}
+
 .pc-switch:disabled {
   opacity: 0.4;
   cursor: not-allowed;
