@@ -1,6 +1,6 @@
 [project]
 name = "planlayer"
-version = "0.5.0"
+version = "0.5.1"
 description = "Corporate budgeting and forecasting on Postgres"
 license = "Apache-2.0"
 requires-python = ">=3.13"
