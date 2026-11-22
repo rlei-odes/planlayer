@@ -87,6 +87,16 @@ def test_demo_login_only_in_a_demo(migrated: Settings, client: TestClient) -> No
         assert c.get("/api/auth/demo-users").status_code == 404
 
 
+def test_demo_session_works_over_plain_http(migrated: Settings, client: TestClient) -> None:
+    # Browsers drop Secure cookies on plain HTTP other than localhost: the demo on a LAN host.
+    demo = migrated.model_copy(update={"demo": True, "environment": "production"})
+    with TestClient(create_app(demo), base_url="http://primeb:8000") as c:
+        response = c.post("/api/auth/demo-login", json={"login": CONTROLLER})
+        assert response.status_code == 200, response.text
+        assert "secure" not in response.headers["set-cookie"].lower()
+        assert c.get("/api/me").json()["login"] == CONTROLLER
+
+
 # --- Scopes ---------------------------------------------------------------------------------------
 
 

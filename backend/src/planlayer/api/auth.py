@@ -128,7 +128,9 @@ def start_session(request: Request, response: Response, login: str) -> Me:
         max_age=settings.session_hours * 3600,
         httponly=True,
         samesite="lax",
-        secure=not settings.development,
+        # A demo logs anyone in as anyone, so Secure protects nothing there; without it the demo
+        # also works over plain HTTP from another machine, where browsers drop Secure cookies.
+        secure=not (settings.development or settings.demo),
     )
     user = access.session_user(engine, token)
     assert user is not None

@@ -18,6 +18,11 @@ Open http://localhost:8000 after about a minute (the first start generates the t
 and fills the round). The login lists the users; anyone logs in as anyone without a password,
 so the demo stays on localhost. `docker compose down -v` removes it with its data.
 
+The demo listens on `127.0.0.1:8000`, so only the machine it runs on reaches it. To open it from
+other machines, change the `app` service's port in `compose.yaml` to `0.0.0.0:8000:8000` (every
+network interface) or to one interface's address, then `docker compose up -d` again. Everyone who
+reaches that port can log in as anyone.
+
 ## Production
 
 ### 1. Files
@@ -101,7 +106,9 @@ docker compose up -d
 
 ### 3. HTTPS and the first admin
 
-The container listens on `127.0.0.1:8000` (`PLANLAYER_LISTEN` in `.env`). Put the company's
+The container listens on `127.0.0.1:8000` (`PLANLAYER_LISTEN` in `.env`), so only the server
+itself reaches it. A reverse proxy on another machine needs `0.0.0.0:8000` there, or the address
+of the interface it connects to. Put the company's
 reverse proxy in front of it with HTTPS (session cookies are `Secure` in production), and set
 `PLANLAYER_PUBLIC_URL` to the address users open. A proxy that changes the `Host` header needs
 it for the OpenID Connect callback.
