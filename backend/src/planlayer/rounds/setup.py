@@ -376,7 +376,10 @@ def save_setup(engine: Engine, actor: User, code: str, setup: Setup) -> None:
         if setup.fte_hours is not None and not 0 < setup.fte_hours < 10_000:
             raise RoundError("the hours per FTE a year are between 0 and 10,000")
         if setup.capacity_workforce and setup.fte_hours is None:
-            raise RoundError("hours from the workforce need the hours per FTE a year")
+            raise RoundError(
+                "hours from the workforce need the hours per FTE a year"
+                " (Forms & columns, Workforce planning)"
+            )
         wanted = {
             _member_id(conn, COST_CENTER, code, leaf=True): (
                 code in setup.capacity_work_centers,

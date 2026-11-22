@@ -122,10 +122,17 @@ export function CostCentersTab({ draft, setDraft, rows, fiscalYear, sourceName }
     setDraft({ ...draft, planned_cost_centers: [...next].sort() })
   }
 
-  // Capacity only for planned cost centers, workforce capacity only with positions. One already on
-  // can still be turned off.
+  // Capacity only for planned cost centers; workforce capacity only with positions and the hours
+  // per FTE it is computed from. One already on can still be turned off.
+  const fteHours = !!draft.fte_hours?.trim()
   const capacityBlock = (code: string, workforce: boolean): string | null =>
-    workforce && !positions ? 'Needs workforce planning by positions' : planned.has(code) ? null : 'Not planned'
+    workforce && !positions
+      ? 'Needs workforce planning by positions'
+      : workforce && !fteHours
+        ? 'Needs the hours per FTE a year (Forms & columns, Workforce planning)'
+        : planned.has(code)
+          ? null
+          : 'Not planned'
 
   /** A node's switch for one column, below the top level: on when it is on for all the cost
    * centers below that may have it. On turns those on; off turns every one below off. */
