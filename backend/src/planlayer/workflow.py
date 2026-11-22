@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import Literal, cast
 
-from sqlalchemy import Connection, Engine, func, insert, select, update
+from sqlalchemy import Connection, Engine, Select, func, insert, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from planlayer.access import AccessError, User, approvers, cost_center_rights, plans
@@ -88,6 +88,16 @@ def enabled_members(conn: Connection, version_id: int) -> dict[int, bool]:
             )
         )
     }
+
+
+def enabled_cost_centers(version_id: int) -> Select[tuple[int]]:
+    """The cost centers the round plans, as a subquery. Values elsewhere are kept, read only
+    (ADR 0014): a round-wide write or delete stays within these."""
+    return select(round_member.c.member_id).where(
+        round_member.c.version_id == version_id,
+        round_member.c.module == MODULE_COST_CENTER,
+        round_member.c.enabled.is_(True),
+    )
 
 
 def status_of(conn: Connection, version_id: int, cc_id: int) -> Status:

@@ -31,7 +31,7 @@ from planlayer.store.schema import (
     workforce_position,
 )
 from planlayer.store.uow import system_rights
-from planlayer.workflow import enabled_members
+from planlayer.workflow import enabled_cost_centers, enabled_members
 
 CENT = Decimal("0.01")
 RECOMPUTE_LOCK = 2022  # advisory lock class of personnel cost recomputes (ADR 0022)
@@ -128,7 +128,6 @@ def recompute(
         wanted, sizes = _wanted(conn, r, periods)
         wanted = {k: v for k, v in wanted.items() if k[2] in open_periods and v}
         accounts = pay_accounts(conn, r.version_id)
-        enabled = [m for m, on in enabled_members(conn, r.version_id).items() if on]
         f = fact_cost_center
         scope = and_(
             f.c.version_id == r.version_id,
@@ -136,9 +135,8 @@ def recompute(
             f.c.measure_id == AMOUNT,
             f.c.dim_account.in_(accounts),
             f.c.period.in_(open_periods),  # a forecast's closed months hold actuals
-            # Values on cost centers the round doesn't plan are kept, read only (ADR 0014),
-            # e.g. carried from a round without personnel costs.
-            f.c.dim_cost_center.in_(enabled),
+            # Values carried onto cost centers the round doesn't plan stay, read only.
+            f.c.dim_cost_center.in_(enabled_cost_centers(r.version_id)),
         )
         stored = {
             (cc, a, p): v
@@ -211,12 +209,19 @@ def recompute(
 
 def clear(conn: Connection, r: RoundRef, accounts: set[int]) -> None:
     """Remove the round's values on personnel accounts about to stop being ones, while they
-    still are: then the lock lets them go whatever the cost centers' status."""
+    still are: then the lock lets them go whatever the cost centers' status. Values carried
+    onto cost centers the round doesn't plan stay, read only."""
     if not accounts:
         return
     f = fact_cost_center
     with system_rights(conn):
-        conn.execute(delete(f).where(f.c.version_id == r.version_id, f.c.dim_account.in_(accounts)))
+        conn.execute(
+            delete(f).where(
+                f.c.version_id == r.version_id,
+                f.c.dim_account.in_(accounts),
+                f.c.dim_cost_center.in_(enabled_cost_centers(r.version_id)),
+            )
+        )
 
 
 def small_groups(conn: Connection, version_id: int) -> dict[int, list[tuple[int, int]]]:

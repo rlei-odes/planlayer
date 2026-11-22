@@ -299,6 +299,13 @@ def test_values_of_cost_centers_not_planned_stay(engine: Engine, client: TestCli
     response = client.put(f"{PAY}/rules", json=rules())
     assert response.status_code == 200, response.text
     assert account(client.get(f"{PAY}/CC1").json(), "6000")[0] == "9200.00"
+    # Employees move to 6010: 6000 stops being a personnel account, and CC1's costs leave it.
+    moved = rules(staff_types=[{"code": "EMP", "account": "6010", "typed": False},
+                               {"code": "FRL", "account": "7000", "typed": True}])  # fmt: skip
+    response = client.put(f"{PAY}/rules", json=moved)
+    assert response.status_code == 200, response.text
+    page = client.get(f"{PAY}/CC1").json()
+    assert account(page, "6000") == BLANK and account(page, "6010")[0] == "9200.00"
     # CC2's value is kept, read only, as every value of a cost center the round doesn't plan.
     with unit_of_work(engine, access.system_user(engine)) as conn:
         f, m = fact_cost_center, member

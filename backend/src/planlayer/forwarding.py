@@ -46,7 +46,7 @@ from planlayer.store.schema import (
 )
 from planlayer.store.uow import system_rights, unit_of_work
 from planlayer.sync import rebuild_closure
-from planlayer.workflow import enabled_members, status_of
+from planlayer.workflow import enabled_cost_centers, enabled_members, status_of
 
 MONTHS = 12
 
@@ -765,7 +765,8 @@ def _check_round(
 
 
 def _clear(conn: Connection, version_id: int, accounts: Iterable[int]) -> None:
-    """Remove a forwarding's values from its accounts (while they still are its accounts)."""
+    """Remove a forwarding's values from its accounts (while they still are its accounts).
+    Values carried onto cost centers the round doesn't plan stay, read only."""
     f = fact_cost_center
     conn.execute(
         delete(f).where(
@@ -773,6 +774,7 @@ def _clear(conn: Connection, version_id: int, accounts: Iterable[int]) -> None:
             f.c.layer_id == BASE_LAYER,
             f.c.measure_id == AMOUNT,
             f.c.dim_account.in_(list(accounts)),
+            f.c.dim_cost_center.in_(enabled_cost_centers(version_id)),
         )
     )
 
