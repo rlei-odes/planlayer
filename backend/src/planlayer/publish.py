@@ -29,6 +29,7 @@ import pyarrow.parquet as pq
 from sqlalchemy import (
     BigInteger,
     Column,
+    ColumnElement,
     Connection,
     Date,
     DateTime,
@@ -129,6 +130,19 @@ class OutRow:
     signed: Decimal | None = None  # with the sign convention (ADR 0019)
 
 
+def _planned(column: Column[int], version_id: int, module: str) -> ColumnElement[bool]:
+    """``column``'s cost center is planned in the round, in ``module``. Values on cost centers
+    the round doesn't plan stay in the app store, read only, but aren't published: a forecast
+    publishes no actuals for them either."""
+    return column.in_(
+        select(round_member.c.member_id).where(
+            round_member.c.version_id == version_id,
+            round_member.c.module == module,
+            round_member.c.enabled.is_(True),
+        )
+    )
+
+
 def plan_rows(engine: Engine, user: User, code: str, scope: Scope) -> tuple[RoundRef, list[OutRow]]:
     """The round's plan values in the scope, as the output will hold them."""
     user.require_controller()
@@ -157,7 +171,10 @@ def plan_rows(engine: Engine, user: User, code: str, scope: Scope) -> tuple[Roun
                 & (workflow_status.c.cost_center_id == f.c.dim_cost_center),
             )
             .where(
-                f.c.version_id == r.version_id, f.c.layer_id == BASE_LAYER, f.c.measure_id == AMOUNT
+                f.c.version_id == r.version_id,
+                f.c.layer_id == BASE_LAYER,
+                f.c.measure_id == AMOUNT,
+                _planned(f.c.dim_cost_center, r.version_id, MODULE_COST_CENTER),
             )
         )
         closed = closed_periods(conn, r)
@@ -191,13 +208,6 @@ def _actual_rows(conn: Connection, r: RoundRef, closed: list[date], scope: Scope
         .join(e, e.c.member_id == f.c.dim_entity)
         .join(cc, cc.c.member_id == f.c.dim_cost_center)
         .join(acc, acc.c.member_id == f.c.dim_account)
-        .join(
-            round_member,
-            (round_member.c.version_id == r.version_id)
-            & (round_member.c.module == MODULE_COST_CENTER)
-            & (round_member.c.member_id == f.c.dim_cost_center)
-            & round_member.c.enabled.is_(True),
-        )
         .join(version, version.c.version_id == f.c.version_id)
         .outerjoin(
             workflow_status,
@@ -209,6 +219,7 @@ def _actual_rows(conn: Connection, r: RoundRef, closed: list[date], scope: Scope
             f.c.layer_id == BASE_LAYER,
             f.c.measure_id == AMOUNT,
             f.c.period.in_(closed),
+            _planned(f.c.dim_cost_center, r.version_id, MODULE_COST_CENTER),
         )
     )
     if scope == "approved":
@@ -338,7 +349,11 @@ def hour_rows(engine: Engine, user: User, r: RoundRef, scope: Scope) -> list[Hou
                 (workflow_status.c.version_id == r.version_id)
                 & (workflow_status.c.cost_center_id == f.c.dim_cost_center),
             )
-            .where(f.c.layer_id == BASE_LAYER, f.c.measure_id == HOURS)
+            .where(
+                f.c.layer_id == BASE_LAYER,
+                f.c.measure_id == HOURS,
+                _planned(f.c.dim_cost_center, r.version_id, MODULE_CAPACITY),
+            )
         )
         if scope == "approved":
             base = base.where(workflow_status.c.status == "approved")
@@ -347,16 +362,8 @@ def hour_rows(engine: Engine, user: User, r: RoundRef, scope: Scope) -> list[Hou
             planned = planned.where(f.c.period > closed[-1])
         rows = [HourRow((p, en, c, w, a), h, s) for p, en, c, w, a, h, s in conn.execute(planned)]
         if closed:
-            actual = (
-                base.join(version, version.c.version_id == f.c.version_id)
-                .join(
-                    round_member,
-                    (round_member.c.version_id == r.version_id)
-                    & (round_member.c.module == MODULE_CAPACITY)
-                    & (round_member.c.member_id == f.c.dim_cost_center)
-                    & round_member.c.enabled.is_(True),
-                )
-                .where(version.c.kind == "actuals", f.c.period.in_(closed))
+            actual = base.join(version, version.c.version_id == f.c.version_id).where(
+                version.c.kind == "actuals", f.c.period.in_(closed)
             )
             rows += [
                 HourRow((p, en, c, w, a), h, s, "actual")
@@ -466,7 +473,11 @@ def workforce_rows(engine: Engine, user: User, r: RoundRef, scope: Scope) -> lis
                 (workflow_status.c.version_id == r.version_id)
                 & (workflow_status.c.cost_center_id == f.c.dim_cost_center),
             )
-            .where(f.c.layer_id == BASE_LAYER, f.c.measure_id.in_(STAFF_MEASURES))
+            .where(
+                f.c.layer_id == BASE_LAYER,
+                f.c.measure_id.in_(STAFF_MEASURES),
+                _planned(f.c.dim_cost_center, r.version_id, MODULE_COST_CENTER),
+            )
         )  # fmt: skip
         if scope == "approved":
             base = base.where(workflow_status.c.status == "approved")
@@ -478,16 +489,8 @@ def workforce_rows(engine: Engine, user: User, r: RoundRef, scope: Scope) -> lis
             for p, en, c, t, k, m, v, s in conn.execute(planned)
         ]
         if closed:
-            actual = (
-                base.join(version, version.c.version_id == f.c.version_id)
-                .join(
-                    round_member,
-                    (round_member.c.version_id == r.version_id)
-                    & (round_member.c.module == MODULE_COST_CENTER)
-                    & (round_member.c.member_id == f.c.dim_cost_center)
-                    & round_member.c.enabled.is_(True),
-                )
-                .where(version.c.kind == "actuals", f.c.period.in_(closed))
+            actual = base.join(version, version.c.version_id == f.c.version_id).where(
+                version.c.kind == "actuals", f.c.period.in_(closed)
             )
             rows += [
                 StaffRow((p, en, c, t, k, STAFF_MEASURES[m]), v, s, "actual")

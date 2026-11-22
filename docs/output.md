@@ -30,7 +30,7 @@ A forecast's rows cover the whole year: its closed months as `actual` rows (ever
 
 Credits are rows like any other: activity credits from capacity planning on the activity types' accounts, and cost forwarding (ADR 0018) on each forwarding's two accounts, the charge on the receivers and the credit on the source. Their accounts have the role `credit` in `dim_account`, so `sum(amount_signed)` over a cost center is its net cost (ledger) or its result (result).
 
-A run replaces all rows of its round. With the scope "approved cost centers", only approved cost centers are present; with "whole round", every current value is, and `status` tells them apart.
+A run replaces all rows of its round. With the scope "approved cost centers", only approved cost centers are present; with "whole round", every current value is, and `status` tells them apart. Either scope covers only the cost centers the round plans: values on a cost center switched off in the round stay in Planlayer, read only, and are not published, neither its plan values nor a forecast's actuals. A forecast that should still carry such a cost center's actuals plans it with zeros, and the zeros are published with the actuals. The same holds for planned hours and for FTE and headcount.
 
 ## `fact_plan_capacity`
 

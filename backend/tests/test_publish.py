@@ -104,6 +104,17 @@ def test_approved_only_removes_reopened_cost_centers(client: TestClient) -> None
     assert (whole["changed"], whole["unchanged"]) == (12, 0)  # the status changed
 
 
+def test_cost_centers_not_planned_are_not_published(client: TestClient) -> None:
+    # Their values stay, read only, but leave the output: approved before or not.
+    plan_cc1(client)
+    act(client, "submit")
+    act(client, "approve")
+    assert preview(client)["rows"] == 12
+    off = client.post("/api/versions/B2026/cost-centers/CC1/enabled", json={"enabled": False})
+    assert off.status_code == 200
+    assert (preview(client)["rows"], preview(client, "all")["rows"]) == (0, 0)
+
+
 def test_files(client: TestClient) -> None:
     plan_cc1(client, "12")
     text = client.get(f"{P}/export.csv", params={"scope": "all"})

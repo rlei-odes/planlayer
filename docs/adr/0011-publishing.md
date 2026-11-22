@@ -15,6 +15,7 @@ Plan values reach BI only through an explicit publish by the controller (T-21). 
 
 - A run publishes one planning round's plan values. Actuals aren't published: they are already in the warehouse.
 - **Scope, chosen per run:** the approved cost centers only (the default), or the whole round.
+- Either scope covers only the **cost centers the round plans**. Values on a cost center switched off in the round stay in the app store, read only, but are not published, and a forecast publishes no actuals for it. A forecast that should carry its actuals plans it, with zeros if nothing else.
 - A run **replaces the round's rows** in the output with exactly the selected set. A cost center that was published while approved and has since been reopened disappears from the output in an approved-only run; the preview shows that.
 - Signs are converted with the export sign rules (E-12). Until those exist, values are published natural-positive.
 
@@ -46,6 +47,7 @@ The same rows, for the same scope, can be downloaded as **CSV** (UTF-8, comma-se
 ## Reasons
 
 - **Per-run scope:** approved-only keeps drafts out of BI by default, while a whole-round publish serves interim reporting. The status column lets BI tell them apart.
+- **Planned cost centers only:** the output matches the status page, and a forecast's plan and actual months cover the same cost centers, so its full year adds up. A cost center switched off once it was approved doesn't stay in the approved scope through its old status.
 - **Replace per round** is what makes runs idempotent and safe across databases. It also means the output always equals one consistent selection, never a mix of runs.
 - **Codes, not ids:** BI joins plan data to warehouse dimensions by the source's codes. Planlayer's ids are internal and change on a rebuild.
 - **Preview before writing:** publishing overwrites what BI reads. The controller sees every added, changed and removed row first, and the refusal on a changed result means the run does exactly what was previewed.
