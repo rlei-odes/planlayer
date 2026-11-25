@@ -210,3 +210,51 @@
 .il-w-vis {
   width: 260px;
 }
+
+/* --- Export dialog ------------------------------------------------------------------------ */
+
+.il-export {
+  width: min(520px, 100%);
+}
+
+.il-export-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 16px;
+}
+
+.il-export-choice {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  cursor: pointer;
+}
+
+.il-export-choice.on {
+  border-color: var(--accent-2);
+  background: var(--accent-tint);
+}
+
+.il-export-choice.off {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.il-export-choice input {
+  margin-top: 3px;
+}
+
+.il-export-choice > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.il-export-choice .su-hint {
+  margin: 0;
+  padding: 0;
+}

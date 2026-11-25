@@ -4,15 +4,20 @@ The ``client`` fixture syncs ``conftest.SOURCE`` (CC1 owned by anna, CC2 without
 DEP whose approver is appr@), opens B2026 and logs the controller in.
 """
 
+import io
 from collections.abc import Iterator
+from datetime import datetime
+from decimal import Decimal
 
+import openpyxl
 import pytest
 from fastapi.testclient import TestClient
 from httpx2 import Response
 from sqlalchemy import Engine, func, select
 
-from planlayer import access
+from planlayer import access, item_list_files
 from planlayer.config import Settings
+from planlayer.item_lists import ItemList
 from planlayer.store.db import create_app_engine
 from planlayer.store.schema import annotation_log, note_thread
 from planlayer.store.uow import unit_of_work
@@ -274,6 +279,64 @@ def test_item_list_visibility(client: TestClient) -> None:
     login(client, OWNER)
     assert client.delete(f"/api/item-lists/{lid}").status_code == 200
     assert client.get("/api/item-lists").json() == []
+
+
+def test_item_lists_export_to_excel(client: TestClient) -> None:
+    login(client, OWNER)
+    lid = make_list(client)["list_id"]
+    items = [
+        {"name": "=1+1", "unit_price": "5"},  # typed text stays text, never a formula
+        {"kind": "heading", "name": "ERP"},
+        {"name": "ERP licence", "quantity": "3", "unit_price": "100", "supplier": "SAP"},
+    ]
+    shared = {"visibility": "cost_center", "items": items}
+    assert client.put(f"/api/item-lists/{lid}", json=shared).status_code == 200
+    login(client, CONTROLLER)  # plans CC1 and CC2: sees anna's shared list, owns one on CC2
+    tool = {"name": "Tool", "unit_price": "7"}
+    own = client.post("/api/item-lists", json={"cost_center": "CC2", "account": "6000",
+                                               "items": [tool]})  # fmt: skip
+    assert own.status_code == 200, own.text
+
+    def sheets(scope: str) -> openpyxl.Workbook:
+        response = client.get("/api/item-lists/export.xlsx", params={"scope": scope})
+        assert response.status_code == 200, response.text
+        assert response.headers["content-disposition"].endswith(f'item-lists-{scope}.xlsx"')
+        return openpyxl.load_workbook(io.BytesIO(response.content))
+
+    assert sheets("mine").sheetnames == ["Overview", "CC2 6000"]
+    wb = sheets("visible")
+    assert wb.sheetnames == ["Overview", "CC1 6000", "CC2 6000"]
+    overview = [[c.value for c in r] for r in wb["Overview"].iter_rows(min_row=2)]
+    assert [r[:2] + r[6:9] for r in overview] == [
+        ["CC1 6000", "CC1", "Cost center", 2, Decimal("305")],
+        ["CC2 6000", "CC2", "Private", 1, Decimal("7")],
+        ["Total", None, None, 3, Decimal("312")],
+    ]
+    assert wb["Overview"]["A2"].hyperlink.location == "'CC1 6000'!A1"
+    body = [[c.value for c in r] for r in wb["CC1 6000"].iter_rows(min_row=5, max_col=5)]
+    assert body == [
+        ["=1+1", None, 1, 5, 5],
+        ["ERP", None, None, None, 300],  # the category's subtotal
+        ["ERP licence", "SAP", 3, 100, 300],
+        ["Total", None, None, None, 305],
+    ]
+    assert wb["CC1 6000"]["A5"].data_type == "s"
+    assert client.get("/api/item-lists/export.xlsx", params={"scope": "all"}).status_code == 422
+    login(client, NOBODY)
+    assert sheets("visible").sheetnames == ["Overview"]
+
+
+def test_item_list_sheet_names_follow_excel_rules() -> None:
+    def named(cc: str, account: str) -> ItemList:
+        return ItemList(1, cc, "", account, "", "", "", "private", Decimal(0), 0,
+                        datetime(2026, 1, 1), "", True, True, [])  # fmt: skip
+
+    lists = [named("A/B", "1"), named("X" * 40, "1"), named("X" * 40, "2"), named("over", "VIEW")]
+    names = item_list_files._sheet_names(lists)
+    assert names[0] == "A-B 1"
+    assert names[1] == "X" * 31 and names[2] == "X" * 27 + " (2)"
+    assert names[3] == "over VIEW"  # only "Overview" itself is taken
+    assert len({n.lower() for n in names} | {"overview"}) == 5
 
 
 def test_deleting_the_first_note_deletes_the_thread(client: TestClient) -> None:

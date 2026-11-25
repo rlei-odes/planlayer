@@ -45,6 +45,7 @@ Planners explain why a value is what it is, leave to-dos for each other, and kee
   Only the owner changes visibility and deletes the list. The database enforces both through row-level security and a trigger.
 - **Into the plan:** *Save & apply total* writes the list total as the line's year total, exactly like the gridnote's *Insert total*. The line's marker warns while the list total and the line's year value differ. A list is not an entry form, and rounds keep no snapshots of lists.
 - *My item lists* lists every list the user can see, with its line, total and visibility, and opens each in the same editor as the sheet's overlay.
+- **Export:** *My item lists* exports to an Excel workbook either the user's own lists or every list they can see; another user's private list is in neither, as for every reader. The workbook opens on an overview with one row per list, linked to the list's own sheet; each list sheet holds its items, the category subtotals and the total, sorted by cost center and account. Amounts are written as values, not formulas, so any program reads them the same, and typed text is always written as text, so a name starting with `=` never becomes a formula.
 
 ### Finding one's notes
 

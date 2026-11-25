@@ -488,6 +488,7 @@ The items behind a line's value, kept outside rounds: invoices, licences, contra
 - [x] **L-3 Editing:** a large overlay from the line's marker; *My item lists* lists every list the user can see.
 - [x] **L-5 Tests:** totals, visibility and rights (`tests/test_notes.py`).
 - [x] **L-6 Order and categories:** rows move by a handle or Alt+↑/↓ and keep their order; category headings group the items below them with a subtotal, and move with their items.
+- [x] **L-7 Export:** *My item lists* exports the user's own lists or every list they can see to Excel: an overview sheet, then one sheet per list with its subtotals and total.
 - [ ] **L-2 Setup:** item lists as an entry form, where the line's year value always equals the list total (allowed per account group in the yearly setup).
 - [ ] **L-4 History:** snapshots of a list per submitted round, and comparing two states item by item.
 - [ ] Optional fields per item: a renewal date or contract end.

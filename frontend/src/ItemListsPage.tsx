@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { display } from './amounts'
 import { api, type ItemList, type ListSummary } from './api'
 import ItemListEditor from './ItemListEditor'
+import ItemListExport from './ItemListExport'
 import { VISIBILITY } from './itemLists'
 import PageHeader from './PageHeader'
 
@@ -15,6 +16,7 @@ export default function ItemListsPage() {
   const [lists, setLists] = useState<ListSummary[] | null>(null)
   const [open, setOpen] = useState<ItemList | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [exporting, setExporting] = useState(false)
 
   const load = useCallback(() => {
     api.itemLists().then(setLists, (e: unknown) => setError(e instanceof Error ? e.message : String(e)))
@@ -31,6 +33,14 @@ export default function ItemListsPage() {
         eyebrow="Item lists"
         title="My item lists"
         sub="The items behind a line’s value: invoices, licences, contracts. Lists live outside planning rounds, so keep them up to date during the year. Start one from a line on the planning sheet (the list icon beside the account)."
+        actions={
+          lists &&
+          lists.length > 0 && (
+            <button type="button" className="su-btn" onClick={() => setExporting(true)}>
+              Export
+            </button>
+          )
+        }
       />
       {error && <div className="su-note error">{error}</div>}
       {lists && lists.length === 0 && (
@@ -83,6 +93,7 @@ export default function ItemListsPage() {
           </div>
         </div>
       )}
+      {exporting && lists && <ItemListExport lists={lists} onClose={() => setExporting(false)} />}
       {open && (
         <ItemListEditor
           list={open}

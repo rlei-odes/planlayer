@@ -1,13 +1,14 @@
 """Item list endpoints (ADR 0017): the lists a user can see, one list with its items, creating,
-saving and deleting lists. Amounts are decimal strings; the server computes them."""
+saving and deleting lists, and the lists as an Excel workbook. Amounts are decimal strings; the
+server computes them."""
 
 from datetime import datetime
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
-from planlayer import item_lists
+from planlayer import item_list_files, item_lists
 from planlayer.access import AccessError
 from planlayer.api.auth import CurrentUser, engine_of
 from planlayer.api.limits import Code, Number
@@ -17,6 +18,7 @@ router = APIRouter(prefix="/api/item-lists")
 
 Visibility = Literal["private", "cost_center", "public"]
 Kind = Literal["item", "heading"]
+ExportScope = Literal["mine", "visible"]
 HANDLED = (AccessError, NotFoundError, item_lists.ListError)
 
 
@@ -135,6 +137,22 @@ def list_of_line(
     except HANDLED as e:
         raise _http(e) from None
     return None if found is None else _full(found)
+
+
+@router.get("/export.xlsx")
+def export(request: Request, user: CurrentUser, scope: ExportScope = "visible") -> Response:
+    """The user's own lists (``mine``) or every list they can see (``visible``) as an Excel
+    workbook: an overview, then one sheet per list, by cost center and account."""
+    found = item_lists.lists(engine_of(request), user)
+    chosen = sorted(
+        (s for s in found if scope == "visible" or s.mine),
+        key=lambda s: (s.cost_center_code, s.account_code),
+    )
+    return Response(
+        item_list_files.workbook(chosen),
+        media_type=item_list_files.MEDIA,
+        headers={"Content-Disposition": f'attachment; filename="item-lists-{scope}.xlsx"'},
+    )
 
 
 @router.get("/{list_id}", responses={404: {}})
