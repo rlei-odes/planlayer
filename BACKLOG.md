@@ -224,6 +224,7 @@ Mid-size manufacturer of industrial pumps and valves, ~400 employees.
     - [x] A note per comparison column, shown to planners as the column's tooltip; actuals columns say how far their actuals go when the year is partial.
     - [x] A comparison column of actuals for the year to date plus the forecast for the rest: a forecast compared as a version shows its full year (ADR 0015).
     - [ ] An account set's own accounts and groups could be edited from the cost center tab too; today the Accounts tab holds the matrix.
+    - [ ] Setup as a guided, stepped process, both for the admin's data loading (sources, mapping, first sync; see E-01 and E-11's guided installation) and for a round's setup: tick the options, *Next*, then ask for the data each choice needs.
 - [ ] **E-04** Versions: create, copy with shift + uplift, compare.
 - [ ] **E-05** Planning grid (RevoGrid, ADR 0006) for one planning unit at a time (T-25), with a unit switcher: edit, paste, fill-drag, subtotals, keyboard flow, percentage mode, and cells editable as the entry form allows. Built: editing, paste from Excel and LibreOffice (the trailing newline they copy is dropped, so it never blanks the cell below), one copied value pasted over a selection fills it, fill-drag, subtotals, keyboard flow (E-13).
     - [x] Undo and redo of change batches, several steps per visit to a sheet, refused when someone else changed a cell since ([ADR 0010](docs/adr/0010-grid-api-and-concurrency.md)).
@@ -347,6 +348,8 @@ German terms in parentheses, as controllers know them.
   - [x] Investments and cash out in the file downloads of the Publish page.
   - [ ] Who confirms: today controllers and any approver above the cost center, except one who plans it. Decide between the nearest approver only, steps (the manager, then the CFO above an amount), and how a confirmation by one approver shows to the others.
   - [ ] Carrying investments into a new round: multi-year projects and what wasn't started, with the checklist (ADR 0014).
+    - [ ] Decide what an investment reaching into the next year means: whether its next-year part can be confirmed now, and whether it must then be carried into the next round.
+    - [ ] An option in the round setup: planners see the previous round's unrealized investments in their list, muted and marked as such, and settle each one: *Realized*, *Obsolete* or *Keep* (carried into this round as their own investment).
   - [ ] Capex budgets per area: an envelope per hierarchy node, set by the controller, and plan against envelope in the overview.
   - [ ] Undo on the investments list (changes are in `capex_log` with the change batch).
   - [ ] Attachments on an investment (quotes, business cases).
@@ -465,6 +468,22 @@ Many companies run their warehouse on SQL Server, Azure SQL, Fabric, BigQuery, D
   - grants to the BI role left to the DBA's install script for that backend.
   - **Alternative for lakehouses:** publish as Parquet to object storage (ADLS, S3, GCS), read by the warehouse as an external table. The Parquet download (E-10) already produces the rows.
 - [ ] **C-5 Tests.** The adapter contract suite (S-05) run against each backend: SQL Server in a container in CI, BigQuery against an emulator where it covers the calls used, Databricks and Snowflake against a test account outside CI. Sign conversion (T-7) and decimal round trips checked per backend.
+
+### Cross-section view
+
+A role or view that sees chosen accounts or account groups across every cost center of one or more organisational units. Example: the IT controller sees all IT accounts on every cost center that uses them.
+
+- [ ] Decide whether it is a role, a scope on an existing role, or a saved view, and whether it reads only or may also plan those accounts (D-21, ADR 0009).
+- [ ] The view: the chosen accounts as rows, cost centers as columns or grouped rows, with actuals and plan side by side.
+
+### Actuals drill-down (optional)
+
+When the admin supplies actuals detail, an actual can be opened down to its documents.
+
+- [ ] A source dataset for actuals detail: cost center, account, supplier or service provider, amount, date and month; optional, mapped like the other datasets (E-01).
+- [ ] Actuals that have detail are marked (e.g. underlined) and open a dialog with their documents.
+- [ ] Decide the dialog: totals by month, or a plain table with filters.
+- [ ] A warning when the detail's sum, rounded, doesn't match the actual it explains.
 
 ### Line notes
 
