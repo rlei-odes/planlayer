@@ -401,6 +401,8 @@ FTE and headcount per cost center, staff type and category, as month-end levels,
   - [ ] Actuals on the personnel accounts of a small cost center come from the ledger as they are; decide whether to mask them like plan values.
   - [ ] The admin's source preview of the `staff` dataset shows `monthly_salary`; hide pay columns in the preview. The mapped preview leaves them out while salaries aren't read from the source (ADR 0025); *Show columns* and the mapped preview with salaries on still show them.
   - [ ] Free text (descriptions, notes, item lists) can still carry pay whatever the rules say: say so in the user docs.
+  - [ ] Document which personal data Planlayer stores, in which table and column, and how: sealed (ADR 0029), plain but guarded by row-level security, or plain. For admins, data protection officers and works councils.
+  - [ ] Investigate protecting more personal data beyond pay: person name, title, entry and leave date, contract percentage, perhaps the employee number. Sealed like pay, or kept out of the app store where the plan doesn't need them; what each choice costs (search, sorting, the source sync's matching by number).
 - [ ] **W-16 Number prefix:** Planlayer's position numbers start with `N`; if a customer's HR numbers do too, make the prefix a setting.
 
 ### MCP access (after v1)
