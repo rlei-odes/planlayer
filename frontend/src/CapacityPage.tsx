@@ -760,6 +760,17 @@ export default function CapacityPage({
   )
 }
 
+/** The rate most of the cost center's lines of the activity type carry, when one leads; none on a
+ * tie, as with no lines. */
+function mostUsedRate(rows: CapacityRow[], activityType: string): string | null {
+  const counts = new Map<string, number>()
+  for (const r of rows)
+    if (r.kind === 'line' && r.activity_type_code === activityType && r.rate !== null)
+      counts.set(r.rate, (counts.get(r.rate) ?? 0) + 1)
+  const ranked = [...counts].sort((a, b) => b[1] - a[1])
+  return ranked.length > 0 && (ranked.length === 1 || ranked[0][1] > ranked[1][1]) ? ranked[0][0] : null
+}
+
 function AddLine({
   sheet,
   onCancel,
@@ -776,9 +787,18 @@ function AddLine({
   )
   const [code, setCode] = useState('')
   const [name, setName] = useState('')
-  const [activityType, setActivityType] = useState(sheet.activity_types[0]?.code ?? '')
-  const [rate, setRate] = useState('')
+  // The activity type most of the cost center's lines have, else the first.
+  const [activityType, setActivityType] = useState(() => {
+    const lines = sheet.rows.filter((r) => r.kind === 'line')
+    const count = (code: string) => lines.filter((r) => r.activity_type_code === code).length
+    const top = [...sheet.activity_types].sort((a, b) => count(b.code) - count(a.code))[0]
+    return top?.code ?? ''
+  })
+  // Until the user types a rate, a new work center gets the activity type's most used one.
+  const [typedRate, setRate] = useState<string | null>(null)
   const isNew = workCenter === NEW_WORK_CENTER
+  const suggested = isNew ? mostUsedRate(sheet.rows, activityType) : null
+  const rate = typedRate ?? (suggested === null ? '' : format(suggested))
   const rateValue = parse(rate)
   const valid = (isNew ? code.trim() && name.trim() : workCenter) && activityType && rateValue !== undefined && rateValue !== null
 
