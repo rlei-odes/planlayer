@@ -194,6 +194,44 @@ def test_item_lists_compute_and_mark_the_line(client: TestClient) -> None:
     assert other.status_code == 403
 
 
+def test_item_lists_keep_order_and_categories(client: TestClient) -> None:
+    login(client, OWNER)
+    lid = make_list(client)["list_id"]
+    items = [
+        {"name": "Loose", "unit_price": "5"},  # above the first heading: in no category
+        {"kind": "heading", "name": "ERP"},
+        {"name": "ERP licence", "quantity": "3", "unit_price": "100"},
+        {"kind": "heading", "name": "CAD"},
+        {"name": "CAD seat", "unit_price": "40"},
+    ]
+    saved = client.put(f"/api/item-lists/{lid}", json={"visibility": "private", "items": items})
+    assert saved.status_code == 200, saved.text
+    body = client.get(f"/api/item-lists/{lid}").json()
+    assert [(e["kind"], e["name"]) for e in body["entries"]] == [
+        ("item", "Loose"), ("heading", "ERP"), ("item", "ERP licence"), ("heading", "CAD"),
+        ("item", "CAD seat"),
+    ]  # fmt: skip
+    heading = body["entries"][1]
+    assert heading["unit_price"] is None and heading["amount"] is None
+    assert body["total"] == "345.00" and body["items"] == 3  # headings neither add nor count
+    marker = rows(client.get(f"{URL}/grid").json())["6000"]["item_list"]
+    assert marker["total"] == "345.00"
+    # The order is the one sent: reversed, it reads back reversed.
+    back = client.put(f"/api/item-lists/{lid}", json={"visibility": "private",
+                                                      "items": items[::-1]})  # fmt: skip
+    assert [e["name"] for e in back.json()["entries"]] == [i["name"] for i in items[::-1]]
+    # A heading takes a name only; an item needs a unit price.
+    for bad in (
+        {"kind": "heading", "name": "ERP", "unit_price": "1"},
+        {"kind": "heading", "name": "ERP", "comment": "x"},
+        {"kind": "heading", "name": " "},
+        {"name": "No price"},
+    ):
+        refused = client.put(f"/api/item-lists/{lid}",
+                             json={"visibility": "private", "items": [bad]})  # fmt: skip
+        assert refused.status_code == 422, bad
+
+
 def test_item_list_visibility(client: TestClient) -> None:
     login(client, OWNER)
     made = make_list(client)

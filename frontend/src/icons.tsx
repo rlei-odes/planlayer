@@ -159,6 +159,14 @@ export const RedoIcon = () => (
   </Icon>
 )
 
+// A handle to drag a row by (item lists).
+export const GripIcon = () => (
+  <Icon size={16}>
+    <path d="M5 8h10" />
+    <path d="M5 12h10" />
+  </Icon>
+)
+
 // The colour theme: as the system, light, dark (the top bar's toggle).
 export const ThemeSystemIcon = () => (
   <Icon size={16}>

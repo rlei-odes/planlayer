@@ -457,10 +457,11 @@ export type ItemChangeIn = {
 }
 
 export type ItemIO = {
+  kind?: "item" | "heading"
   name: string
   supplier?: string | null
   quantity?: string
-  unit_price: string
+  unit_price?: string | null
   amount?: string | null
   comment?: string | null
 }

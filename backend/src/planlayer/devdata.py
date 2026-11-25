@@ -969,11 +969,13 @@ ANNA, LUCA, CONTROLLER = (
 # planners, and Luca's of Valve Production, where she is deputy.
 ITEM_LISTS: tuple[
     tuple[str, str, str, item_lists.Visibility,
-          tuple[tuple[str, str | None, str, str, str | None], ...]], ...
-] = (
+          tuple[tuple[str, str | None, str, str | None, str | None], ...]], ...
+] = (  # name, supplier, quantity, unit price (None: a category heading), comment
     (ANNA, "DE1010", "6800", "cost_center", (
+        ("CAD / CAM", None, "1", None, None),
         ("CAM software, maintenance", "Hexagon", "4", "3450", "renewal in March"),
         ("CAD viewer licences", "Autodesk", "6", "420", None),
+        ("Shop floor", None, "1", None, None),
         ("Tool management system", "Zoller", "1", "5800", None),
         ("Machine monitoring, per machine", "Fanuc", "14", "390", "two machines added in May"),
         ("Tablets for shop floor terminals", "Bechtle", "6", "640", None),
@@ -1051,7 +1053,8 @@ def seed_item_lists(engine: Engine) -> int:
                 continue
             item_lists.create_list(
                 engine, who, cc, account, visibility,
-                [item_lists.ItemIn(name, price, qty, supplier, comment)
+                [item_lists.ItemIn(name, price, qty, supplier, comment,
+                                   "item" if price is not None else "heading")
                  for name, supplier, qty, price, comment in items],
             )  # fmt: skip
         except (LookupError, item_lists.ListError):  # not there, or a list hidden from the owner

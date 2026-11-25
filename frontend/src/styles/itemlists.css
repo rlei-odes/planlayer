@@ -42,6 +42,10 @@
   width: 30px;
 }
 
+.il-table col.il-grip-col {
+  width: 30px;
+}
+
 .il-table th {
   position: sticky;
   top: 0;
@@ -82,8 +86,90 @@
   font-weight: 600;
 }
 
-.il-add {
+/* Categories: a heading row with its items' subtotal; its items are set in a little. */
+.il-table tr.il-heading > td {
+  background: var(--canvas);
+  border-bottom-color: var(--line);
+}
+
+.il-table tr.il-heading input {
+  font-weight: 650;
+}
+
+.il-table tr.il-in-group > td:first-child input {
+  padding-left: 22px;
+}
+
+/* Moving rows: the handle at the row's end, the dragged rows dimmed where they are, and a
+   marker line with an arrow where they will go. */
+.il-grip-cell {
+  text-align: center;
+}
+
+.il-grip {
+  display: inline-flex;
+  padding: 4px 2px;
+  color: var(--ink-3);
+  cursor: grab;
+}
+
+.il-grip:hover {
+  color: var(--ink);
+}
+
+.il-grip:active {
+  cursor: grabbing;
+}
+
+.il-remove {
+  font-size: 15px;
+}
+
+.il-table tr.il-dragging > td {
+  opacity: 0.4;
+}
+
+.il-table tr.il-drop-before > td,
+.il-table tr.il-drop-after > td {
+  position: relative;
+}
+
+.il-table tr.il-drop-before > td {
+  box-shadow: inset 0 2px 0 var(--accent);
+}
+
+.il-table tr.il-drop-after > td {
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+.il-table tr.il-drop-before > td:first-child::before,
+.il-table tr.il-drop-after > td:first-child::before {
+  content: '';
+  position: absolute;
+  left: -14px;
+  border: 6px solid transparent;
+  border-left: 9px solid var(--accent);
+}
+
+.il-table tr.il-drop-before > td:first-child::before {
+  top: -5px;
+}
+
+.il-table tr.il-drop-after > td:first-child::before {
+  bottom: -5px;
+}
+
+.il-adds {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 16px;
   margin-top: 10px;
+}
+
+.il-keys {
+  margin-left: auto;
+  font-size: 11px;
 }
 
 .il-foot {

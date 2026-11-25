@@ -926,13 +926,21 @@ item = Table(
     Column("item_id", BigInteger, Identity(), primary_key=True),
     Column("list_id", BigInteger, ForeignKey("item_list.list_id"), nullable=False),
     Column("position", Integer, nullable=False),
+    # An item, or a category heading: a name only, grouping the items below it up to the next.
+    Column("kind", Text, nullable=False, server_default="item"),
     Column("name", Text, nullable=False),
     Column("supplier", Text),
     Column("quantity", Numeric(18, 4), nullable=False, server_default="1"),
-    Column("unit_price", Numeric(18, 2), nullable=False),
-    # quantity x unit price, rounded to the cent, computed by the database.
+    Column("unit_price", Numeric(18, 2)),
+    # quantity x unit price, rounded to the cent, computed by the database; NULL for a heading.
     Column("amount", Numeric(18, 2), Computed("round(quantity * unit_price, 2)", persisted=True)),
     Column("comment", Text),
+    CheckConstraint("kind IN ('item', 'heading')", name="kind"),
+    CheckConstraint(
+        "(kind = 'item' AND unit_price IS NOT NULL) OR (kind = 'heading' AND unit_price IS NULL "
+        "AND supplier IS NULL AND comment IS NULL AND quantity = 1)",
+        name="heading",
+    ),
 )
 
 annotation_log = Table(

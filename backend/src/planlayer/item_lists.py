@@ -6,6 +6,9 @@ everyone who may plan the cost center (``cost_center``), or everyone who may rea
 visibility the owner's to change. An item's amount is quantity x unit price, computed by the
 database; the list total is the sum of the amounts. The total reaches the plan only when someone
 applies it to the line, as a typed year total.
+
+Items are kept in the order sent. A category heading has a name only and groups the items below
+it, up to the next heading; items above the first heading belong to none.
 """
 
 import uuid
@@ -25,6 +28,7 @@ from planlayer.store.uow import unit_of_work
 
 Visibility = Literal["private", "cost_center", "public"]
 VISIBILITIES: tuple[Visibility, ...] = ("private", "cost_center", "public")
+Kind = Literal["item", "heading"]
 GUARD_SQLSTATE = "PL002"  # raised by the visibility trigger
 MAX_ITEMS = 2_000
 
@@ -36,10 +40,11 @@ class ListError(ValueError):
 @dataclass
 class ItemIn:
     name: str
-    unit_price: str
+    unit_price: str | None  # None for a heading
     quantity: str = "1"
     supplier: str | None = None
     comment: str | None = None
+    kind: Kind = "item"
 
 
 @dataclass
@@ -47,9 +52,10 @@ class Item:
     name: str
     supplier: str | None
     quantity: Decimal
-    unit_price: Decimal
-    amount: Decimal
+    unit_price: Decimal | None
+    amount: Decimal | None
     comment: str | None
+    kind: Kind
 
 
 @dataclass
@@ -93,21 +99,49 @@ def _decimal(value: str, what: str, places: int) -> Decimal:
 def _rows(items: list[ItemIn]) -> list[dict[str, object]]:
     if len(items) > MAX_ITEMS:
         raise ListError(f"a list has at most {MAX_ITEMS} items")
-    rows = []
+    rows: list[dict[str, object]] = []
     for position, it in enumerate(items, start=1):
         name = it.name.strip()
-        if not name:
-            raise ListError(f"item {position} needs a name")
-        rows.append(
-            {
-                "position": position,
-                "name": name,
-                "supplier": (it.supplier or "").strip() or None,
-                "quantity": _decimal(it.quantity or "1", "quantity", 4),
-                "unit_price": _decimal(it.unit_price, "unit price", 2),
-                "comment": (it.comment or "").strip() or None,
-            }
-        )
+        supplier = (it.supplier or "").strip() or None
+        price = (it.unit_price or "").strip()
+        comment = (it.comment or "").strip() or None
+        quantity = _decimal(it.quantity or "1", "quantity", 4)
+        match it.kind:
+            case "heading":
+                if not name:
+                    raise ListError(f"category {position} needs a name")
+                if price or supplier or comment or quantity != 1:
+                    raise ListError(f"category {name!r} takes a name only")
+                # Every column, as a multi-row insert takes its columns from the first row.
+                rows.append(
+                    {
+                        "position": position,
+                        "kind": "heading",
+                        "name": name,
+                        "supplier": None,
+                        "quantity": Decimal(1),
+                        "unit_price": None,
+                        "comment": None,
+                    }
+                )
+            case "item":
+                if not name:
+                    raise ListError(f"item {position} needs a name")
+                if not price:
+                    raise ListError(f"item {name!r} needs a unit price")
+                rows.append(
+                    {
+                        "position": position,
+                        "kind": "item",
+                        "name": name,
+                        "supplier": supplier,
+                        "quantity": quantity,
+                        "unit_price": _decimal(price, "unit price", 2),
+                        "comment": comment,
+                    }
+                )
+            case _:
+                raise ListError(f"unknown kind {it.kind}")
     return rows
 
 
@@ -157,7 +191,15 @@ def _summaries(conn: Connection, user: User, list_ids: list[int] | None) -> list
         .order_by(item.c.list_id, item.c.position)
     ):
         entries.setdefault(row.list_id, []).append(
-            Item(row.name, row.supplier, row.quantity, row.unit_price, row.amount, row.comment)
+            Item(
+                row.name,
+                row.supplier,
+                row.quantity,
+                row.unit_price,
+                row.amount,
+                row.comment,
+                row.kind,
+            )
         )
     plans = {c for c, w in cost_center_rights(conn, user).items() if w}
     out = []
@@ -174,8 +216,8 @@ def _summaries(conn: Connection, user: User, list_ids: list[int] | None) -> list
                 lst.owner_login,
                 lst.owner_name,
                 lst.visibility,
-                sum((i.amount for i in items), Decimal(0)),
-                len(items),
+                sum((i.amount for i in items if i.amount is not None), Decimal(0)),
+                sum(1 for i in items if i.kind == "item"),
                 lst.changed_at,
                 lst.changer_name,
                 mine,

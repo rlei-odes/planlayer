@@ -16,6 +16,7 @@ from planlayer.rounds import NotFoundError
 router = APIRouter(prefix="/api/item-lists")
 
 Visibility = Literal["private", "cost_center", "public"]
+Kind = Literal["item", "heading"]
 HANDLED = (AccessError, NotFoundError, item_lists.ListError)
 
 
@@ -31,10 +32,12 @@ def _http(e: Exception) -> HTTPException:
 
 
 class ItemIO(BaseModel):
+    # A category heading has a name only and groups the items below it, up to the next heading.
+    kind: Kind = "item"
     name: Annotated[str, Field(max_length=300)]
     supplier: Annotated[str | None, Field(max_length=300)] = None
     quantity: Number = "1"
-    unit_price: Number
+    unit_price: Number | None = None  # required for an item, none for a heading
     amount: Number | None = None  # computed by the server; ignored on input
     comment: Annotated[str | None, Field(max_length=2000)] = None
 
@@ -96,11 +99,12 @@ def _full(s: item_lists.ItemList) -> ItemListOut:
         **_summary(s).model_dump(),
         entries=[
             ItemIO(
+                kind=i.kind,
                 name=i.name,
                 supplier=i.supplier,
                 quantity=f"{i.quantity.normalize():f}",
-                unit_price=f"{i.unit_price:.2f}",
-                amount=f"{i.amount:.2f}",
+                unit_price=None if i.unit_price is None else f"{i.unit_price:.2f}",
+                amount=None if i.amount is None else f"{i.amount:.2f}",
                 comment=i.comment,
             )
             for i in s.entries
@@ -110,7 +114,8 @@ def _full(s: item_lists.ItemList) -> ItemListOut:
 
 def _items(items: list[ItemIO]) -> list[item_lists.ItemIn]:
     return [
-        item_lists.ItemIn(i.name, i.unit_price, i.quantity, i.supplier, i.comment) for i in items
+        item_lists.ItemIn(i.name, i.unit_price, i.quantity, i.supplier, i.comment, i.kind)
+        for i in items
     ]
 
 

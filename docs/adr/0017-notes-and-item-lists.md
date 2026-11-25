@@ -35,6 +35,8 @@ Planners explain why a value is what it is, leave to-dos for each other, and kee
 
 - An **item list** belongs to a cost center × leaf account, outside rounds, so it is kept up to date during the year and is ready when the next round opens. A line has at most one list. Lists are for the cost center sheet only.
 - **Items:** name, supplier, quantity (default 1), unit price, comment. The amount is quantity × unit price, rounded to the cent, computed by the database. The total is the sum of the amounts. The simple case is a name and a unit price.
+- **Order:** items stay in the order they were saved in. In the editor a row moves by the handle at its end (the rows stay where they are while dragging; a marker shows where it will go) or with Alt+↑/↓.
+- **Categories:** a category is a heading row with a name only. It groups the items below it up to the next category and shows their subtotal; items above the first category belong to none, so lists without categories stay as they are. A category moves with its items, and only before another category or to the end, so it never splits a group; removing it leaves its items to the group above. *+ Category* adds one at the end, Ctrl+Enter starts one at the current row. Categories are optional and add nothing to the total or the item count.
 - **Visibility,** set by the list's owner:
   - *private:* the owner only;
   - *cost center:* everyone who may plan the cost center, now and later, sees and edits it;
@@ -71,6 +73,7 @@ Threads, notes, gridnotes, lists and items are logged by a trigger into `annotat
 - New pages: *My notes* and *My item lists* in the Plan group. The sheets get a notes panel and an item list overlay.
 - The notes show in one of two displays of the same content: a **panel** beside the sheet, which keeps the line in view (the sheets), or a **dialog** in the middle of the page, over a list (investments). In the dialog, Escape closes from an empty field too, as nothing typed is lost.
 - Migration 0028: `note_thread.capex_item_id` (module `capex`), and the investments' former comments as their threads.
+- Migration 0002 (after the 0.5.0 baseline): `item.kind` (`item` or `heading`), `unit_price` nullable; a check keeps a heading to a name only and an item to a unit price.
 - Open:
   - notes on groups and nodes;
   - e-mail notifications;
