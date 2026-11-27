@@ -120,3 +120,12 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - run: docker build -t planlayer:ci .
+      # The demo as a user starts it: the test warehouse, the migrations and seed-demo in the
+      # init container, then the app. A seed that fails stops init, and the app never starts.
+      - name: The demo starts from the image
+        env:
+          PLANLAYER_IMAGE: planlayer:ci
+        run: |
+          docker compose -f deploy/demo/compose.yaml up -d --wait app
+          docker compose -f deploy/demo/compose.yaml logs init | tail -15
+          curl -sf localhost:8000/api/health
