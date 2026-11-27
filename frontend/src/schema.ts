@@ -18,7 +18,7 @@ export type AccountSetIO = {
 }
 
 export type ActionIn = {
-  action: "submit" | "approve" | "reject" | "reopen"
+  action: "submit" | "recall" | "approve" | "reject" | "reopen"
   cost_centers?: string[] | null
   node?: string | null
   comment?: string | null
@@ -426,6 +426,8 @@ export type GridOut = {
   actuals_through: string | null
   closed_months: number
   batch_id?: string | null
+  returned?: ReturnedOut | null
+  can_recall?: boolean
 }
 
 export type GridRowIO = {
@@ -760,6 +762,7 @@ export type MyCostCenterOut = {
   status: "not_started" | "in_progress" | "submitted" | "approved"
   overdue: boolean
   sheets: ("capacity" | "workforce" | "personnel" | "planning")[]
+  returned?: ReturnedOut | null
 }
 
 export type MyNotesOut = {
@@ -1257,6 +1260,13 @@ export type ResponsibilityOut = {
   approvers: string[]
 }
 
+export type ReturnedOut = {
+  how: "rejected" | "reopened"
+  by: string
+  at: string
+  comment: string
+}
+
 export type RoundIn = {
   code: string
   name: string
@@ -1271,6 +1281,7 @@ export type RoundIn = {
 
 export type RoundStatusIn = {
   status: "setup" | "open" | "closed"
+  unapproved_ok?: boolean
 }
 
 export type RoundWorkOut = {
@@ -1524,7 +1535,7 @@ export type StatusRowOut = {
   changed_at: string | null
   changed_by: string | null
   overdue: boolean
-  actions: ("submit" | "approve" | "reject" | "reopen")[]
+  actions: ("submit" | "recall" | "approve" | "reject" | "reopen")[]
 }
 
 export type StatusSumsOut = {

@@ -215,6 +215,12 @@
   min-width: 0;
 }
 
+.hm-state {
+  display: inline-flex;
+  gap: 6px;
+  justify-self: end;
+}
+
 .hm-cc-name {
   font-weight: 550;
 }

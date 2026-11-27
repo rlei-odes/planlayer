@@ -135,6 +135,13 @@ class RowOut(BaseModel):
     item_list: ListMarkerOut | None = None  # the line's item list the user can see
 
 
+class ReturnedOut(BaseModel):
+    how: Literal["rejected", "reopened"]
+    by: str
+    at: datetime
+    comment: str
+
+
 class GridOut(BaseModel):
     version_code: str
     version_name: str
@@ -156,6 +163,9 @@ class GridOut(BaseModel):
     closed_months: int
     # The change batch a save or an undo wrote, for undo (E-05); null on a plain read.
     batch_id: str | None = None
+    # Back with the planner after a reject or a reopen, until the next submit.
+    returned: ReturnedOut | None = None
+    can_recall: bool = False  # the user may take the submission back (recall)
 
 
 class EditIn(BaseModel):
@@ -199,6 +209,8 @@ class ActionIn(BaseModel):
 
 class RoundStatusIn(BaseModel):
     status: RoundStatus
+    # Closing with cost centers not approved: the controller confirmed it (409 without).
+    unapproved_ok: bool = False
 
 
 class EnableIn(BaseModel):
@@ -262,6 +274,15 @@ def _grid_out(grid: planning.Grid, batch_id: str | None = None) -> GridOut:
         grain=grid.grain,
         actuals_through=grid.actuals_through,
         closed_months=grid.closed_months,
+        returned=None
+        if grid.returned is None
+        else ReturnedOut(
+            how=grid.returned.how,
+            by=grid.returned.by,
+            at=grid.returned.at,
+            comment=grid.returned.comment,
+        ),
+        can_recall=grid.can_recall,
         comparisons=[
             ComparisonOut(
                 kind=c.kind,
@@ -345,13 +366,17 @@ def versions(request: Request, user: CurrentUser) -> list[Version]:
     return [version_out(r) for r in rounds.rounds(_engine(request))]
 
 
-@router.post("/versions/{version_code}/status", responses={404: {}, 422: {}})
+@router.post("/versions/{version_code}/status", responses={404: {}, 409: {}, 422: {}})
 def round_status(
     request: Request, user: CurrentUser, version_code: str, body: RoundStatusIn
 ) -> Version:
     engine = _engine(request)
     try:
-        rounds.set_round_status(engine, user, version_code, body.status)
+        rounds.set_round_status(
+            engine, user, version_code, body.status, unapproved_ok=body.unapproved_ok
+        )
+    except rounds.UnapprovedError as e:
+        raise HTTPException(409, str(e)) from None
     except HANDLED as e:
         raise _errors(e) from None
     with engine.connect() as conn:

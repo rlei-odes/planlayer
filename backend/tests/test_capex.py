@@ -300,7 +300,12 @@ def test_a_closed_round_takes_no_investments(on: TestClient) -> None:
     login(on, OWNER)
     item = _add(on, name="Lathe", cost_center="CC1", amount="1000")
     login(on, CONTROLLER)
-    assert on.post(f"/api/versions/{R}/status", json={"status": "closed"}).status_code == 200
+    assert (
+        on.post(
+            f"/api/versions/{R}/status", json={"status": "closed", "unapproved_ok": True}
+        ).status_code
+        == 200
+    )
     assert on.get(BASE).json()["lock_reason"] == "the round is closed"
     assert _change(on, item["item_id"], amount="5").status_code == 422
     login(on, APPROVER)

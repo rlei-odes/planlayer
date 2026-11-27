@@ -14,6 +14,7 @@ from planlayer.rounds.core import Grain as Grain
 from planlayer.rounds.core import NotFoundError as NotFoundError
 from planlayer.rounds.core import RoundError as RoundError
 from planlayer.rounds.core import RoundRef as RoundRef
+from planlayer.rounds.core import UnapprovedError as UnapprovedError
 from planlayer.rounds.core import account_scopes as account_scopes
 from planlayer.rounds.core import closed_periods as closed_periods
 from planlayer.rounds.core import fiscal_periods as fiscal_periods

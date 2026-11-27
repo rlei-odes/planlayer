@@ -115,6 +115,7 @@ function spreadWord(row: Row): string {
   }
 }
 
+const RETURNED_AT = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
 const MONTH_YEAR = new Intl.DateTimeFormat('en', { month: 'long', year: 'numeric', timeZone: 'UTC' })
 
 /** A comparison column's tooltip: the controller's note, and for actuals how far they go. */
@@ -435,6 +436,18 @@ export default function PlanningPage({
     }
   }
 
+  async function recall() {
+    if (!grid) return
+    try {
+      await api.act(version, { action: 'recall', cost_centers: [grid.cost_center_code] })
+      setMessage({ kind: 'ok', text: `${grid.cost_center_code} is back with you: change it and submit again.` })
+      load()
+      loadUnits()
+    } catch (e) {
+      showError(e)
+    }
+  }
+
   async function chooseSpread(code: string, key: string) {
     if (!grid) return
     const chosen = spreadOf(key)
@@ -601,10 +614,26 @@ export default function PlanningPage({
                 Submit for approval
               </button>
             )}
+            {grid?.can_recall && (
+              <button
+                type="button"
+                className="su-btn"
+                title="Take the submission back while it isn't approved"
+                onClick={() => void recall()}
+              >
+                Recall
+              </button>
+            )}
           </>
         }
       />
 
+      {grid?.returned && (
+        <div className="su-note warn pl-note">
+          <strong>{grid.returned.how === 'rejected' ? 'Rejected' : 'Reopened'}</strong> by {grid.returned.by},{' '}
+          {RETURNED_AT.format(new Date(grid.returned.at))}: “{grid.returned.comment}”
+        </div>
+      )}
       {grid?.lock_reason && (
         <div className="su-note pl-note">
           <strong>Read only:</strong> {grid.lock_reason}.

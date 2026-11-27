@@ -127,6 +127,16 @@ export class ConflictError extends Error {
   }
 }
 
+/** A refusal with its HTTP status, for pages that answer one status differently (409: confirm). */
+export class HttpError extends Error {
+  status: number
+
+  constructor(status: number, message: string) {
+    super(message)
+    this.status = status
+  }
+}
+
 async function json<T>(response: Response): Promise<T> {
   if (response.status === 401) {
     window.dispatchEvent(new Event('planlayer:unauthorized'))
@@ -134,7 +144,7 @@ async function json<T>(response: Response): Promise<T> {
   }
   if (!response.ok) {
     const body = await response.json().catch(() => ({}))
-    throw new Error(body.detail ?? `${response.status} ${response.statusText}`)
+    throw new HttpError(response.status, body.detail ?? `${response.status} ${response.statusText}`)
   }
   return response.json() as Promise<T>
 }
@@ -265,8 +275,9 @@ export const api = {
   deleteMember: (d: MemberDataset, code: string) =>
     send('DELETE', `/api/members/${d}/${encodeURIComponent(code)}`).then((res) => json<null>(res)),
   versions: () => fetch('/api/versions').then((r) => json<Version[]>(r)),
-  setRoundStatus: (version: string, status: RoundStatus) =>
-    post(`${v(version)}/status`, { status }).then((r) => json<Version>(r)),
+  /** Closing with cost centers not approved answers 409 until ``unapprovedOk``. */
+  setRoundStatus: (version: string, status: RoundStatus, unapprovedOk = false) =>
+    post(`${v(version)}/status`, { status, unapproved_ok: unapprovedOk }).then((r) => json<Version>(r)),
   capacityUnits: (version: string) => fetch(`${v(version)}/capacity`).then((r) => json<CapacityUnit[]>(r)),
   capacitySheet: (version: string, code: string) => fetch(cap(version, code)).then((r) => json<CapacitySheet>(r)),
   async capacityEdit(version: string, code: string, edits: HoursEdit[]): Promise<CapacitySheet> {

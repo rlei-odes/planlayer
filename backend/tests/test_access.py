@@ -163,7 +163,10 @@ def test_user_without_rights_sees_nothing(client: TestClient) -> None:
 def test_controller_plans_every_cost_center(client: TestClient) -> None:
     assert units(client) == [("CC1", True), ("CC2", True)]
     assert edit(client, "CC2") == 200
-    assert client.post(f"{V}/status", json={"status": "closed"}).status_code == 200
+    assert (
+        client.post(f"{V}/status", json={"status": "closed", "unapproved_ok": True}).status_code
+        == 200
+    )
     login(client, OWNER)
     assert client.post(f"{V}/status", json={"status": "open"}).status_code == 403
 

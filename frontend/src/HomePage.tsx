@@ -385,8 +385,15 @@ function RoundCard({
                   <span className="pl-code">{c.code}</span>
                   <span className="hm-cc-name">{c.name}</span>
                 </span>
-                <span className={`su-pill ${c.overdue ? 'overdue' : c.status}`}>
-                  {c.overdue ? 'Overdue' : STATUS_LABEL[c.status]}
+                <span className="hm-state">
+                  <span className={`su-pill ${c.overdue ? 'overdue' : c.status}`}>
+                    {c.overdue ? 'Overdue' : STATUS_LABEL[c.status]}
+                  </span>
+                  {c.returned && (
+                    <span className="su-pill overdue-soft" title={`${c.returned.by}: “${c.returned.comment}”`}>
+                      {c.returned.how === 'rejected' ? 'Rejected' : 'Reopened'}
+                    </span>
+                  )}
                 </span>
                 <span className="hm-sheets">
                   {c.sheets.map((s) => {

@@ -237,13 +237,13 @@ Mid-size manufacturer of industrial pumps and valves, ~400 employees.
     - [x] A new round copies line spreads and sheet accounts from the round it is set up like (the checklist's *Sheets* item, ADR 0014).
 - [ ] **E-06** Top-down spreading from totals (proportional / equal / profile) and spread profiles. Open from D-28: in a node × months spread by reference, a leaf without reference values (e.g. a cost center that didn't exist last year) receives 0; decide whether that needs a warning or a per-leaf fallback.
 - [ ] **E-07** Workflow: submit → approve → lock per version × cost center, with database-enforced locks, and the status page rolled up by department and hierarchy node (T-20). The controller's publish action (T-21).
-    - [ ] Closing a round with cost centers not approved: list them and ask for confirmation, or refuse until every planned cost center is approved.
+    - [x] Closing a round with cost centers not approved: the Status page lists them and asks for confirmation; the API refuses with 409 until it is given ([ADR 0035](docs/adr/0035-workflow-recall-returned.md)).
     - [ ] "Changed since approval": forwarding charges and personnel totals are recalculated whatever the status; mark an approved cost center whose values moved since, with the difference, on the Status page and the sheet; optionally the approver acknowledges it.
-    - [ ] *Recall*: the planner takes a submission back (submitted → in progress) while it isn't approved.
-    - [ ] "Returned": a rejected cost center shows the rejection and its comment on the sheet and on the planner's Home until the next submit.
+    - [x] *Recall*: the planner (owner or deputy) takes a submission back (submitted → in progress) while it isn't approved, from the sheet or the Status page (ADR 0035).
+    - [x] "Returned": a rejected or reopened cost center shows who sent it back, when and the comment on the sheet, and a tag on the planner's Home, until the next submit (ADR 0035).
     - [ ] HR's review state on the Status page and next to *Approve*, so the approver sees it before trying.
     - [ ] Transfers still proposed when a round closes: cancel them with a reason, or refuse closing while any wait.
-    - [ ] Back to setup: an open round returns to `setup` while every cost center is still *not started*.
+    - [x] Back to setup: an open round returns to `setup` while every cost center is still *not started*, checked over the whole round (ADR 0035).
     - [ ] Small groups on the Status page; decide whether they also block approval.
     - [ ] Item lists in a closed round: decide whether they become read only (notes stay writable).
 - [ ] **E-08** Change log and cell comments. Built: the change log ([ADR 0005](docs/adr/0005-request-context-rls-audit.md)); cell comments replaced by line notes (N-1).

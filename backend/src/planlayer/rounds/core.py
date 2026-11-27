@@ -39,8 +39,9 @@ from planlayer.store.schema import (
     planning_round,
     round_member,
     version,
+    workflow_status,
 )
-from planlayer.store.uow import unit_of_work
+from planlayer.store.uow import system_rights, unit_of_work
 
 ComparisonKind = Literal["prior_year_actuals", "actuals", "version", "projection"]
 
@@ -235,11 +236,24 @@ def not_open(status: str) -> str:
     return f"the planning round is {status}"
 
 
-def set_round_status(engine: Engine, actor: User, code: str, status: RoundStatus) -> None:
+def set_round_status(
+    engine: Engine, actor: User, code: str, status: RoundStatus, *, unapproved_ok: bool = False
+) -> None:
+    """Open, close or reopen a round, or take an open one back to setup. Closing with cost
+    centers not approved needs ``unapproved_ok``; back to setup only while none has started."""
     actor.require_controller()
     with unit_of_work(engine, actor) as conn:
         r = get_round(conn, code, lock="update")
         round_transition(r.status, status)
+        # Round-wide questions: every cost center, whatever the controller's own rights reach.
+        if (r.status, status) == ("open", "setup"):
+            with system_rights(conn, actor=actor.login):
+                started = _codes(conn, r.version_id, workflow_status.c.status != "not_started")
+            if started:
+                raise RoundError(
+                    f"{len(started)} cost center(s) are already being planned "
+                    f"({_listed(started)}); a round goes back to setup only before anyone starts"
+                )
         if status == "closed":
             # No total over fewer people than the minimum stays in a closed round (ADR 0022).
             # Imported here: personnel costs build on rounds.
@@ -251,11 +265,56 @@ def set_round_status(engine: Engine, actor: User, code: str, status: RoundStatus
                     f"{len(small)} cost center(s) have personnel costs of fewer people than the "
                     "minimum; HR charges them to other cost centers first"
                 )
+            if not unapproved_ok:
+                with system_rights(conn, actor=actor.login):
+                    enabled = set(
+                        conn.execute(
+                            select(member.c.code)
+                            .join(round_member, round_member.c.member_id == member.c.member_id)
+                            .where(
+                                round_member.c.version_id == r.version_id,
+                                round_member.c.module == MODULE_COST_CENTER,
+                                round_member.c.enabled.is_(True),
+                            )
+                        ).scalars()
+                    )
+                    approved = set(
+                        _codes(conn, r.version_id, workflow_status.c.status == "approved")
+                    )
+                open_ones = sorted(enabled - approved)
+                if open_ones:
+                    raise UnapprovedError(open_ones)
         conn.execute(
             update(planning_round)
             .where(planning_round.c.version_id == r.version_id)
             .values(status=status)
         )
+
+
+class UnapprovedError(RoundError):
+    """Closing a round with cost centers not approved, without saying so is intended."""
+
+    def __init__(self, codes: list[str]) -> None:
+        self.codes = codes
+        super().__init__(
+            f"{len(codes)} cost center(s) aren't approved ({_listed(codes)}); close anyway to "
+            "end the round with them as they are"
+        )
+
+
+def _codes(conn: Connection, version_id: int, condition: object) -> list[str]:
+    return list(
+        conn.execute(
+            select(member.c.code)
+            .join(workflow_status, workflow_status.c.cost_center_id == member.c.member_id)
+            .where(workflow_status.c.version_id == version_id, condition)  # type: ignore[arg-type]
+            .order_by(member.c.code)
+        ).scalars()
+    )
+
+
+def _listed(codes: list[str], most: int = 5) -> str:
+    return ", ".join(codes[:most]) + (f" and {len(codes) - most} more" if len(codes) > most else "")
 
 
 def set_deadline(engine: Engine, actor: User, code: str, deadline: date | None) -> None:

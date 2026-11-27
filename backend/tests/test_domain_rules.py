@@ -18,6 +18,7 @@ from planlayer.domain.workflow import (
 def test_transitions() -> None:
     assert transition("not_started", "submit", None) == "submitted"
     assert transition("submitted", "approve", None) == "approved"
+    assert transition("submitted", "recall", None) == "in_progress"
     assert transition("submitted", "reject", "why") == "in_progress"
     assert transition("approved", "reopen", "why") == "in_progress"
     with pytest.raises(WorkflowError, match="needs a comment"):
@@ -32,6 +33,10 @@ def test_who_may_act() -> None:
         return refusal(action, **{**args, **kw})  # type: ignore[arg-type]
 
     assert why("submit", can_write=True) is None
+    assert why("recall", plans_it=True) is None
+    assert why("recall", can_write=True, controller=True) == (
+        "only who plans the cost center may recall it"
+    )
     assert why("submit") == "you don't plan this cost center"
     assert why("approve", approves=True) is None
     assert why("approve", controller=True) is None
@@ -44,8 +49,11 @@ def test_who_may_act() -> None:
 
 def test_round_transitions_and_overdue() -> None:
     assert round_transition("closed", "open") == "open"
+    assert round_transition("open", "setup") == "setup"  # while no cost center has started
     with pytest.raises(WorkflowError):
-        round_transition("open", "setup")
+        round_transition("setup", "closed")
+    with pytest.raises(WorkflowError):
+        round_transition("closed", "setup")
     assert is_overdue("in_progress", date(2026, 1, 31), date(2026, 2, 1))
     assert not is_overdue("submitted", date(2026, 1, 31), date(2026, 2, 1))
     assert not is_overdue("not_started", date(2026, 1, 31), date(2026, 1, 31))

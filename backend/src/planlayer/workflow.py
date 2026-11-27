@@ -36,6 +36,7 @@ from planlayer.store.schema import (
     COST_CENTER,
     H_COST_CENTER,
     MODULE_COST_CENTER,
+    app_user,
     closure,
     hier_edge,
     member,
@@ -62,6 +63,17 @@ class StatusRow:
     changed_by: str | None = None
     overdue: bool = False
     actions: list[Action] = field(default_factory=list)  # what this user may do now
+
+
+@dataclass
+class Returned:
+    """A cost center sent back to its planner with a comment: rejected, or reopened after its
+    approval. Shown until the next submit."""
+
+    how: Literal["rejected", "reopened"]
+    by: str  # display name
+    at: datetime
+    comment: str
 
 
 @dataclass
@@ -108,6 +120,33 @@ def status_of(conn: Connection, version_id: int, cc_id: int) -> Status:
         )
     ).scalar()
     return cast(Status, found or "not_started")
+
+
+def returned(conn: Connection, version_id: int, cc_id: int, status: Status) -> Returned | None:
+    """Why an in-progress cost center is with its planner again, if a reject or a reopen sent it
+    back: the latest workflow event, as long as nothing was submitted since."""
+    if status != "in_progress":
+        return None
+    e = workflow_event
+    last = conn.execute(
+        select(e.c.from_status, e.c.to_status, e.c.comment, e.c.at, e.c.actor)
+        .where(e.c.version_id == version_id, e.c.cost_center_id == cc_id)
+        .order_by(e.c.id.desc())
+        .limit(1)
+    ).first()
+    if last is None or last.to_status != "in_progress" or not last.comment:
+        return None
+    if last.from_status not in ("submitted", "approved"):
+        return None
+    name = conn.execute(
+        select(app_user.c.display_name).where(app_user.c.login == last.actor)
+    ).scalar()
+    return Returned(
+        "rejected" if last.from_status == "submitted" else "reopened",
+        name or last.actor or "",
+        last.at,
+        last.comment,
+    )
 
 
 def _refusal(
@@ -225,6 +264,9 @@ def act(
     nothing; returns the codes."""
     if (cost_centers is None) == (node is None):
         raise WorkflowError("name either cost centers or a node")
+    if action == "recall":
+        comment = None  # a recall says nothing to anyone: only a reject or reopen returns
+
     with unit_of_work(engine, actor) as conn:
         r = get_round(conn, code, lock="share")
         if r.status != "open":

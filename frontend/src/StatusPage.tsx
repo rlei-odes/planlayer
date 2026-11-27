@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { api, STATUS_LABEL, type Action, type ActionRequest, type Me, type Overview, type Status, type StatusRow } from './api'
+import { api, HttpError, STATUS_LABEL, type Action, type ActionRequest, type Me, type Overview, type Status, type StatusRow } from './api'
 import PageHeader from './PageHeader'
 import Tile from './Tile'
 import { LIMIT } from './limits'
@@ -14,8 +14,20 @@ type Note = { kind: 'ok' | 'error'; text: string }
 
 const STATUSES: Status[] = ['not_started', 'in_progress', 'submitted', 'approved']
 const NEEDS_COMMENT: Action[] = ['reject', 'reopen']
-const ACTION_LABEL: Record<Action, string> = { submit: 'Submit', approve: 'Approve', reject: 'Reject', reopen: 'Reopen' }
-const PAST: Record<Action, string> = { submit: 'Submitted', approve: 'Approved', reject: 'Rejected', reopen: 'Reopened' }
+const ACTION_LABEL: Record<Action, string> = {
+  submit: 'Submit',
+  recall: 'Recall',
+  approve: 'Approve',
+  reject: 'Reject',
+  reopen: 'Reopen',
+}
+const PAST: Record<Action, string> = {
+  submit: 'Submitted',
+  recall: 'Recalled',
+  approve: 'Approved',
+  reject: 'Rejected',
+  reopen: 'Reopened',
+}
 const WHEN = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
 
 /** Whole days from today to the deadline (YYYY-MM-DD); negative once it has passed. */
@@ -71,6 +83,7 @@ export default function StatusPage({
   const [comment, setComment] = useState('')
   const [note, setNote] = useState<Note | null>(null)
   const [today] = useState(() => new Date())
+  const [closing, setClosing] = useState<string | null>(null)
 
   const load = useCallback(() => {
     api.overview(version).then(setOverview, (e: unknown) => setNote({ kind: 'error', text: errorText(e) }))
@@ -109,11 +122,24 @@ export default function StatusPage({
 
   if (!overview) return note ? <div className="su-note error">{note.text}</div> : null
   const round = overview.round
-  const setRound = (status: 'open' | 'closed') =>
-    guard(async () => {
-      await api.setRoundStatus(version, status)
+  const ROUND_DONE = {
+    open: 'Round opened: planners can enter values.',
+    closed: 'Round closed: no edits anywhere.',
+    setup: 'Round back in setup: planners can’t enter values until it opens again.',
+  }
+  async function setRound(status: 'open' | 'closed' | 'setup', unapprovedOk = false) {
+    try {
+      await api.setRoundStatus(version, status, unapprovedOk)
+      setClosing(null)
+      setNote({ kind: 'ok', text: ROUND_DONE[status] })
       onRoundChanged()
-    }, status === 'open' ? 'Round opened: planners can enter values.' : 'Round closed: no edits anywhere.')
+      load()
+    } catch (e) {
+      // Cost centers not approved: the server lists them, the controller confirms.
+      if (e instanceof HttpError && e.status === 409) setClosing(e.message)
+      else setNote({ kind: 'error', text: errorText(e) })
+    }
+  }
 
   const centers = overview.rows.filter((r) => r.kind === 'cost_center')
   const count = (s: Status) => centers.filter((r) => r.status === s).length
@@ -153,6 +179,16 @@ export default function StatusPage({
                 {round.status === 'closed' ? 'Reopen round' : 'Open round'}
               </button>
             )}
+            {me.is_controller && round.status === 'open' && counts.all > 0 && counts.not_started === counts.all && (
+              <button
+                type="button"
+                className="su-btn ghost"
+                title="Nobody has started yet: take the round back to setup"
+                onClick={() => void setRound('setup')}
+              >
+                Back to setup
+              </button>
+            )}
             {me.is_controller && round.status === 'open' && (
               <button type="button" className="su-btn" onClick={() => void setRound('closed')}>
                 Close round
@@ -189,6 +225,18 @@ export default function StatusPage({
       </div>
 
       {note && <div className={`su-note ${note.kind} st-gap`}>{note.text}</div>}
+      {closing && (
+        <div className="su-card st-comment">
+          <strong>Close the round?</strong>
+          <span className="st-confirm-text">{closing.replace(/; close anyway.*$/, '.')}</span>
+          <button type="button" className="su-btn ghost" onClick={() => setClosing(null)}>
+            Cancel
+          </button>
+          <button type="button" className="su-btn primary" onClick={() => void setRound('closed', true)}>
+            Close anyway
+          </button>
+        </div>
+      )}
       {pending && (
         <form
           className="su-card st-comment"

@@ -101,3 +101,8 @@
 .st-hint {
   margin: 0 0 10px;
 }
+
+.st-confirm-text {
+  flex: 1;
+  color: var(--ink-2);
+}

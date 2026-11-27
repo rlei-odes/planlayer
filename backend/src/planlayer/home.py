@@ -30,7 +30,7 @@ from planlayer.personnel.rights import listed, released
 from planlayer.rounds import RoundRef, rounds
 from planlayer.store.schema import member, pay_handover, workflow_status, workforce_position
 from planlayer.store.uow import unit_of_work
-from planlayer.workflow import enabled_members
+from planlayer.workflow import Returned, enabled_members, returned
 from planlayer.workforce import mode_of
 
 Sheet = Literal["capacity", "workforce", "personnel", "planning"]
@@ -43,6 +43,7 @@ class MyCostCenter:
     status: Status
     overdue: bool
     sheets: list[Sheet]  # in the usual order of work
+    returned: Returned | None = None  # rejected or reopened, until the next submit
 
 
 @dataclass
@@ -149,6 +150,10 @@ def my_work(engine: Engine, user: User, today: date) -> list[RoundWork]:
             from planlayer.capex.items import waiting_for
 
             confirm = waiting_for(conn, user, r.version_id)
+            sent_back = {
+                cc: returned(conn, r.version_id, cc, statuses.get(cc, "not_started"))
+                for cc in shown
+            }
 
         work = RoundWork(
             r,
@@ -177,6 +182,7 @@ def my_work(engine: Engine, user: User, today: date) -> list[RoundWork]:
                     status,
                     is_overdue(status, r.deadline, today),
                     sheets,
+                    sent_back.get(cc),
                 )
             )
         work.to_approve = sum(

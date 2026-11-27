@@ -8,7 +8,7 @@ from pydantic import BaseModel
 
 from planlayer import home, notes, workforce
 from planlayer.api.auth import CurrentUser, engine_of
-from planlayer.api.planning import Version, version_out
+from planlayer.api.planning import ReturnedOut, Version, version_out
 from planlayer.api.workforce import TransferOut, transfer_out
 from planlayer.domain.workflow import Status
 
@@ -21,6 +21,7 @@ class MyCostCenterOut(BaseModel):
     status: Status
     overdue: bool
     sheets: list[Literal["capacity", "workforce", "personnel", "planning"]]
+    returned: ReturnedOut | None = None  # rejected or reopened, until the next submit
 
 
 class RoundWorkOut(BaseModel):
@@ -72,6 +73,14 @@ def start(request: Request, user: CurrentUser) -> HomeOut:
                         status=c.status,
                         overdue=c.overdue,
                         sheets=c.sheets,
+                        returned=None
+                        if c.returned is None
+                        else ReturnedOut(
+                            how=c.returned.how,
+                            by=c.returned.by,
+                            at=c.returned.at,
+                            comment=c.returned.comment,
+                        ),
                     )
                     for c in w.cost_centers
                 ],

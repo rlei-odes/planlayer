@@ -127,7 +127,7 @@ def test_a_round_in_setup_is_prepared_by_controllers(engine: Engine, client: Tes
 
 def test_lock_trigger_refuses_writes_past_the_api(engine: Engine, client: TestClient) -> None:
     raw_insert(engine)  # open round, cost center not started: allowed
-    rounds.set_round_status(engine, system(engine), R, "closed")
+    rounds.set_round_status(engine, system(engine), R, "closed", unapproved_ok=True)
     with pytest.raises(DBAPIError, match="the planning round is closed"):
         raw_insert(engine, account="6010")
     rounds.set_round_status(engine, system(engine), R, "open")
@@ -140,16 +140,15 @@ def test_lock_trigger_refuses_writes_past_the_api(engine: Engine, client: TestCl
 
 
 def test_round_status_transitions(engine: Engine, client: TestClient) -> None:
+    closing = {"status": "closed", "unapproved_ok": True}
+    assert client.post(f"/api/versions/{R}/status", json=closing).json()["status"] == "closed"
     assert client.post(f"/api/versions/{R}/status", json={"status": "setup"}).status_code == 422
-    assert client.post(f"/api/versions/{R}/status", json={"status": "closed"}).json()["status"] == (
-        "closed"
-    )
     assert post(client, month("6000", 0, "1")).status_code == 423  # type: ignore[attr-defined]
     assert client.post(f"/api/versions/{R}/status", json={"status": "open"}).status_code == 200
 
 
 def test_actuals_sync_is_not_locked(engine: Engine, migrated: Settings, source_schema: str) -> None:
-    rounds.set_round_status(engine, system(engine), R, "closed")
+    rounds.set_round_status(engine, system(engine), R, "closed", unapproved_ok=True)
     assert run_sync(migrated, source_schema).actual_rows == 16
 
 
@@ -467,3 +466,61 @@ def test_round_wide_work_sees_every_cost_center(engine: Engine, client: TestClie
         ).scalar_one()
     admin.dispose()
     assert copied > 0
+
+
+def test_a_planner_recalls_a_submission(client: TestClient) -> None:
+    log_in(client, OWNER)
+    post(client, month("6000", 0, "5"))
+    act(client, "submit")
+    assert client.get(f"{URL}/grid").json()["can_recall"] is True
+    log_in(client, CONTROLLER)
+    assert client.get(f"{URL}/grid").json()["can_recall"] is False  # a controller rejects
+    assert act(client, "recall").status_code == 403  # type: ignore[attr-defined]
+    log_in(client, OWNER)
+    assert act(client, "recall", "oops").json() == ["CC1"]  # type: ignore[attr-defined]
+    grid = client.get(f"{URL}/grid").json()
+    assert (grid["status"], grid["lock_reason"], grid["can_recall"]) == ("in_progress", None, False)
+    assert grid["returned"] is None  # a recall sends nothing back: no comment kept
+    assert act(client, "recall").status_code == 422  # type: ignore[attr-defined]
+
+
+def test_a_rejection_shows_until_the_next_submit(client: TestClient) -> None:
+    post(client, month("6000", 0, "5"))
+    act(client, "submit")
+    act(client, "reject", "too high")
+    log_in(client, OWNER)
+    returned = client.get(f"{URL}/grid").json()["returned"]
+    assert (returned["how"], returned["comment"]) == ("rejected", "too high")
+    [work] = client.get("/api/home").json()["rounds"]
+    assert work["cost_centers"][0]["returned"]["comment"] == "too high"
+    post(client, month("6000", 1, "6"))  # editing keeps it in view
+    assert client.get(f"{URL}/grid").json()["returned"] is not None
+    act(client, "submit")
+    assert client.get(f"{URL}/grid").json()["returned"] is None
+    log_in(client, CONTROLLER)
+    act(client, "approve")
+    act(client, "reopen", "restated")
+    assert client.get(f"{URL}/grid").json()["returned"]["how"] == "reopened"
+
+
+def test_closing_with_cost_centers_not_approved_asks_first(client: TestClient) -> None:
+    refused = client.post(f"/api/versions/{R}/status", json={"status": "closed"})
+    assert refused.status_code == 409 and "CC1, CC2" in refused.text
+    act(client, "submit", cost_centers=["CC1", "CC2"])
+    act(client, "approve", cost_centers=["CC1", "CC2"])
+    closed = client.post(f"/api/versions/{R}/status", json={"status": "closed"})
+    assert closed.status_code == 200, closed.text
+
+
+def test_back_to_setup_before_anyone_starts(engine: Engine, client: TestClient) -> None:
+    setup = {"status": "setup"}
+    assert client.post(f"/api/versions/{R}/status", json=setup).json()["status"] == "setup"
+    assert client.post(f"/api/versions/{R}/status", json={"status": "open"}).status_code == 200
+    log_in(client, OWNER)
+    post(client, month("6000", 0, "5"))
+    log_in(client, CONTROLLER)
+    refused = client.post(f"/api/versions/{R}/status", json=setup)
+    assert refused.status_code == 422 and "CC1" in refused.text
+    # Round-wide: a controller whose own rights reach no cost center is refused all the same.
+    with pytest.raises(rounds.RoundError, match="already being planned"):
+        rounds.set_round_status(engine, limited_controller(engine), R, "setup")

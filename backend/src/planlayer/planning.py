@@ -28,7 +28,7 @@ from sqlalchemy import Connection, Engine, and_, delete, func, select, tuple_
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import DBAPIError
 
-from planlayer.access import User, cost_center_rights
+from planlayer.access import User, cost_center_rights, plans
 from planlayer.domain.entry_forms import Basis, EntryForm, Form, resolve, weights
 from planlayer.domain.periods import closed_months, quarter_months
 from planlayer.domain.projection import project
@@ -89,7 +89,7 @@ from planlayer.store.schema import (
 )
 from planlayer.store.uow import system_rights, unit_of_work
 from planlayer.sync import ACTUALS_CODE
-from planlayer.workflow import enabled_members, status_of
+from planlayer.workflow import Returned, enabled_members, returned, status_of
 
 __all__ = ["NotFoundError"]
 
@@ -177,6 +177,9 @@ class Grid:
     # A forecast's closed months (ADR 0015): the first ``closed_months`` plan cells hold actuals.
     actuals_through: date | None = None
     closed_months: int = 0
+    # Back with the planner after a reject or a reopen, until the next submit.
+    returned: Returned | None = None
+    can_recall: bool = False  # the user may take the submission back
 
 
 @dataclass
@@ -601,6 +604,12 @@ def read_grid(engine: Engine, user: User, version_code: str, cc_code: str) -> Gr
         forwarded = _forwarded(conn, ctx.version_id)
         note_marks = note_markers(conn, user, ctx.round, "cost_center", ctx.cost_center_id)
         list_marks = list_markers(conn, ctx.cost_center_id)
+        sent_back = returned(conn, ctx.version_id, ctx.cost_center_id, ctx.status)
+        recall = (
+            ctx.round.status == "open"
+            and ctx.status == "submitted"
+            and ctx.cost_center_id in plans(conn, user, [ctx.cost_center_id])
+        )
 
     r = ctx.round
     grid = Grid(
@@ -619,6 +628,8 @@ def read_grid(engine: Engine, user: User, version_code: str, cc_code: str) -> Gr
         grain=r.grain,
         actuals_through=r.actuals_through,
         closed_months=ctx.closed,
+        returned=sent_back,
+        can_recall=recall,
     )
     editable = ctx.lock_reason is None
     blank: list[Decimal | None] = [None] * MONTHS
