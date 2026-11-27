@@ -207,6 +207,19 @@ export default function CapexPage({
             {saving && <span className="pg-saving"> · Saving…</span>}
           </>
         }
+        actions={
+          view.on &&
+          view.items.length > 0 && (
+            <a
+              className="su-btn"
+              href={`/api/rounds/${encodeURIComponent(version)}/capex/export.xlsx`}
+              download
+              title="The investments you see, with their cash out, as an Excel workbook"
+            >
+              Export
+            </a>
+          )
+        }
         tabs={
           view.on && (
             <div className="seg" role="tablist" aria-label="Investments">

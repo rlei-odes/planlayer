@@ -517,3 +517,43 @@ def test_capex_stays_on_while_any_cost_center_has_investments(
                 capex.switch(conn, r, limited, None)
     finally:
         engine.dispose()
+
+
+def test_the_export_lists_what_the_user_sees(on: TestClient) -> None:
+    import io
+
+    import openpyxl
+
+    login(on, OWNER)
+    hall = _add(on, name="New hall", cost_center="CC1", type="MACH", amount="250000", priority=1)
+    project_id = on.post(f"{BASE}/items/{hall['item_id']}/project").json()["created"][0]
+    _add(on, project_id=project_id, name="=Crane", amount="50000", start_month="2026-02-01")
+    laptop = _add(on, name="Laptop", cost_center="CC1", type="IT", amount="200")
+    plan = [{"period": "2026-03-01", "amount": "150"}, {"period": "2027-01-01", "amount": "50"}]
+    on.put(f"{BASE}/items/{laptop['item_id']}/cash-out", json={"periods": plan})
+    response = on.get(f"{BASE}/export.xlsx")
+    assert response.status_code == 200
+    assert response.headers["content-disposition"].endswith('"investments-B2026.xlsx"')
+    book = openpyxl.load_workbook(io.BytesIO(response.content))
+    assert book.sheetnames == ["Investments", "Cash out"]
+    rows = list(book["Investments"].iter_rows(values_only=True))
+    assert rows[0][:3] == ("Name", "Kind", "Cost center")
+    names = [(r[0], r[1]) for r in rows[1:-1]]
+    assert names == [
+        ("New hall", "Large project"),
+        ("New hall", "Project line"),
+        ("=Crane", "Project line"),  # text stays text, never a formula
+        ("Laptop", "Investment"),
+    ]
+    assert rows[2][4] == "Machinery" and rows[4][4] == "IT hardware"
+    # The total counts the project and the single investment, not the lines again.
+    assert rows[-1][0] == "Total" and rows[-1][7] == 300200
+    cash = list(book["Cash out"].iter_rows(values_only=True))
+    assert cash[0][-4:] == ("Dec 2026", "FY 2027", "Total", "Amount")
+    assert cash[1][0] == "Laptop" and cash[1][4] == 150
+    assert cash[1][-3:] == (50, 200, 200)  # next year, total, amount
+    assert cash[-1][0] == "Total" and cash[-1][-2] == 200
+    # Another planner sees none of CC1's investments, in the file as on the page.
+    login(on, NOBODY)
+    other = openpyxl.load_workbook(io.BytesIO(on.get(f"{BASE}/export.xlsx").content))
+    assert [r[0] for r in other["Investments"].iter_rows(values_only=True)] == ["Name", "Total"]

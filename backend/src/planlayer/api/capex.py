@@ -7,7 +7,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
 from planlayer import capex
@@ -23,6 +23,7 @@ from planlayer.api.planning import (
     version_out,
 )
 from planlayer.capex import CapexError
+from planlayer.capex import files as capex_files
 from planlayer.capex.items import CapexView
 from planlayer.capex.overview import Sums
 from planlayer.sheet import ConflictError, EditError, parse_amount
@@ -276,6 +277,21 @@ def capex_list(request: Request, user: CurrentUser, code: str) -> CapexOut:
         return _view(request, user, code)
     except CAUGHT as e:
         raise _http(e) from None
+
+
+@router.get("/rounds/{code}/capex/export.xlsx", responses=ERRORS)
+def capex_export(request: Request, user: CurrentUser, code: str) -> Response:
+    """The round's investments the user sees as an Excel workbook: the list, with large projects
+    and their lines, then the cash-out schedules."""
+    try:
+        view = capex.view_of(engine_of(request), user, code)
+    except CAUGHT as e:
+        raise _http(e) from None
+    return Response(
+        capex_files.workbook(view),
+        media_type=capex_files.MEDIA,
+        headers={"Content-Disposition": f'attachment; filename="investments-{code}.xlsx"'},
+    )
 
 
 @router.post("/rounds/{code}/capex/changes", responses=ERRORS)

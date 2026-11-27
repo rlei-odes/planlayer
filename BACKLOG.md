@@ -360,7 +360,7 @@ German terms in parentheses, as controllers know them.
   - [ ] Undo on the investments list (changes are in `capex_log` with the change batch).
   - [ ] Attachments on an investment (quotes, business cases).
   - [ ] A reason per investment (replacement, expansion, legal requirement) and a payback or business case field, for prioritising.
-  - [ ] Download of the list (CSV, Excel).
+  - [x] Download of the list: *Export* on the Investments page, an Excel workbook of the investments the user sees (large projects with their lines) and a sheet of their cash out.
 
 ### Workforce planning
 

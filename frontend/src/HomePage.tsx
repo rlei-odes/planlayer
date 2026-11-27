@@ -390,7 +390,7 @@ function RoundCard({
                     {c.overdue ? 'Overdue' : STATUS_LABEL[c.status]}
                   </span>
                   {c.returned && (
-                    <span className="su-pill overdue-soft" title={`${c.returned.by}: “${c.returned.comment}”`}>
+                    <span className="su-pill overdue" title={`${c.returned.by}: “${c.returned.comment}”`}>
                       {c.returned.how === 'rejected' ? 'Rejected' : 'Reopened'}
                     </span>
                   )}
