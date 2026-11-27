@@ -66,6 +66,11 @@ export type BuildUpOut = {
   moving_out: number[]
 }
 
+export type CandidateOut = {
+  login: string
+  name: string
+}
+
 export type CapacityRowOut = {
   kind: "group" | "line" | "credit"
   activity_type_code: string
@@ -516,6 +521,9 @@ export type ItemListOut = {
   changed_by: string
   mine: boolean
   can_edit: boolean
+  unplaced?: "cost_center_gone" | "account_gone" | "account_group" | "cost_center_not_planned" | "account_not_planned" | "outside_account_set" | null
+  owner_disabled?: boolean
+  can_take_over?: boolean
   entries: ItemIO[]
 }
 
@@ -628,6 +636,9 @@ export type ListSummaryOut = {
   changed_by: string
   mine: boolean
   can_edit: boolean
+  unplaced?: "cost_center_gone" | "account_gone" | "account_group" | "cost_center_not_planned" | "account_not_planned" | "outside_account_set" | null
+  owner_disabled?: boolean
+  can_take_over?: boolean
 }
 
 export type LoginIn = {
@@ -750,10 +761,6 @@ export type MemberOut = {
   variable_account_code: string | null
   missing_since?: string | null
   external?: boolean | null
-}
-
-export type MoveIn = {
-  project_id: number | null
 }
 
 export type MyCostCenterOut = {
@@ -890,10 +897,6 @@ export type OverviewOut = {
   round: Version
   rows: StatusRowOut[]
   not_planned: NotPlannedOut[]
-}
-
-export type OwnerIn = {
-  login: string | null
 }
 
 export type PasswordLoginIn = {
@@ -1808,4 +1811,21 @@ export type YearOut = {
 export type YearsIO = {
   first: number
   last: number
+}
+
+export type planlayer__api__access__OwnerIn = {
+  login: string | null
+}
+
+export type planlayer__api__capex__MoveIn = {
+  project_id: number | null
+}
+
+export type planlayer__api__item_lists__MoveIn = {
+  cost_center: string
+  account: string
+}
+
+export type planlayer__api__item_lists__OwnerIn = {
+  login: string
 }

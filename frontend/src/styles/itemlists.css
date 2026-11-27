@@ -258,3 +258,19 @@
   margin: 0;
   padding: 0;
 }
+
+/* A list's line not planned in the current round, a disabled owner. */
+.il-unplaced {
+  margin-left: 8px;
+}
+
+.il-place-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 16px;
+}
+
+.il-nowrap {
+  white-space: nowrap;
+}

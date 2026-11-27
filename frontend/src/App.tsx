@@ -94,7 +94,7 @@ const THEME_TITLE: Record<ThemeChoice, string> = {
   light: 'Light theme',
   dark: 'Dark theme',
 }
-const ROUND_PAGES: Page[] = ['capacity', 'workforce', 'personnel', 'planning', 'capex', 'status', 'log', 'setup', 'forwarding', 'publish']
+const ROUND_PAGES: Page[] = ['capacity', 'workforce', 'personnel', 'planning', 'capex', 'status', 'log', 'lists', 'setup', 'forwarding', 'publish']
 
 function groupsFor(me: Me): { label: string; pages: Page[] }[] {
   const round: Page[] = me.is_controller ? ['setup', 'forwarding', 'publish', 'responsibilities'] : []
@@ -316,7 +316,8 @@ export default function App() {
   const roleText = roles.join(', ')
   const contact = me.email ?? me.login
   const subtitle = roleText && roleText !== me.display_name ? roleText : contact !== me.display_name ? contact : ''
-  const needsRound = !!current && ROUND_PAGES.includes(current) && current !== 'setup'
+  // Item lists live outside rounds: the round only says which lines it plans.
+  const needsRound = !!current && ROUND_PAGES.includes(current) && current !== 'setup' && current !== 'lists'
 
   return (
     <div className={`sh${collapsed ? ' collapsed' : ''}`}>
@@ -505,7 +506,7 @@ export default function App() {
           {current === 'home' && (
             <HomePage me={me} onOpenThread={openThread} onOpenSheet={openSheet} onGo={openRoundPage} onChanged={setTasks} />
           )}
-          {current === 'lists' && <ItemListsPage />}
+          {current === 'lists' && <ItemListsPage version={version || null} round={round} />}
           {current === 'setup' && <SetupPage rounds={versions} code={version} onRoundsChanged={loadVersions} />}
           {version && current === 'forwarding' && <ForwardingPage key={version} version={version} />}
           {round && current === 'publish' && <PublishPage key={round.code} round={round} />}

@@ -426,7 +426,9 @@ export const api = {
     ),
   myNotes: () => fetch('/api/notes/mine').then((r) => json<MyNotes>(r)),
   // Item lists (ADR 0017).
-  itemLists: () => fetch('/api/item-lists').then((r) => json<ListSummary[]>(r)),
+  /** Every list the user can see; with a round, whether each one's line is planned there. */
+  itemLists: (round?: string) =>
+    fetch(`/api/item-lists${round ? `?${new URLSearchParams({ round })}` : ''}`).then((r) => json<ListSummary[]>(r)),
   itemList: (id: number) => fetch(`/api/item-lists/${id}`).then((r) => json<ItemList>(r)),
   lineList: (costCenter: string, account: string) =>
     fetch(`/api/item-lists/line?${new URLSearchParams({ cost_center: costCenter, account })}`).then((r) =>
@@ -437,6 +439,10 @@ export const api = {
   saveList: (id: number, visibility: Visibility, items: ItemRow[]) =>
     send('PUT', `/api/item-lists/${id}`, { visibility, items }).then((r) => json<ItemList>(r)),
   deleteList: (id: number) => send('DELETE', `/api/item-lists/${id}`).then((r) => json<null>(r)),
+  moveList: (id: number, costCenter: string, account: string) =>
+    post(`/api/item-lists/${id}/move`, { cost_center: costCenter, account }).then((r) => json<ItemList>(r)),
+  listOwners: (id: number) => fetch(`/api/item-lists/${id}/owners`).then((r) => json<{ login: string; name: string }[]>(r)),
+  takeOverList: (id: number, login: string) => post(`/api/item-lists/${id}/owner`, { login }).then((r) => json<null>(r)),
 }
 
 export const STATUS_LABEL: Record<Status, string> = {

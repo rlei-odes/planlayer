@@ -5,7 +5,7 @@ server computes them."""
 from datetime import datetime
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
 
 from planlayer import item_list_files, item_lists
@@ -57,8 +57,12 @@ class ListSummaryOut(BaseModel):
     items: int
     changed_at: datetime
     changed_by: str
-    mine: bool  # owned by the user: they change visibility and delete it
+    mine: bool  # owned by the user: they change visibility, move and delete it
     can_edit: bool
+    # Against the round asked for: why the list's line isn't planned there; null: it is.
+    unplaced: item_lists.Unplaced | None = None
+    owner_disabled: bool = False
+    can_take_over: bool = False  # a controller, and the owner is disabled
 
 
 class ItemListOut(ListSummaryOut):
@@ -93,6 +97,9 @@ def _summary(s: item_lists.ItemList) -> ListSummaryOut:
         changed_by=s.changed_by,
         mine=s.mine,
         can_edit=s.can_edit,
+        unplaced=s.unplaced,
+        owner_disabled=s.owner_disabled,
+        can_take_over=s.can_take_over,
     )
 
 
@@ -121,10 +128,19 @@ def _items(items: list[ItemIO]) -> list[item_lists.ItemIn]:
     ]
 
 
-@router.get("")
-def lists(request: Request, user: CurrentUser) -> list[ListSummaryOut]:
-    """Every list the user can see, most recently changed first."""
-    return [_summary(s) for s in item_lists.lists(engine_of(request), user)]
+@router.get("", responses={404: {}})
+def lists(
+    request: Request,
+    user: CurrentUser,
+    round_code: Annotated[str | None, Query(alias="round", max_length=100)] = None,
+) -> list[ListSummaryOut]:
+    """Every list the user can see, most recently changed first; with a round, whether each
+    one's line is planned there."""
+    try:
+        found = item_lists.lists(engine_of(request), user, round_code)
+    except HANDLED as e:
+        raise _http(e) from None
+    return [_summary(s) for s in found]
 
 
 @router.get("/line", responses={404: {}})
@@ -190,5 +206,50 @@ def save_list(request: Request, user: CurrentUser, list_id: int, body: SaveListI
 def delete_list(request: Request, user: CurrentUser, list_id: int) -> None:
     try:
         item_lists.delete_list(engine_of(request), user, list_id)
+    except HANDLED as e:
+        raise _http(e) from None
+
+
+class MoveIn(BaseModel):
+    cost_center: Code
+    account: Code
+
+
+class OwnerIn(BaseModel):
+    login: Code
+
+
+class CandidateOut(BaseModel):
+    login: str
+    name: str
+
+
+@router.post("/{list_id}/move", responses={403: {}, 404: {}, 422: {}})
+def move_list(request: Request, user: CurrentUser, list_id: int, body: MoveIn) -> ItemListOut:
+    """Its owner moves the list to another line of a cost center they plan."""
+    engine = engine_of(request)
+    try:
+        item_lists.move_list(engine, user, list_id, body.cost_center, body.account)
+        return _full(item_lists.get_list(engine, user, list_id))
+    except HANDLED as e:
+        raise _http(e) from None
+
+
+@router.get("/{list_id}/owners", responses={403: {}, 404: {}, 422: {}})
+def owner_candidates(request: Request, user: CurrentUser, list_id: int) -> list[CandidateOut]:
+    """Who a controller may make the new owner of a disabled user's list."""
+    try:
+        found = item_lists.owner_candidates(engine_of(request), user, list_id)
+    except HANDLED as e:
+        raise _http(e) from None
+    return [CandidateOut(login=c.login, name=c.name) for c in found]
+
+
+@router.post("/{list_id}/owner", responses={403: {}, 404: {}})
+def take_over(request: Request, user: CurrentUser, list_id: int, body: OwnerIn) -> None:
+    """A controller hands a disabled user's list to themself or to someone who plans its
+    cost center."""
+    try:
+        item_lists.take_over(engine_of(request), user, list_id, body.login)
     except HANDLED as e:
         raise _http(e) from None

@@ -9,10 +9,14 @@ applies it to the line, as a typed year total.
 
 Items are kept in the order sent. A category heading has a name only and groups the items below
 it, up to the next heading; items above the first heading belong to none.
+
+Its owner moves a list to another line of a cost center they plan; a controller takes over a list
+whose owner is disabled (ADR 0036). Against a round, a list's line may not be planned: its cost
+center or account isn't planned there, or isn't delivered any more. The list stays as it is.
 """
 
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from typing import Literal
@@ -21,15 +25,35 @@ from sqlalchemy import Connection, Engine, delete, func, insert, select, update
 from sqlalchemy.exc import DBAPIError, IntegrityError
 
 from planlayer.access import AccessError, User, cost_center_rights
-from planlayer.rounds import NotFoundError
+from planlayer.rounds import NotFoundError, RoundRef, account_scopes, get_round
 from planlayer.sheet import fits
-from planlayer.store.schema import ACCOUNT, COST_CENTER, app_user, item, item_list, member
-from planlayer.store.uow import unit_of_work
+from planlayer.store.schema import (
+    ACCOUNT,
+    COST_CENTER,
+    MODULE_COST_CENTER,
+    app_user,
+    cost_center_access,
+    item,
+    item_list,
+    member,
+    not_planned_account,
+    round_member,
+)
+from planlayer.store.uow import system_rights, unit_of_work
 
 Visibility = Literal["private", "cost_center", "public"]
 VISIBILITIES: tuple[Visibility, ...] = ("private", "cost_center", "public")
 Kind = Literal["item", "heading"]
-GUARD_SQLSTATE = "PL002"  # raised by the visibility trigger
+GUARD_SQLSTATE = "PL002"  # raised by the list's guard trigger
+# Why a list's line isn't planned in a round.
+Unplaced = Literal[
+    "cost_center_gone",  # the source no longer delivers the cost center
+    "account_gone",
+    "account_group",  # the account has become a group
+    "cost_center_not_planned",
+    "account_not_planned",
+    "outside_account_set",
+]
 MAX_ITEMS = 2_000
 
 
@@ -72,13 +96,16 @@ class ListSummary:
     items: int
     changed_at: datetime
     changed_by: str
-    mine: bool  # the user owns it: changes visibility, deletes it
+    mine: bool  # the user owns it: changes visibility, moves it, deletes it
     can_edit: bool
+    unplaced: Unplaced | None = None  # against the round asked for; None: planned there
+    owner_disabled: bool = False
+    can_take_over: bool = False  # a controller, and the owner is disabled
 
 
 @dataclass
 class ItemList(ListSummary):
-    entries: list[Item]
+    entries: list[Item] = field(default_factory=list)
 
 
 def _decimal(value: str, what: str, places: int) -> Decimal:
@@ -156,8 +183,53 @@ def _leaf(conn: Connection, dim: int, code: str, what: str) -> int:
     return int(found)
 
 
-def _summaries(conn: Connection, user: User, list_ids: list[int] | None) -> list[ItemList]:
-    """Visible lists (all, or the given ones) with their items, newest change first."""
+def _unplaced(conn: Connection, r: RoundRef, lists: list[object]) -> dict[int, Unplaced]:
+    """Why each list's line isn't planned in the round, for those it isn't."""
+    rows = [lst._mapping for lst in lists]  # type: ignore[attr-defined]
+    enabled = set(
+        conn.execute(
+            select(round_member.c.member_id).where(
+                round_member.c.version_id == r.version_id,
+                round_member.c.module == MODULE_COST_CENTER,
+                round_member.c.enabled.is_(True),
+            )
+        ).scalars()
+    )
+    not_planned = set(
+        conn.execute(
+            select(not_planned_account.c.account_id).where(
+                not_planned_account.c.version_id == r.version_id,
+                not_planned_account.c.module == MODULE_COST_CENTER,
+            )
+        ).scalars()
+    )
+    sets = account_scopes(conn, r.version_id, {row["cost_center_id"] for row in rows})
+    out: dict[int, Unplaced] = {}
+    for row in rows:
+        cc, acc = row["cost_center_id"], row["account_id"]
+        reason: Unplaced | None = None
+        if row["cc_gone"] is not None:
+            reason = "cost_center_gone"
+        elif row["acc_gone"] is not None:
+            reason = "account_gone"
+        elif row["acc_group"]:
+            reason = "account_group"
+        elif cc not in enabled:
+            reason = "cost_center_not_planned"
+        elif acc in not_planned:
+            reason = "account_not_planned"
+        elif (scope := sets.get(cc)) is not None and acc not in scope:
+            reason = "outside_account_set"
+        if reason is not None:
+            out[row["list_id"]] = reason
+    return out
+
+
+def _summaries(
+    conn: Connection, user: User, list_ids: list[int] | None, r: RoundRef | None = None
+) -> list[ItemList]:
+    """Visible lists (all, or the given ones) with their items, newest change first; with a
+    round, whether each list's line is planned there."""
     cc, acc, owner, changer = (
         member.alias("cc"),
         member.alias("acc"),
@@ -173,7 +245,11 @@ def _summaries(conn: Connection, user: User, list_ids: list[int] | None) -> list
             acc.c.name.label("acc_name"),
             owner.c.login.label("owner_login"),
             owner.c.display_name.label("owner_name"),
+            owner.c.disabled.label("owner_disabled"),
             changer.c.display_name.label("changer_name"),
+            cc.c.missing_since.label("cc_gone"),
+            acc.c.missing_since.label("acc_gone"),
+            acc.c.is_group.label("acc_group"),
         )
         .join(cc, cc.c.member_id == item_list.c.cost_center_id)
         .join(acc, acc.c.member_id == item_list.c.account_id)
@@ -202,6 +278,7 @@ def _summaries(conn: Connection, user: User, list_ids: list[int] | None) -> list
             )
         )
     plans = {c for c, w in cost_center_rights(conn, user).items() if w}
+    unplaced = _unplaced(conn, r, list(lists)) if r is not None else {}
     out = []
     for lst in lists:
         mine = lst.owner_id == user.user_id
@@ -222,16 +299,20 @@ def _summaries(conn: Connection, user: User, list_ids: list[int] | None) -> list
                 lst.changer_name,
                 mine,
                 mine or (lst.visibility != "private" and lst.cost_center_id in plans),
-                items,
+                entries=items,
+                unplaced=unplaced.get(lst.list_id),
+                owner_disabled=lst.owner_disabled,
+                can_take_over=user.is_controller and lst.owner_disabled,
             )
         )
     return out
 
 
-def lists(engine: Engine, user: User) -> list[ItemList]:
-    """Every list the user can see."""
+def lists(engine: Engine, user: User, round_code: str | None = None) -> list[ItemList]:
+    """Every list the user can see; with a round, whether each one's line is planned there."""
     with unit_of_work(engine, user) as conn:
-        return _summaries(conn, user, None)
+        r = get_round(conn, round_code) if round_code is not None else None
+        return _summaries(conn, user, None, r)
 
 
 def get_list(engine: Engine, user: User, list_id: int) -> ItemList:
@@ -360,3 +441,113 @@ def delete_list(engine: Engine, user: User, list_id: int) -> None:
         if lst.owner_id != user.user_id:
             raise AccessError("only the list's owner deletes it")
         conn.execute(delete(item_list).where(item_list.c.list_id == list_id))
+
+
+def _guarded(e: DBAPIError) -> AccessError | None:
+    if getattr(e.orig, "sqlstate", None) == GUARD_SQLSTATE:
+        return AccessError(str(e.orig).splitlines()[0])
+    return None
+
+
+def move_list(engine: Engine, user: User, list_id: int, cc_code: str, account_code: str) -> None:
+    """Its owner moves a list to another line of a cost center they plan; the line must have no
+    list yet. Items, visibility and owner stay; the plan values of both lines stay as they are."""
+    try:
+        with unit_of_work(engine, user, uuid.uuid4().hex) as conn:
+            lst = conn.execute(
+                select(item_list.c.owner_id).where(item_list.c.list_id == list_id)
+            ).first()
+            if lst is None:
+                raise NotFoundError(f"item list {list_id} not found")
+            if lst.owner_id != user.user_id:
+                raise AccessError("only the list's owner moves it")
+            cc = _leaf(conn, COST_CENTER, cc_code, "cost center")
+            acc = _leaf(conn, ACCOUNT, account_code, "account")
+            if not cost_center_rights(conn, user).get(cc, False):
+                raise AccessError("a list moves only to a cost center you plan")
+            conn.execute(
+                update(item_list)
+                .where(item_list.c.list_id == list_id)
+                .values(
+                    cost_center_id=cc,
+                    account_id=acc,
+                    changed_by=user.user_id,
+                    changed_at=func.now(),
+                )
+            )
+    except IntegrityError as e:
+        if "uq_item_list" in str(e.orig):
+            raise ListError(
+                f"{cc_code} / {account_code} has an item list already, maybe one kept private "
+                "by its owner"
+            ) from None
+        raise
+    except DBAPIError as e:
+        guarded = _guarded(e)
+        if guarded is None:
+            raise
+        raise guarded from None
+
+
+@dataclass
+class Candidate:
+    login: str
+    name: str
+
+
+def owner_candidates(engine: Engine, user: User, list_id: int) -> list[Candidate]:
+    """Who a controller may make the new owner of a disabled user's list: themself, or an active
+    user who plans its cost center."""
+    user.require_controller()
+    with unit_of_work(engine, user) as conn:
+        lst = conn.execute(
+            select(item_list.c.cost_center_id, app_user.c.disabled)
+            .join(app_user, app_user.c.user_id == item_list.c.owner_id)
+            .where(item_list.c.list_id == list_id)
+        ).first()
+        if lst is None:
+            raise NotFoundError(f"item list {list_id} not found")
+        if not lst.disabled:
+            raise ListError("its owner is active: only the owner hands a list on")
+        # Every user's rights on the cost center: a question across users.
+        with system_rights(conn, actor=user.login):
+            found = conn.execute(
+                select(app_user.c.login, app_user.c.display_name)
+                .join(cost_center_access, cost_center_access.c.user_id == app_user.c.user_id)
+                .where(
+                    cost_center_access.c.cost_center_id == lst.cost_center_id,
+                    cost_center_access.c.can_write.is_(True),
+                    app_user.c.disabled.is_(False),
+                    app_user.c.is_system.is_(False),
+                )
+                .distinct()
+            ).all()
+    people = {login: name for login, name in found}
+    people[user.login] = user.display_name
+    return sorted((Candidate(k, v) for k, v in people.items()), key=lambda c: c.name.lower())
+
+
+def take_over(engine: Engine, user: User, list_id: int, login: str) -> None:
+    """A controller makes themself, or someone who plans the list's cost center, the owner of a
+    disabled user's list. The database refuses anything else."""
+    user.require_controller()
+    try:
+        with unit_of_work(engine, user, uuid.uuid4().hex) as conn:
+            new_owner = conn.execute(
+                select(app_user.c.user_id).where(app_user.c.login == login)
+            ).scalar()
+            if new_owner is None:
+                raise NotFoundError(f"user {login} not found")
+            changed = conn.execute(
+                update(item_list)
+                .where(item_list.c.list_id == list_id)
+                .values(owner_id=new_owner, changed_by=user.user_id, changed_at=func.now())
+                .returning(item_list.c.list_id)
+            ).first()
+            if changed is None:
+                raise NotFoundError(f"item list {list_id} not found")
+    except DBAPIError as e:
+        guarded = _guarded(e)
+        if guarded is None:
+            raise
+        raise guarded from None
