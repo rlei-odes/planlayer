@@ -79,7 +79,7 @@ def _investments(ws: Worksheet, view: CapexView) -> None:
     for item in view.items:
         _put(ws, row, 1, item.name)
         if item.project_id is not None:
-            ws.cell(row, 1).alignment = Alignment(indent=2)
+            ws.cell(row, 1).alignment = Alignment(horizontal="left", indent=2)
         if item.kind == "project":
             ws.cell(row, 1).font = BOLD
         _put(ws, row, 2, _kind(item))
