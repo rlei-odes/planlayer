@@ -22,7 +22,7 @@ import CapacityWorkforce from './CapacityWorkforce'
 import NotesPanel from './NotesPanel'
 import PageHeader from './PageHeader'
 import Select, { type Option } from './Select'
-import { byColumn, isClosed, monthsOf, periodColumns, quarterly, span, type Layout } from './periods'
+import { byColumn, isClosed, monthsOf, periodColumns, projectionText, quarterly, span, type Layout } from './periods'
 import { pickUnit } from './units'
 import { LIMIT } from './limits'
 
@@ -82,7 +82,11 @@ function cellKind(row: CapacityRow | undefined, prop: string, layout: Layout, nC
 function comparisonTitle(c: CapacitySheet['comparisons'][number]): string | undefined {
   const actuals = c.kind === 'prior_year_actuals' || c.kind === 'actuals'
   const coverage =
-    actuals && c.partial && c.actuals_until ? `Actuals up to ${MONTH_YEAR.format(new Date(c.actuals_until))}.` : null
+    c.kind === 'projection'
+      ? projectionText(c.actuals_until)
+      : actuals && c.partial && c.actuals_until
+        ? `Actuals up to ${MONTH_YEAR.format(new Date(c.actuals_until))}.`
+        : null
   return [c.note, 'Hours; amounts on the credit rows.', coverage].filter(Boolean).join(' · ')
 }
 
@@ -273,7 +277,9 @@ export default function CapacityPage({
         cellTemplate: (h: HyperFunc<VNode>, { rowIndex }: { rowIndex: number }) =>
           lineCell(h as unknown as H, sheet?.rows[rowIndex], profiles, layout.quarters),
       },
-      ...(sheet?.comparisons ?? []).map((c, i) => column(comparisonProp(i), c.label, 112, 'pl-head-cmp', comparisonTitle(c))),
+      ...(sheet?.comparisons ?? []).map((c, i) =>
+        column(comparisonProp(i), c.label, c.kind === 'projection' ? 132 : 112, 'pl-head-cmp', comparisonTitle(c)),
+      ),
       column(COL_RATE, 'Rate / h', 96),
       column(COL_FY, `${forecast ? 'Forecast' : 'Plan'} ${sheet?.fiscal_year ?? ''}`, 124, 'pl-head-plan', yearTitle),
       ...periodColumns(periods, layout).map((c) =>

@@ -1,5 +1,6 @@
 import type { MemberRow, Version } from './api'
 import Select from './Select'
+import { closedCount, monthName } from './periods'
 import type { ComparisonColumn, Profile, Rule } from './setupTypes'
 import { type DraftProps, formOptions, formsFor, type Level, PROFILE_FORMS, REFERENCE_FORMS, accountOptions } from './setupShared'
 
@@ -152,19 +153,59 @@ export function EntryForms({
   )
 }
 
+/** The same months a year earlier: the prior fiscal year a budget's projection counts. */
+const yearEarlier = (periods: string[]) => periods.map((p) => `${Number(p.slice(0, 4)) - 1}${p.slice(4)}`)
+
 export function Comparisons({
   draft,
   setDraft,
   rounds,
   current,
   actuals,
-}: DraftProps & { rounds: Version[]; current: string; actuals: boolean }) {
+  periods,
+  latest,
+}: DraftProps & { rounds: Version[]; current: string; actuals: boolean; periods: string[]; latest: string | null }) {
   const label = (c: ComparisonColumn) =>
     c.kind === 'prior_year_actuals'
       ? 'Prior-year actuals'
       : c.kind === 'actuals'
         ? 'Actuals this year, to date'
-        : (rounds.find((r) => r.code === c.version_code)?.name ?? c.version_code)
+        : c.kind === 'projection'
+          ? 'Projection of actuals'
+          : (rounds.find((r) => r.code === c.version_code)?.name ?? c.version_code)
+  // A forecast with closed months projects its own year from them; any other round the prior year.
+  const closed = closedCount(periods, draft.actuals_through)
+  const prior = yearEarlier(periods)
+  const proposed = latest ? (prior.filter((p) => p <= latest).at(-1) ?? null) : null
+  const setThrough = (through: string | null) =>
+    setDraft({
+      ...draft,
+      comparisons: draft.comparisons.map((x) => (x.kind === 'projection' ? { ...x, through } : x)),
+    })
+  const projectionThrough = (c: ComparisonColumn) =>
+    closed > 0 ? (
+      <span className="su-cmp-through">through {monthName(periods[closed - 1])}, the actuals through</span>
+    ) : (
+      <span className="su-cmp-through">
+        <Select
+          variant="compact"
+          label="Projection counts actuals through"
+          display={c.through ? `through ${monthName(c.through)}` : 'through the latest actuals'}
+          value={c.through ?? ''}
+          options={[
+            { value: '', label: 'Latest actuals', hint: 'moves with each sync' },
+            ...prior.map((p) => {
+              const n = closedCount(prior, p)
+              return { value: p, label: monthName(p), hint: `${n}+${12 - n}${p === latest ? ' · latest actuals' : ''}` }
+            }),
+          ]}
+          onChange={(v) => setThrough(v || null)}
+        />
+        {c.through && latest && c.through > latest && (
+          <span className="su-note warn">No actuals after {monthName(latest)} yet; the months up to it count as zero.</span>
+        )}
+      </span>
+    )
   const move = (i: number, by: number) => {
     const list = [...draft.comparisons]
     ;[list[i], list[i + by]] = [list[i + by], list[i]]
@@ -173,7 +214,13 @@ export function Comparisons({
   const has = (c: ComparisonColumn) =>
     draft.comparisons.some((x) => x.kind === c.kind && (x.version_code ?? null) === (c.version_code ?? null))
   const choices: ComparisonColumn[] = [
-    ...(actuals ? ([{ kind: 'prior_year_actuals' }, { kind: 'actuals' }] as ComparisonColumn[]) : []),
+    ...(actuals
+      ? ([
+          { kind: 'prior_year_actuals' },
+          { kind: 'actuals' },
+          { kind: 'projection', through: closed > 0 ? null : proposed },
+        ] as ComparisonColumn[])
+      : []),
     ...rounds.filter((r) => r.code !== current).map((r) => ({ kind: 'version' as const, version_code: r.code })),
   ].filter((c) => !has(c))
   return (
@@ -183,13 +230,15 @@ export function Comparisons({
       </h3>
       <p className="su-hint">
         Shown before the plan, in this order. A note shows as the column’s tooltip on the sheet; actuals columns also
-        say there how far their actuals go, e.g. January to June.{!actuals && ' Actuals appear here once they are mapped.'}
+        say there how far their actuals go, e.g. January to June. A projection continues the booked months at their
+        monthly average to the full year.{!actuals && ' Actuals appear here once they are mapped.'}
       </p>
       <div className="su-body">
         <ul className="su-list">
           {draft.comparisons.map((c, i) => (
             <li key={`${c.kind}-${c.version_code ?? ''}`} className="su-cmp">
               <span className="su-cmp-name">{label(c)}</span>
+              {c.kind === 'projection' && projectionThrough(c)}
               <input
                 className="su-input su-cmp-note"
                 value={c.note ?? ''}

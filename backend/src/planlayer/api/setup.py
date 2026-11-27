@@ -46,10 +46,12 @@ class RuleIO(BaseModel):
 
 
 class ComparisonIO(BaseModel):
-    kind: Literal["prior_year_actuals", "actuals", "version"]
+    kind: Literal["prior_year_actuals", "actuals", "version", "projection"]
     version_code: Code | None = None
     # The controller's note to planners, shown with the column.
     note: Annotated[str | None, Field(max_length=200)] = None
+    # A projection in a round without closed months: the prior year's last month it counts.
+    through: date | None = None
 
 
 class AccountSetIO(BaseModel):
@@ -234,7 +236,9 @@ def setup(request: Request, user: CurrentUser, code: str) -> SetupOut:
                 RuleIO.model_validate(rule, from_attributes=True) for rule in s.entry_forms
             ],
             comparisons=[
-                ComparisonIO(kind=c.kind, version_code=c.version_code, note=c.note)
+                ComparisonIO(
+                    kind=c.kind, version_code=c.version_code, note=c.note, through=c.through
+                )
                 for c in s.comparisons
             ],
             not_planned_accounts=s.not_planned_accounts,
@@ -297,7 +301,8 @@ def save_setup(request: Request, user: CurrentUser, code: str, body: SetupIO) ->
                     for r in body.entry_forms
                 ],
                 comparisons=[
-                    rounds.Comparison(c.kind, c.version_code, c.note) for c in body.comparisons
+                    rounds.Comparison(c.kind, c.version_code, c.note, c.through)
+                    for c in body.comparisons
                 ],
                 not_planned_accounts=body.not_planned_accounts,
                 deadline=body.deadline,

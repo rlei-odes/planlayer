@@ -51,7 +51,7 @@ Decision records go in `docs/adr/NNNN-title.md`. Each `D-` item is done when its
 
 ## 1. Discovery
 
-- [ ] **R-4** Interview 3–5 controllers / FP&A people about their current Excel process. Use a fixed question list: planning areas, grain, cycle length, number of planners, how approvals work, where the data ends up.
+- [x] **R-4** Interview 3–5 controllers / FP&A people about their current Excel process. Use a fixed question list: planning areas, grain, cycle length, number of planners, how approvals work, where the data ends up.
 
 ## 2. Architecture decisions (ADRs)
 
@@ -223,6 +223,8 @@ Mid-size manufacturer of industrial pumps and valves, ~400 employees.
     - [x] Creating a round is a step of its own; the round then shows how it was created (from which round, by whom, what it carried, plan values with uplift and cell count).
     - [x] A note per comparison column, shown to planners as the column's tooltip; actuals columns say how far their actuals go when the year is partial.
     - [x] A comparison column of actuals for the year to date plus the forecast for the rest: a forecast compared as a version shows its full year (ADR 0015).
+    - [x] A projection comparison column: actuals through a month extrapolated to the full year, for companies without a forecast; a budget projects the prior year through the controller's month, a forecast its own year through its actuals through; amounts and hours continue at their monthly average, FTE and headcount at the last month's level ([ADR 0033](docs/adr/0033-projection-comparison.md)).
+    - [ ] A forecast without planners: the controller creates a forecast from the year's budget, adjusts values where needed and publishes it, without opening it to planners or approving cost centers. The parts exist (plan values copied into the open months, controllers editing sheets in setup, publishing all planned cost centers); what's missing is a short path through them, e.g. a *Quick forecast* choice when creating a round that ends on the Publish page.
     - [ ] An account set's own accounts and groups could be edited from the cost center tab too; today the Accounts tab holds the matrix.
     - [ ] Setup as a guided, stepped process, both for the admin's data loading (sources, mapping, first sync; see E-01 and E-11's guided installation) and for a round's setup: tick the options, *Next*, then ask for the data each choice needs.
 - [ ] **E-04** Versions: create, copy with shift + uplift, compare.

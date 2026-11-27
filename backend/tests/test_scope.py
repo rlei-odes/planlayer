@@ -127,7 +127,12 @@ def test_new_round_carries_over_with_uplift(engine: Engine, client: TestClient) 
     assert client.post("/api/rounds", json=new).status_code == 200
     s = setup_of(client, "B2027")
     assert s["account_sets"] == [personnel] and s["planned_cost_centers"] == ["CC1"]
-    assert s["comparisons"][-1] == {"kind": "version", "version_code": R, "note": None}
+    assert s["comparisons"][-1] == {
+        "kind": "version",
+        "version_code": R,
+        "note": None,
+        "through": None,
+    }
     # The round keeps how it was created: what it carried, and how many plan values.
     created = client.get("/api/rounds/B2027/setup").json()["created"]
     assert created["carried"]["values"] is True and created["carried"]["uplift"] == "10"
@@ -160,7 +165,7 @@ def test_new_round_without_values_or_settings(client: TestClient) -> None:
     )
     s = setup_of(client, "B2027")
     assert s["not_planned_accounts"] == [] and s["comparisons"] == [
-        {"kind": "prior_year_actuals", "version_code": None, "note": None}
+        {"kind": "prior_year_actuals", "version_code": None, "note": None, "through": None}
     ]
     grid = client.get("/api/versions/B2027/cost-centers/CC1/grid").json()
     assert "6000" not in rows(grid)  # no values carried, no 2026 actuals

@@ -218,9 +218,10 @@ export type CodeNameOut = {
 }
 
 export type ComparisonIO = {
-  kind: "prior_year_actuals" | "actuals" | "version"
+  kind: "prior_year_actuals" | "actuals" | "version" | "projection"
   version_code?: string | null
   note?: string | null
+  through?: string | null
 }
 
 export type ComparisonOut = {

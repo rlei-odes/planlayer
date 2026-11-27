@@ -254,8 +254,10 @@ comparison = Table(
     Column("version_id", SmallInteger, nullable=False),
     Column("module", Text, nullable=False),
     Column("position", SmallInteger, nullable=False),
-    Column("kind", Text, nullable=False),  # prior_year_actuals / actuals / version
+    Column("kind", Text, nullable=False),  # prior_year_actuals / actuals / version / projection
     Column("compare_version_id", SmallInteger, ForeignKey("version.version_id")),
+    # A budget's projection: the last month of the prior year counted as booked.
+    Column("through", Date),
     Column("note", Text),  # the controller's note to planners, e.g. "January to June only"
     PrimaryKeyConstraint("version_id", "module", "position"),
     _module_fk(),

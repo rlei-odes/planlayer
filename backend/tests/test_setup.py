@@ -17,7 +17,9 @@ def test_read_defaults(client: TestClient) -> None:
     assert v["setup"] == {
         "default_form": "monthly",
         "entry_forms": [],
-        "comparisons": [{"kind": "prior_year_actuals", "version_code": None, "note": None}],
+        "comparisons": [
+            {"kind": "prior_year_actuals", "version_code": None, "note": None, "through": None}
+        ],
         "not_planned_accounts": [],
         "deadline": None,
         "capacity_work_centers": [],

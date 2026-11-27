@@ -120,7 +120,13 @@ export default function PlannerPreview(p: Props) {
     const pyTotal = sum(py)
     const total = Math.round((pyTotal * 1.03) / 100) * 100
     const compare = p.draft.comparisons.map((c) =>
-      c.kind === 'prior_year_actuals' ? pyTotal : c.kind === 'actuals' ? Math.round(pyTotal * 0.62) : Math.round(pyTotal * 1.04),
+      c.kind === 'prior_year_actuals'
+        ? pyTotal
+        : c.kind === 'actuals'
+          ? Math.round(pyTotal * 0.62)
+          : c.kind === 'projection'
+            ? Math.round(pyTotal * 1.02)
+            : Math.round(pyTotal * 1.04),
     )
     let fallback = false
     let values: number[]
@@ -155,6 +161,7 @@ export default function PlannerPreview(p: Props) {
     if (c.kind === 'prior_year_actuals') return `Actual ${p.fiscalYear - 1}`
     if (c.kind === 'actuals')
       return closed > 0 ? `YTD ${quarters ? `Q${closed / 3}` : months[closed - 1]} ${p.fiscalYear}` : `Actual ${p.fiscalYear} · YTD`
+    if (c.kind === 'projection') return `Projection ${closed > 0 ? p.fiscalYear : p.fiscalYear - 1}`
     return p.versionNames[c.version_code ?? ''] ?? c.version_code ?? 'Version'
   }
   const usesActualsWithoutSource =

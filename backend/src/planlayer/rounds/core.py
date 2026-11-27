@@ -42,7 +42,7 @@ from planlayer.store.schema import (
 )
 from planlayer.store.uow import unit_of_work
 
-ComparisonKind = Literal["prior_year_actuals", "actuals", "version"]
+ComparisonKind = Literal["prior_year_actuals", "actuals", "version", "projection"]
 
 
 Grain = Literal["month", "quarter"]  # how a round is planned (ADR 0015)

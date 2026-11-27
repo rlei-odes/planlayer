@@ -86,3 +86,11 @@ const MONTH_YEAR = new Intl.DateTimeFormat('en', { month: 'long', year: 'numeric
 export function monthName(iso: string): string {
   return MONTH_YEAR.format(new Date(iso))
 }
+
+/** How a projection comparison column is made, for its tooltip: amounts and hours continue at
+ * their monthly average, FTE and headcount as their last month. */
+export function projectionText(through: string | null, stock = false): string {
+  if (through === null) return 'No actuals for this year yet.'
+  const rest = stock ? "the months after at that month's level" : 'the months after at their monthly average'
+  return `Actuals up to ${monthName(through)}, ${rest}.`
+}

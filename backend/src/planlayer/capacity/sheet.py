@@ -27,10 +27,11 @@ from planlayer.capacity.common import (
 from planlayer.capacity.credits import _stored_credits
 from planlayer.domain.entry_forms import Basis, weights
 from planlayer.domain.periods import closed_months
+from planlayer.domain.projection import project
 from planlayer.domain.workflow import RoundStatus, Status
 from planlayer.notes import Marker
 from planlayer.notes import markers as note_markers
-from planlayer.planning import LineSpread, comparison_columns, cost_values
+from planlayer.planning import LineSpread, comparison_columns, cost_values, projected_months
 from planlayer.rounds import Grain, fiscal_periods, get_round
 from planlayer.sheet import (
     MONTHS,
@@ -295,8 +296,8 @@ def _hour_comparisons(conn: Connection, ctx: _Context) -> list[Hours]:
         return {k: [c.value for c in v] for k, v in cells.items()}
 
     out: list[Hours] = []
-    for kind, other_id in conn.execute(
-        select(comparison.c.kind, comparison.c.compare_version_id)
+    for kind, other_id, through in conn.execute(
+        select(comparison.c.kind, comparison.c.compare_version_id, comparison.c.through)
         .where(
             comparison.c.version_id == ctx.version_id,
             comparison.c.module == MODULE_COST_CENTER,
@@ -310,6 +311,10 @@ def _hour_comparisons(conn: Connection, ctx: _Context) -> list[Hours]:
                 # A forecast's actuals of the year stop at its closed months (ADR 0015).
                 periods = ctx.periods[: ctx.closed] if ctx.closed else ctx.periods
                 out.append(amounts(_hours(conn, ctx.actuals_id, None, periods)))
+            case "projection":
+                periods, booked = projected_months(conn, _sheet_context(ctx), through)
+                booked_hours = amounts(_hours(conn, ctx.actuals_id, None, periods))
+                out.append({k: project(v, booked) for k, v in booked_hours.items()})
             case _:
                 out.append(_version_hours(conn, ctx, other_id))
     return out

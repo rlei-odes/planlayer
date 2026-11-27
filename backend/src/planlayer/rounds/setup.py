@@ -190,9 +190,9 @@ def setup_of(engine: Engine, user: User, code: str) -> SetupView:
             )
         ]
         columns = [
-            Comparison(k, v, n)
-            for k, v, n in conn.execute(
-                select(comparison.c.kind, version.c.code, comparison.c.note)
+            Comparison(k, v, n, t)
+            for k, v, n, t in conn.execute(
+                select(comparison.c.kind, version.c.code, comparison.c.note, comparison.c.through)
                 .outerjoin(version, version.c.version_id == comparison.c.compare_version_id)
                 .where(
                     comparison.c.version_id == r.version_id,

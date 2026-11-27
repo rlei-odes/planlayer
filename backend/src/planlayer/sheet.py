@@ -49,7 +49,8 @@ class ComparisonColumn:
     label: str
     note: str | None = None  # the controller's note to planners
     # Actuals columns: the last month holding actuals, and whether months after it are missing,
-    # as for the current year's actuals in a budget prepared mid-year.
+    # as for the current year's actuals in a budget prepared mid-year. A projection: the last
+    # month it counts as booked.
     actuals_until: date | None = None
     partial: bool = False
 

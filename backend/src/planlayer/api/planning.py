@@ -57,7 +57,8 @@ class ComparisonOut(BaseModel):
     kind: str
     label: str
     note: str | None  # the controller's note to planners
-    actuals_until: date | None  # actuals columns: the last month holding actuals
+    # Actuals columns: the last month holding actuals; a projection: the last month it counts.
+    actuals_until: date | None
     partial: bool  # actuals end before the year does
 
 

@@ -17,6 +17,7 @@ from sqlalchemy import (
 
 from planlayer.access import User
 from planlayer.domain.periods import QUARTERS, closed_months, quarter_months
+from planlayer.domain.projection import project
 from planlayer.domain.workflow import RoundStatus, Status
 from planlayer.domain.workforce import (
     BuildUp,
@@ -26,7 +27,7 @@ from planlayer.domain.workforce import (
     measures,
     month_end,
 )
-from planlayer.planning import comparison_columns
+from planlayer.planning import comparison_columns, projected_months
 from planlayer.rounds import Grain, NotFoundError, fiscal_periods
 from planlayer.sheet import (
     MONTHS,
@@ -168,8 +169,8 @@ def _version_values(conn: Connection, ctx: _Context, version_id: int) -> dict[Ke
 def _compared(conn: Connection, ctx: _Context) -> list[dict[Key, Months]]:
     """The round's comparison columns in FTE and headcount (ADR 0016, ADR 0020)."""
     out: list[dict[Key, Months]] = []
-    for kind, other_id in conn.execute(
-        select(comparison.c.kind, comparison.c.compare_version_id)
+    for kind, other_id, through in conn.execute(
+        select(comparison.c.kind, comparison.c.compare_version_id, comparison.c.through)
         .where(
             comparison.c.version_id == ctx.version_id,
             comparison.c.module == MODULE_COST_CENTER,
@@ -184,6 +185,11 @@ def _compared(conn: Connection, ctx: _Context) -> list[dict[Key, Months]]:
             case "actuals":
                 periods = ctx.periods[: ctx.closed] if ctx.closed else ctx.periods
                 out.append(_months(_values(conn, ctx.actuals_id, ctx.cost_center_id, periods)))
+            case "projection":
+                # FTE and headcount are stocks: the last booked month carries on.
+                periods, booked = projected_months(conn, _sheet_context(ctx), through)
+                actual = _months(_values(conn, ctx.actuals_id, ctx.cost_center_id, periods))
+                out.append({k: project(v, booked, "last") for k, v in actual.items()})
             case _:
                 out.append(_version_values(conn, ctx, other_id))
     return out

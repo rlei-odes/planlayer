@@ -2,6 +2,7 @@
 profiles, and accounts not planned."""
 
 from dataclasses import dataclass
+from datetime import date
 from decimal import Decimal
 from typing import Literal
 
@@ -30,6 +31,7 @@ from planlayer.rounds.core import (
     RoundRef,
     _member_id,
     _version_id,
+    fiscal_periods,
     get_round,
 )
 from planlayer.store.schema import (
@@ -51,12 +53,16 @@ from planlayer.store.uow import system_rights, unit_of_work
 
 @dataclass
 class Comparison:
-    """A comparison column: prior-year actuals, actuals of the year, or another version; with
-    the controller's note to planners, e.g. "January to June only"."""
+    """A comparison column: prior-year actuals, actuals of the year, another version, or a
+    projection of actuals to the full year; with the controller's note to planners, e.g.
+    "January to June only"."""
 
     kind: ComparisonKind
     version_code: str | None = None  # kind ``version`` only
     note: str | None = None
+    # A projection in a round without closed months: the last month of the prior year it
+    # counts as booked. A forecast's projection uses its actuals through.
+    through: date | None = None
 
 
 def add_profile(engine: Engine, actor: User, code: str, name: str, profile: Profile) -> int:
@@ -231,10 +237,18 @@ def _set_comparisons(conn: Connection, r: RoundRef, columns: list[Comparison]) -
     rows = []
     for position, column in enumerate(columns, start=1):
         kind, other = column.kind, column.version_code
-        if kind not in ("prior_year_actuals", "actuals", "version"):
+        if kind not in ("prior_year_actuals", "actuals", "version", "projection"):
             raise RoundError(f"unknown comparison {kind}")
         if (kind == "version") != (other is not None):
             raise RoundError("a version comparison names a version, the others don't")
+        if column.through is not None:
+            if kind != "projection":
+                raise RoundError("only a projection counts actuals through a month")
+            if column.through not in fiscal_periods(conn, r.fiscal_year - 1):
+                raise RoundError(
+                    "a projection counts actuals through a month of the prior fiscal year, "
+                    "as the first day of the month"
+                )
         other_id = _version_id(conn, other) if other else None
         if other_id == r.version_id:
             raise RoundError("a round can't compare with itself")
@@ -246,6 +260,7 @@ def _set_comparisons(conn: Connection, r: RoundRef, columns: list[Comparison]) -
                 "kind": kind,
                 "compare_version_id": other_id,
                 "note": (column.note or "").strip() or None,
+                "through": column.through,
             }
         )
     conn.execute(

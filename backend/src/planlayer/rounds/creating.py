@@ -145,6 +145,15 @@ def create_round(
         )
         if source is not None and carry.setup:
             _copy_rows(conn, source.version_id, vid, round_module, entry_form, comparison)
+            # A projection's month moves with the year, so it stays in the prior year.
+            conn.execute(
+                update(comparison)
+                .where(comparison.c.version_id == vid, comparison.c.through.is_not(None))
+                .values(
+                    through=comparison.c.through
+                    + func.make_interval(fiscal_year - source.fiscal_year)
+                )
+            )
         else:
             conn.execute(insert(round_module).values(version_id=vid, module=MODULE_COST_CENTER))
             conn.execute(

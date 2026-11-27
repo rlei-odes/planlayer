@@ -659,3 +659,11 @@
 .su-form-change {
   margin-top: 0;
 }
+
+.su-cmp-through {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink-3);
+  font-size: 12px;
+}

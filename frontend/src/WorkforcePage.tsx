@@ -16,7 +16,7 @@ import {
 import { RedoIcon, UndoIcon } from './icons'
 import type { H } from './lineMarks'
 import PageHeader from './PageHeader'
-import { byColumn, isClosed, monthsOf, periodColumns, type Layout } from './periods'
+import { byColumn, isClosed, monthsOf, periodColumns, projectionText, type Layout } from './periods'
 import Select from './Select'
 import TransferDialog from './TransferDialog'
 import Positions from './Positions'
@@ -189,7 +189,15 @@ export default function WorkforcePage({
           lineCell(h as unknown as H, shown[rowIndex], positions),
       },
       ...(sheet?.comparisons ?? []).map((c, i) =>
-        column(comparisonProp(i), c.label, 104, 'pl-head-cmp', [c.note, `End of ${end}`].filter(Boolean).join(' · ')),
+        column(
+          comparisonProp(i),
+          c.label,
+          c.kind === 'projection' ? 128 : 104,
+          'pl-head-cmp',
+          [c.note, c.kind === 'projection' && projectionText(c.actuals_until, true), `End of ${end}`]
+            .filter(Boolean)
+            .join(' · '),
+        ),
       ),
       column(COL_FY, `${forecast ? 'Forecast' : 'Plan'} ${sheet?.fiscal_year ?? ''}`, 112, 'pl-head-plan', yearTitle),
       ...periodColumns(periods, layout).map((c) => column(c.prop, c.label, layout.quarters ? 100 : 76, c.closed ? 'pl-head-act' : '')),

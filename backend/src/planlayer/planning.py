@@ -31,6 +31,7 @@ from sqlalchemy.exc import DBAPIError
 from planlayer.access import User, cost_center_rights
 from planlayer.domain.entry_forms import Basis, EntryForm, Form, resolve, weights
 from planlayer.domain.periods import closed_months, quarter_months
+from planlayer.domain.projection import project
 from planlayer.domain.spreading import Profile, spread
 from planlayer.domain.workflow import EDITABLE, RoundStatus, Status
 from planlayer.item_lists import markers as list_markers
@@ -297,9 +298,13 @@ def comparison_columns(
     conn: Connection, ctx: SheetContext
 ) -> tuple[list[ComparisonColumn], list[dict[int, list[Decimal | None]]]]:
     columns, values = [], []
-    for kind, other_id, other_name, note in conn.execute(
+    for kind, other_id, other_name, note, through in conn.execute(
         select(
-            comparison.c.kind, comparison.c.compare_version_id, version.c.name, comparison.c.note
+            comparison.c.kind,
+            comparison.c.compare_version_id,
+            version.c.name,
+            comparison.c.note,
+            comparison.c.through,
         )
         .outerjoin(version, version.c.version_id == comparison.c.compare_version_id)
         .where(
@@ -328,12 +333,36 @@ def comparison_columns(
                 column = ComparisonColumn(
                     kind, f"Actual {year}", note, until, until is not None and until < periods[-1]
                 )
+            case "projection":
+                periods, booked = projected_months(conn, ctx, through)
+                actual = _amounts(cost_values(conn, ctx.actuals_id, ctx.cost_center_id, periods))
+                amounts = {a: project(months, booked) for a, months in actual.items()}
+                column = ComparisonColumn(
+                    kind,
+                    f"Projection {ctx.round.fiscal_year - (0 if ctx.closed else 1)}",
+                    note,
+                    periods[booked - 1] if booked else None,
+                )
             case _:
                 amounts = _version_values(conn, ctx, other_id)
                 column = ComparisonColumn(kind, other_name, note)
         columns.append(column)
         values.append(amounts)
     return columns, values
+
+
+def projected_months(
+    conn: Connection, ctx: SheetContext, through: date | None
+) -> tuple[list[date], int]:
+    """The year a projection column extrapolates and how many of its months it counts as
+    booked: a forecast's own year to its closed months; otherwise the prior year to the
+    controller's month, or, without one, to the latest month holding actuals."""
+    if ctx.closed:
+        return ctx.periods, ctx.closed
+    periods = ctx.prior_periods
+    if through is None:
+        through = _actuals_until(conn, ctx.actuals_id, periods)
+    return periods, closed_months(periods, through)
 
 
 def _period_name(ctx: SheetContext) -> str:

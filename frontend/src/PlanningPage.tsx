@@ -23,7 +23,17 @@ import { headerWithMarks, listMark, noteMark, type H } from './lineMarks'
 import NotesPanel from './NotesPanel'
 import PageHeader from './PageHeader'
 import Select, { type Option } from './Select'
-import { isClosed, monthProp, monthsOf, periodColumns, quarterProp, quarterly, span, type Layout } from './periods'
+import {
+  isClosed,
+  monthProp,
+  monthsOf,
+  periodColumns,
+  projectionText,
+  quarterProp,
+  quarterly,
+  span,
+  type Layout,
+} from './periods'
 import { pickUnit } from './units'
 
 // The planning sheet of one cost center (T-25, ADR 0007, ADR 0010), in the look of the setup
@@ -109,13 +119,14 @@ const MONTH_YEAR = new Intl.DateTimeFormat('en', { month: 'long', year: 'numeric
 
 /** A comparison column's tooltip: the controller's note, and for actuals how far they go. */
 function comparisonTitle(c: Grid['comparisons'][number]): string | undefined {
+  if (c.kind === 'projection') return [c.note, projectionText(c.actuals_until)].filter(Boolean).join(' · ')
   const actuals = c.kind === 'prior_year_actuals' || c.kind === 'actuals'
   const coverage = !actuals
     ? null
     : c.actuals_until === null
       ? 'No actuals for this year yet.'
       : c.partial
-        ? `Actuals up to ${MONTH_YEAR.format(new Date(c.actuals_until))}: the months after are blank, not zero, and the year is partial.`
+        ? `Booked through ${MONTH_YEAR.format(new Date(c.actuals_until))} only, so this is not a full year yet.`
         : null
   return [c.note, coverage].filter(Boolean).join(' · ') || undefined
 }
@@ -293,7 +304,7 @@ export default function PlanningPage({
           accountCell(h as unknown as H, grid?.rows[rowIndex], profiles, layout.quarters),
       },
       ...(grid?.comparisons ?? []).map((c, i) =>
-        column(comparisonProp(i), c.label, 112, 'pl-head-cmp', comparisonTitle(c)),
+        column(comparisonProp(i), c.label, c.kind === 'projection' ? 132 : 112, 'pl-head-cmp', comparisonTitle(c)),
       ),
       column(COL_FY, `${forecast ? 'Forecast' : 'Plan'} ${grid?.fiscal_year ?? ''}`, 124, 'pl-head-plan', yearTitle),
       ...periodCols,

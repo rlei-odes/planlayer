@@ -285,7 +285,15 @@ export default function SetupPage({
             </section>
 
             <EntryForms draft={draft} setDraft={setDraft} accounts={accounts} profiles={profiles} rounds={rounds} current={code} />
-            <Comparisons draft={draft} setDraft={setDraft} rounds={rounds} current={code} actuals={view.actuals_available} />
+            <Comparisons
+              draft={draft}
+              setDraft={setDraft}
+              rounds={rounds}
+              current={code}
+              actuals={view.actuals_available}
+              periods={view.periods}
+              latest={view.latest_actuals ?? null}
+            />
             <Profiles profiles={profiles} periods={view.periods} fiscalYear={round.fiscal_year} onChanged={() => void loadProfiles()} />
             <Workforce
               draft={draft}
