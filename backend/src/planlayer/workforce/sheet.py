@@ -51,7 +51,7 @@ from planlayer.store.schema import (
     workforce_line,
     workforce_transfer,
 )
-from planlayer.store.uow import unit_of_work
+from planlayer.store.uow import system_rights, unit_of_work
 from planlayer.workforce.common import (
     CENT,
     MEASURE_ID,
@@ -536,23 +536,26 @@ def undo_batch(engine: Engine, actor: User, version_code: str, cc_code: str, bat
         if ctx.mode == "positions":
             raise EditError("in this round, FTE and headcount come from the positions")
         log = workforce_change_log
-        logged = conn.execute(
-            select(
-                log.c.measure_id,
-                log.c.dim_staff_type,
-                log.c.dim_staff_category,
-                log.c.period,
-                log.c.old_amount,
-                log.c.new_amount,
-            )
-            .where(
-                log.c.batch_id == batch_id,
-                log.c.actor == actor.login,
-                log.c.version_id == ctx.version_id,
-                log.c.dim_cost_center == ctx.cost_center_id,
-            )
-            .order_by(log.c.id)
-        ).all()
+        # The actor's own batch on a sheet they may write: read whole, whatever the change
+        # log's row-level security would show.
+        with system_rights(conn, actor=actor.login):
+            logged = conn.execute(
+                select(
+                    log.c.measure_id,
+                    log.c.dim_staff_type,
+                    log.c.dim_staff_category,
+                    log.c.period,
+                    log.c.old_amount,
+                    log.c.new_amount,
+                )
+                .where(
+                    log.c.batch_id == batch_id,
+                    log.c.actor == actor.login,
+                    log.c.version_id == ctx.version_id,
+                    log.c.dim_cost_center == ctx.cost_center_id,
+                )
+                .order_by(log.c.id)
+            ).all()
         if not logged:
             raise NotFoundError(f"no change of yours to undo on {cc_code}")
         before: dict[tuple[Key, date], Decimal | None] = {}

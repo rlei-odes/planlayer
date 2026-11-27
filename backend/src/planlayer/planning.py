@@ -87,7 +87,7 @@ from planlayer.store.schema import (
     sheet_account,
     version,
 )
-from planlayer.store.uow import unit_of_work
+from planlayer.store.uow import system_rights, unit_of_work
 from planlayer.sync import ACTUALS_CODE
 from planlayer.workflow import enabled_members, status_of
 
@@ -783,16 +783,19 @@ def undo_batch(engine: Engine, actor: User, version_code: str, cc_code: str, bat
             ctx = _context(conn, actor, version_code, cc_code)
             if ctx.lock_reason is not None:
                 raise LockedError(ctx.lock_reason)
-            logged = conn.execute(
-                select(log.c.dim_account, log.c.period, log.c.old_amount, log.c.new_amount)
-                .where(
-                    log.c.batch_id == batch_id,
-                    log.c.actor == actor.login,
-                    log.c.version_id == ctx.version_id,
-                    log.c.dim_cost_center == ctx.cost_center_id,
-                )
-                .order_by(log.c.id)
-            ).all()
+            # The actor's own batch on a cost center they may write: read whole, whatever the
+            # change log's row-level security would show.
+            with system_rights(conn, actor=actor.login):
+                logged = conn.execute(
+                    select(log.c.dim_account, log.c.period, log.c.old_amount, log.c.new_amount)
+                    .where(
+                        log.c.batch_id == batch_id,
+                        log.c.actor == actor.login,
+                        log.c.version_id == ctx.version_id,
+                        log.c.dim_cost_center == ctx.cost_center_id,
+                    )
+                    .order_by(log.c.id)
+                ).all()
             if not logged:
                 raise NotFoundError(f"no change of yours to undo on {cc_code}")
             locked = cost_values(conn, ctx.version_id, ctx.cost_center_id, ctx.periods, lock=True)

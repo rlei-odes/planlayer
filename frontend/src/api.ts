@@ -20,6 +20,10 @@ export type LineSpread = S.LineSpreadIO
 export type ProfileRef = S.ProfileIOOutput
 export type StatusRow = S.StatusRowOut
 export type Overview = S.OverviewOut
+export type Changes = S.ChangesOut
+export type ChangeBatch = S.BatchOut
+export type ChangeDetail = S.BatchDetailOut
+export type ChangeLine = S.LineOut
 export type ActionRequest = S.ActionIn
 
 export type Me = S.Me
@@ -379,6 +383,18 @@ export const api = {
   profiles: () => fetch('/api/profiles').then((r) => json<ProfileRef[]>(r)),
   act: (version: string, request: ActionRequest) => post(`${v(version)}/workflow`, request).then((r) => json<string[]>(r)),
   overview: (version: string) => fetch(`${v(version)}/overview`).then((r) => json<Overview>(r)),
+  /** The round's change batches, newest first; filters left null are off. */
+  changes: (
+    version: string,
+    f: { kind: string; sheet: string | null; actor: string | null; cost_center: string | null; cursor: string | null },
+  ) => {
+    const q = new URLSearchParams(Object.entries(f).filter((e): e is [string, string] => e[1] !== null))
+    return fetch(`${v(version)}/changes?${q}`).then((r) => json<Changes>(r))
+  },
+  changeBatch: (version: string, batch: string, costCenter: string | null) =>
+    fetch(`${v(version)}/changes/${encodeURIComponent(batch)}${costCenter ? `?cost_center=${encodeURIComponent(costCenter)}` : ''}`).then(
+      (r) => json<ChangeDetail>(r),
+    ),
   // Line notes (ADR 0017): written from a round, which they then belong to.
   lineNotes: (version: string, line: NoteLine) =>
     fetch(`/api/notes/line?${lineQuery(version, line)}`).then((r) => json<LineNotes>(r)),

@@ -48,6 +48,7 @@ from planlayer.store.schema import (
     member,
     seasonality_profile,
 )
+from planlayer.store.uow import system_rights
 
 
 @dataclass
@@ -315,32 +316,35 @@ def undo_batch(engine: Engine, actor: User, version_code: str, cc_code: str, bat
     def work(conn: Connection) -> None:
         ctx = _editable(conn, actor, version_code, cc_code)
         h, ln = capacity_change_log, capacity_line_log
-        hours_log = conn.execute(
-            select(
-                h.c.dim_work_center,
-                h.c.dim_activity_type,
-                h.c.period,
-                h.c.old_amount,
-                h.c.new_amount,
-            )
-            .where(
-                h.c.batch_id == batch_id,
-                h.c.actor == actor.login,
-                h.c.version_id == ctx.version_id,
-                h.c.dim_cost_center == ctx.cost_center_id,
-            )
-            .order_by(h.c.id)
-        ).all()
-        line_log = conn.execute(
-            select(ln)
-            .where(
-                ln.c.batch_id == batch_id,
-                ln.c.actor == actor.login,
-                ln.c.version_id == ctx.version_id,
-                ln.c.cost_center_id == ctx.cost_center_id,
-            )
-            .order_by(ln.c.id)
-        ).all()
+        # The actor's own batch on a sheet they may write: read whole, whatever the change
+        # log's row-level security would show.
+        with system_rights(conn, actor=actor.login):
+            hours_log = conn.execute(
+                select(
+                    h.c.dim_work_center,
+                    h.c.dim_activity_type,
+                    h.c.period,
+                    h.c.old_amount,
+                    h.c.new_amount,
+                )
+                .where(
+                    h.c.batch_id == batch_id,
+                    h.c.actor == actor.login,
+                    h.c.version_id == ctx.version_id,
+                    h.c.dim_cost_center == ctx.cost_center_id,
+                )
+                .order_by(h.c.id)
+            ).all()
+            line_log = conn.execute(
+                select(ln)
+                .where(
+                    ln.c.batch_id == batch_id,
+                    ln.c.actor == actor.login,
+                    ln.c.version_id == ctx.version_id,
+                    ln.c.cost_center_id == ctx.cost_center_id,
+                )
+                .order_by(ln.c.id)
+            ).all()
         if not hours_log and not line_log:
             raise NotFoundError(f"no change of yours to undo on {cc_code}")
 

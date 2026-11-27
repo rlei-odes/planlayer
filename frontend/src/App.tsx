@@ -23,6 +23,7 @@ import {
   SetupIcon,
   SettingsIcon,
   StatusIcon,
+  LogIcon,
   ThemeDarkIcon,
   ThemeLightIcon,
   ThemeSystemIcon,
@@ -42,6 +43,7 @@ import PublishPage from './PublishPage'
 import ResponsibilitiesPage from './ResponsibilitiesPage'
 import SetupPage from './SetupPage'
 import StatusPage from './StatusPage'
+import ChangeLogPage from './ChangeLogPage'
 import SettingsPage from './SettingsPage'
 import UpdateNotice from './UpdateNotice'
 import UsersPage from './UsersPage'
@@ -59,6 +61,7 @@ type Page =
   | 'planning'
   | 'capex'
   | 'status'
+  | 'log'
   | 'lists'
   | 'setup'
   | 'forwarding'
@@ -76,6 +79,7 @@ const NAV: Record<Page, { label: string; icon: () => ReactNode }> = {
   planning: { label: 'Planning', icon: PlanningIcon },
   capex: { label: 'Investments', icon: CapexIcon },
   status: { label: 'Status', icon: StatusIcon },
+  log: { label: 'Log', icon: LogIcon },
   lists: { label: 'My item lists', icon: ItemListIcon },
   setup: { label: 'Setup', icon: SetupIcon },
   forwarding: { label: 'Forwarding', icon: ForwardingIcon },
@@ -90,7 +94,7 @@ const THEME_TITLE: Record<ThemeChoice, string> = {
   light: 'Light theme',
   dark: 'Dark theme',
 }
-const ROUND_PAGES: Page[] = ['capacity', 'workforce', 'personnel', 'planning', 'capex', 'status', 'setup', 'forwarding', 'publish']
+const ROUND_PAGES: Page[] = ['capacity', 'workforce', 'personnel', 'planning', 'capex', 'status', 'log', 'setup', 'forwarding', 'publish']
 
 function groupsFor(me: Me): { label: string; pages: Page[] }[] {
   const round: Page[] = me.is_controller ? ['setup', 'forwarding', 'publish', 'responsibilities'] : []
@@ -107,6 +111,8 @@ function groupsFor(me: Me): { label: string; pages: Page[] }[] {
   // Personnel costs (ADR 0022): pay for HR and owners as the source names them, the rules for HR
   // and controllers. After Workforce: costs follow the positions.
   if (me.reads_pay || me.is_hr || me.is_controller) plan.splice(Math.max(plan.indexOf('workforce') + 1, 0), 0, 'personnel')
+  // The round's change log: controllers, after Status.
+  if (me.is_controller) plan.splice(plan.indexOf('status') + 1, 0, 'log')
   // Home comes first for everyone: what waits for the user and what they plan (ADR 0021).
   const groups: { label: string; pages: Page[] }[] = [
     { label: '', pages: ['home'] },
@@ -492,6 +498,9 @@ export default function App() {
           )}
           {version && current === 'status' && (
             <StatusPage key={`${me.login}/${version}`} version={version} me={me} onRoundChanged={loadVersions} />
+          )}
+          {version && current === 'log' && me.is_controller && (
+            <ChangeLogPage key={`${me.login}/${version}`} version={version} round={round} />
           )}
           {current === 'home' && (
             <HomePage me={me} onOpenThread={openThread} onOpenSheet={openSheet} onGo={openRoundPage} onChanged={setTasks} />

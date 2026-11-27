@@ -100,6 +100,12 @@ export const StatusIcon = () => (
   </Icon>
 )
 
+export const LogIcon = () => (
+  <Icon>
+    <path d="M4 5h1M4 10h1M4 15h1M8 5h8M8 10h8M8 15h5" />
+  </Icon>
+)
+
 export const SetupIcon = () => (
   <Icon>
     <path d="M4 6h8M15 6h1M4 14h1M8 14h8" />

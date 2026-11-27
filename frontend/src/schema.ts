@@ -36,6 +36,25 @@ export type AreaRowOut = {
   sums: SumsOut
 }
 
+export type BatchDetailOut = {
+  batch_id: string
+  lines: LineOut[]
+  total_lines: number
+}
+
+export type BatchOut = {
+  batch_id: string
+  at: string
+  actor: PersonOut
+  sheets: ("costs" | "capacity" | "workforce")[]
+  sources: ("plan" | "personnel" | "forwarding" | "credit")[]
+  cost_centers: CostCenterOut[]
+  cost_center_count: number
+  cells: number
+  cleared: number
+  calculated: boolean
+}
+
 export type BuildUpOut = {
   start: number
   end: number
@@ -203,6 +222,14 @@ export type ChangesIn = {
   update?: ItemChangeIn[]
 }
 
+export type ChangesOut = {
+  batches: BatchOut[]
+  counts: Record<string, number>
+  cursor: string | null
+  users: PersonOut[]
+  cost_centers: CostCenterOut[]
+}
+
 export type ClientSecretIn = {
   secret: string | null
 }
@@ -248,6 +275,11 @@ export type ConnectionOut = {
   ok: boolean
   server?: string | null
   error?: string | null
+}
+
+export type CostCenterOut = {
+  code: string
+  name: string
 }
 
 export type CostCenterRefOut = {
@@ -549,6 +581,18 @@ export type LineNotesOut = {
   threads: ThreadOut[]
   notepad: NotepadOut | null
   can_write: boolean
+}
+
+export type LineOut = {
+  sheet: "costs" | "capacity" | "workforce"
+  cost_center: CostCenterOut
+  code: string
+  name: string
+  unit: "amount" | "hours" | "fte" | "headcount"
+  source: "plan" | "personnel" | "forwarding" | "credit"
+  months: string[]
+  before: string | null
+  after: string | null
 }
 
 export type LineRefIO = {

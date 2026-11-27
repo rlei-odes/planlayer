@@ -10,10 +10,11 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, func, select, text
 
-from planlayer import sync
+from planlayer import access, sync
 from planlayer.config import Settings
 from planlayer.store.db import create_app_engine
 from planlayer.store.schema import change_log, closure, member, sync_run
+from planlayer.store.uow import unit_of_work
 
 from .conftest import (
     BLANK,
@@ -184,7 +185,7 @@ def test_changes_are_audited(client: TestClient, migrated: Settings) -> None:
     }
     client.post(f"{URL}/edits", json={"edits": [update]})
     engine = create_app_engine(migrated)
-    with engine.connect() as conn:
+    with unit_of_work(engine, access.system_user(engine)) as conn:
         c = change_log.c
         query = select(c.actor, c.op, c.old_amount, c.new_amount).order_by(c.id)
         log = conn.execute(query).all()

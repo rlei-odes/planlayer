@@ -1,0 +1,90 @@
+/* The change log (cl-): change batches of a round, opened to their lines. */
+
+.cl-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 14px 0 12px;
+}
+
+.cl-tbl .cl-row {
+  cursor: pointer;
+}
+
+.cl-when {
+  white-space: nowrap;
+}
+
+.cl-tags {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.cl-chevron {
+  display: inline-block;
+  color: var(--ink-3);
+  font-size: 16px;
+  transition: transform 0.15s;
+}
+
+.cl-row.open .cl-chevron {
+  transform: rotate(90deg);
+}
+
+.cl-row.open td {
+  background: var(--canvas);
+}
+
+.tbl .cl-detail > td {
+  padding: 4px 14px 14px 28px;
+  background: var(--canvas);
+}
+
+.cl-lines {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+.cl-lines th {
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-3);
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.cl-lines td {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--line-2);
+}
+
+.cl-lines tr:last-child td {
+  border-bottom: none;
+}
+
+.cl-lines .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.cl-unit {
+  margin-left: 6px;
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+.cl-cut {
+  margin: 8px 0 0;
+  font-size: 12px;
+}
+
+.cl-more {
+  display: flex;
+  justify-content: center;
+  margin-top: 12px;
+}

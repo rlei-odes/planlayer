@@ -3,10 +3,11 @@
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
-from planlayer import devdata
+from planlayer import access, devdata
 from planlayer.config import Settings
 from planlayer.store.db import create_app_engine
 from planlayer.store.schema import change_log, workforce_position_log
+from planlayer.store.uow import unit_of_work
 
 from .conftest import URL, plan, rows
 
@@ -17,7 +18,7 @@ def test_seed_plans_once_per_cost_center(migrated: Settings, client: TestClient)
         # Only CC1 has an owner with a user (anna); CC2 has none.
         assert devdata.seed_plans(engine, "B2026") == [("CC1", "anna", "in_progress")]
         assert devdata.seed_plans(engine, "B2026") == []  # it has values now
-        with engine.connect() as conn:
+        with unit_of_work(engine, access.system_user(engine)) as conn:
             actors = set(conn.execute(select(change_log.c.actor)).scalars())
     finally:
         engine.dispose()

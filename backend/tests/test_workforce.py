@@ -166,7 +166,7 @@ def test_rights_status_and_audit(engine: Engine, client: TestClient) -> None:
     response = edit(client, "EMP/TECH", "headcount", 0, "1")
     batch = response.json()["batch_id"]  # type: ignore[attr-defined]
     assert client.get(f"/api/versions/{R}/cost-centers").json()[0]["status"] == "in_progress"
-    with engine.connect() as conn:
+    with unit_of_work(engine, access.system_user(engine)) as conn:
         logged = conn.execute(
             select(workforce_change_log.c.actor, workforce_change_log.c.new_amount).where(
                 workforce_change_log.c.batch_id == batch
