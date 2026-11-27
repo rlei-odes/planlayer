@@ -22,6 +22,7 @@ from planlayer.sheet import MONTHS, EditError
 from planlayer.store.schema import (
     COST_CENTER,
     app_user,
+    change_log,
     cost_center_owner,
     credit_account,
     fact_cost_center,
@@ -33,7 +34,7 @@ from planlayer.store.uow import unit_of_work
 from planlayer.workflow import enabled_members
 
 if TYPE_CHECKING:
-    from planlayer.adapters.source import PostgresSource
+    pass
 
 OWNERS = (
     "anna.keller@nordwerk.example",
@@ -95,9 +96,10 @@ STAGES: tuple[tuple[Status, int], ...] = (("in_progress", 5), ("submitted", 3), 
 def seed_plans(engine: Engine, round_code: str) -> list[tuple[str, str, str]]:
     """Plan values for some cost centers of a round, as if their owners had begun planning: year
     totals near last year's actuals, entered by the owner (so the change log and statuses are
-    theirs); some cost centers submitted, some approved by their approver. A cost center that
-    already has plan values or a status is left alone, so running it again adds nothing new.
-    Returns (cost center, owner, status) per seeded cost center."""
+    theirs) on the accounts the sheet lets them type; some cost centers submitted, some approved
+    by their approver. A cost center its owner has written to, or that is submitted or approved,
+    is left alone, so running it again adds nothing new; values the app writes (personnel costs,
+    forwarding, credits) don't count. Returns (cost center, owner, status) per seeded one."""
     system = access.system_user(engine)
     with unit_of_work(engine, system) as conn:
         r = get_round(conn, round_code)
@@ -105,13 +107,20 @@ def seed_plans(engine: Engine, round_code: str) -> list[tuple[str, str, str]]:
         busy = set(
             conn.execute(
                 select(workflow_status.c.cost_center_id).where(
-                    workflow_status.c.version_id == r.version_id
+                    workflow_status.c.version_id == r.version_id,
+                    workflow_status.c.status.in_(("submitted", "approved")),
                 )
             ).scalars()
         ) | set(
             conn.execute(
-                select(fact_cost_center.c.dim_cost_center)
-                .where(fact_cost_center.c.version_id == r.version_id)
+                select(change_log.c.dim_cost_center)
+                .join(app_user, app_user.c.login == change_log.c.actor)
+                .join(
+                    cost_center_owner,
+                    (cost_center_owner.c.user_id == app_user.c.user_id)
+                    & (cost_center_owner.c.cost_center_id == change_log.c.dim_cost_center),
+                )
+                .where(change_log.c.version_id == r.version_id)
                 .distinct()
             ).scalars()
         )
@@ -170,6 +179,7 @@ def seed_plans(engine: Engine, round_code: str) -> list[tuple[str, str, str]]:
         with engine.connect() as conn:
             planner = access.user_by_login(conn, owner)
         rng = random.Random(f"{PLAN_SEED}:{round_code}:{code}")
+        typed = {a["code"] for a in planning.addable_accounts(engine, planner, round_code, code)}
         edits = [
             planning.Edit(
                 account,
@@ -178,6 +188,7 @@ def seed_plans(engine: Engine, round_code: str) -> list[tuple[str, str, str]]:
                 [None] * MONTHS,
             )
             for account, amount in sorted(totals[cc].items())
+            if account in typed
         ]
         planning.apply_edits(engine, planner, round_code, code, edits)
         if status in ("submitted", "approved"):
@@ -1064,50 +1075,3 @@ def seed_item_lists(engine: Engine) -> int:
 
 
 DEMO_ROUND, DEMO_YEAR = "B2026", 2026
-
-
-def seed_demo(engine: Engine, source: "PostgresSource", source_schema: str) -> list[str]:
-    """A demo installation from the Nordwerk test warehouse (ADR 0030), into an empty app store:
-    the mappings, a sync, the users, an open budget round with plans begun, investments,
-    positions, forwardings, notes and item lists. Returns what was done, one line each."""
-    # Imported here: sync and rounds build on what this module imports.
-    from planlayer import rounds, sync
-
-    system = access.system_user(engine)
-    with engine.connect() as conn:
-        users = conn.execute(
-            select(func.count()).where(app_user.c.is_system.is_(False))
-        ).scalar_one()
-        rounds_made = conn.execute(
-            select(func.count()).where(version.c.kind != "actuals")
-        ).scalar_one()
-    if users or rounds_made:
-        raise ValueError("seed-demo needs an empty app store: it has users or rounds already")
-    for m in sync.default_mappings(source_schema):
-        sync.save_mapping(engine, system, m)
-    sync.set_pay_from_source(engine, system, True)  # the test warehouse delivers salaries
-    # The source is read before anything else is written, so a warehouse that doesn't fit
-    # leaves the app store empty for the next try.
-    if problems := sync.plan(engine, source).problems:
-        raise sync.SyncError(problems)
-    synced = sync.run(engine, source, system)  # every year the warehouse delivers
-    created = seed(engine)
-    # After the sync: a new round enables the cost centers there are.
-    rounds.create_round(engine, system, DEMO_ROUND, "Budget 2026", "budget", DEMO_YEAR)
-    rounds.set_round_status(engine, system, DEMO_ROUND, "open")
-    # In this order: forwardings mark accounts not planned before plans are on them; plans
-    # submit and approve some cost centers, which positions then leave alone.
-    forwardings = seed_forwarding(engine, DEMO_ROUND)
-    plans = seed_plans(engine, DEMO_ROUND)
-    projects, lines = seed_capex(engine, DEMO_ROUND)
-    taken, replaced, new = seed_workforce(engine, DEMO_ROUND)
-    threads = seed_notes(engine, DEMO_ROUND)
-    lists = seed_item_lists(engine)
-    return [
-        f"synced {synced.members} members, {synced.actual_rows} actual cells from {source_schema}",
-        f"created {len(created)} users",
-        f"opened round {DEMO_ROUND}; plans begun for {len(plans)} cost centers",
-        f"{projects} large projects and {lines} investments",
-        f"{taken} positions from HR, {replaced} replacements, {new} new positions",
-        f"{len(forwardings)} forwardings, {threads} note threads, {lists} item lists",
-    ]

@@ -7,7 +7,8 @@ decisions behind this are in [ADR 0031](adr/0031-deployment-shape.md) (deploymen
 
 ## Try it: the demo
 
-The Nordwerk test company in an open budget round, with users to log in as, from one file:
+The Nordwerk test company, a fictional manufacturer, in its Budget 2026 and a 6+6 forecast, with
+users to log in as, from one file:
 
 ```
 curl -fsSLO https://raw.githubusercontent.com/rlei-odes/planlayer/main/deploy/demo/compose.yaml
@@ -15,7 +16,10 @@ docker compose up -d
 ```
 
 Open http://localhost:8000 after about a minute (the first start generates the test warehouse
-and fills the round). The login lists the users; anyone logs in as anyone without a password,
+and fills the rounds). The budget is partly planned: entry forms with a seasonality profile,
+capacity hours, positions with personnel costs released by HR, cost forwarding, investments,
+notes, item lists, a proposed transfer, and the approved cost centers published. The forecast
+has actuals through June and the budget's values in the open months. The login lists the users; anyone logs in as anyone without a password,
 so the demo stays on localhost. `docker compose down -v` removes it with its data.
 
 The demo listens on `127.0.0.1:8000`, so only the machine it runs on reaches it. To open it from

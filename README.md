@@ -62,9 +62,10 @@ curl -fsSLO https://raw.githubusercontent.com/rlei-odes/planlayer/main/deploy/de
 docker compose up -d
 ```
 
-Then open http://localhost:8000: Nordwerk Industrietechnik, a fictional manufacturer, in an open
-budget round, with plans begun, positions, investments and notes. Log in as any of its users, no
-password needed.
+Then open http://localhost:8000: Nordwerk Industrietechnik, a fictional manufacturer, in its
+Budget 2026 and a 6+6 forecast. Plans are begun and some approved and published; there are
+capacity hours, positions with personnel costs, cost forwarding, investments, notes and item
+lists. Log in as any of its users (controller, owners, approvers, HR), no password needed.
 
 ## How it runs
 

@@ -9,7 +9,7 @@ from pathlib import Path
 
 import uvicorn
 
-from planlayer import access, backup, crypto, devdata, publish, rounds, sync
+from planlayer import access, backup, crypto, demo, devdata, publish, rounds, sync
 from planlayer.adapters.source import PostgresSource
 from planlayer.config import Settings
 from planlayer.login import local
@@ -358,14 +358,18 @@ def main(argv: list[str] | None = None) -> None:
             if not settings.demo:
                 raise SystemExit("seed-demo needs PLANLAYER_DEMO=true")
             engine, source = create_app_engine(settings), PostgresSource(settings.source_url)
+            output = create_output_engine(settings)
             try:
-                for line in devdata.seed_demo(engine, source, settings.source_schema):
+                for line in demo.seed_demo(
+                    engine, source, settings.source_schema, output, settings.output_schema
+                ):
                     print(line)
             except (ValueError, sync.SyncError) as e:
                 raise SystemExit(str(e)) from None
             finally:
                 engine.dispose()
                 source.dispose()
+                output.dispose()
         case "setup-code":
             settings = Settings()  # type: ignore[call-arg]
             engine = create_app_engine(settings)
