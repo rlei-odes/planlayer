@@ -144,6 +144,24 @@ or point your backup tool (restic, borg, the VM's snapshots) at the volume's dir
 Salaries in the backups are encrypted with `PLANLAYER_PAY_KEY`. A restore with another key, or
 none, gets everything back but pay: keep the key, and apart from the backups.
 
+## Logs
+
+Planlayer logs to standard output: `docker compose logs app`. The shipped compose files rotate
+every container's log at 10 MB, keeping five files, so logs can't fill the disk. Nothing to set.
+
+Running the image another way, set rotation there:
+
+- **Docker without the compose file:** `docker run --log-opt max-size=10m --log-opt max-file=5 …`,
+  or for every container in `/etc/docker/daemon.json`, then restart Docker:
+
+  ```json
+  { "log-driver": "json-file", "log-opts": { "max-size": "10m", "max-file": "5" } }
+  ```
+
+- **Podman:** `--log-opt max-size=10m`, or `log_size_max` in `containers.conf`.
+- **Kubernetes:** the kubelet rotates container logs (`containerLogMaxSize`,
+  `containerLogMaxFiles`).
+
 ## Upgrades
 
 Admins see a notice in Planlayer when a newer release is out. To upgrade, on the server, in the
