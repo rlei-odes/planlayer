@@ -76,7 +76,8 @@ actuals from views the admin points it to. A DBA creates the schemas and roles w
 
 Installing, backups, upgrades and rollback: [docs/install.md](docs/install.md). Login:
 [docs/login.md](docs/login.md). The published tables: [docs/output.md](docs/output.md).
-Versioning: [docs/releasing.md](docs/releasing.md).
+Versioning: [docs/releasing.md](docs/releasing.md). The statuses of a round and its cost centers:
+[docs/workflow.md](docs/workflow.md).
 
 | Variable | Meaning |
 |---|---|
