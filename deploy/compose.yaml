@@ -17,7 +17,7 @@ x-logging: &logging
 
 services:
   app:
-    image: ghcr.io/rlei-odes/planlayer:${PLANLAYER_VERSION:-0.5}
+    image: ghcr.io/rlei-odes/planlayer:${PLANLAYER_VERSION:-0.6}
     restart: unless-stopped
     logging: *logging
     env_file: planlayer.env
@@ -52,7 +52,7 @@ services:
 
   # Once, at the bundled Postgres's first start: the database and roles, by the install script.
   db-init:
-    image: ghcr.io/rlei-odes/planlayer:${PLANLAYER_VERSION:-0.5}
+    image: ghcr.io/rlei-odes/planlayer:${PLANLAYER_VERSION:-0.6}
     profiles: [postgres]
     logging: *logging
     env_file: planlayer.env
