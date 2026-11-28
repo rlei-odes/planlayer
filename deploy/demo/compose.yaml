@@ -54,6 +54,11 @@ services:
     command: ["sh", "-c", "planlayer migrate && planlayer serve"]
     ports:
       - "127.0.0.1:8000:8000"
+    # Healthy once the API answers, after its migrations: what `up --wait` waits for.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 2s
+      retries: 60
     depends_on:
       init:
         condition: service_completed_successfully
