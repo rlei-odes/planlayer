@@ -20,7 +20,7 @@ A mid-sized company whose actuals and master data already sit in a Postgres ware
 | Grid | One planning unit (e.g. cost center) at a time. Edit, paste from Excel/LibreOffice, fill-drag, keyboard navigation, computed subtotals, actuals and comparison versions shown alongside. |
 | Spreading | Top-down from totals, over time (year → months) and down the hierarchy (node → leaves): equal, seasonality profile, in proportion to existing values, or in proportion to a reference (prior-year actuals, another version). Results tie exactly to the entered total. |
 | Percentage mode | A line entered as a percentage of one reference line (e.g. COGS = 62% of sales). |
-| Versions | Budget, forecast and scenario versions; copy with period shift and uplift. |
+| Versions | Budget, forecast and scenario versions; iterations of a budget within its round, kept and comparable; a new round set up from an earlier one, plan values moved to the new year with an uplift. |
 | Workflow | Submit → approve → lock per version and cost center. Locks are enforced by the database. A status page rolls progress up by department. |
 | Review | Total lines on the cost center sheet (primary costs, forwarded in and out, credits, balance). An overview of any hierarchy node and a list of the largest deviations, plan against a reference, for approvers and controllers ([ADR 0037](adr/0037-review-totals-overview-deviations.md)). |
 | Audit | Every change records actor, time, old and new value. Cell comments. |
