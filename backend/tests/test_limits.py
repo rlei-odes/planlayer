@@ -117,7 +117,13 @@ def test_the_frontend_has_the_same_bounds() -> None:
     from planlayer.api import limits
 
     ts = (Path(__file__).resolve().parents[2] / "frontend" / "src" / "limits.ts").read_text()
-    frontend = {k: int(v.replace("_", "")) for k, v in re.findall(r"(\w+): ([\d_]+),", ts)}
+
+    def block(name: str) -> dict[str, int]:
+        body = re.search(rf"export const {name} = \{{(.*?)\}} as const", ts, re.S)
+        assert body, name
+        return {k: int(v.replace("_", "")) for k, v in re.findall(r"(\w+): ([\d_]+),", body[1])}
+
+    frontend = block("LIMIT")
     types = {
         "code": limits.Code,
         "name": limits.Name,
@@ -130,3 +136,16 @@ def test_the_frontend_has_the_same_bounds() -> None:
     }
     backend = {name: TypeAdapter(t).json_schema()["maxLength"] for name, t in types.items()}
     assert frontend == backend
+    # The app's tighter caps stay within the bound the API checks them against.
+    within = {
+        "code": "code",
+        "title": "name",
+        "person": "name",
+        "unit": "code",
+        "comment": "longText",
+        "text": "longText",
+        "search": "name",
+    }
+    field = block("FIELD")
+    assert field.keys() == within.keys()
+    assert all(field[k] <= backend[within[k]] for k in field)
