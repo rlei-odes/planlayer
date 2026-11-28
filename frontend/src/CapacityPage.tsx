@@ -24,7 +24,7 @@ import PageHeader from './PageHeader'
 import Select, { type Option } from './Select'
 import { byColumn, isClosed, monthsOf, periodColumns, projectionText, quarterly, span, type Layout } from './periods'
 import { pickUnit } from './units'
-import { LIMIT } from './limits'
+import { FIELD, LIMIT } from './limits'
 
 // The capacity sheet of a productive cost center (ADR 0013): per activity type, its work
 // centers' planned hours and plan rates, and the credit they give the cost center (hours × rate,
@@ -839,11 +839,11 @@ function AddLine({
           <>
             <label className="su-field">
               Code
-              <input maxLength={LIMIT.code} className="su-input md-w-code" value={code} onChange={(e) => setCode(e.target.value)} />
+              <input maxLength={FIELD.code} className="su-input md-w-code" value={code} onChange={(e) => setCode(e.target.value)} />
             </label>
             <label className="su-field cp-grow">
               Name
-              <input maxLength={LIMIT.name} className="su-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Laser cutter (planned)" />
+              <input maxLength={FIELD.title} className="su-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Laser cutter (planned)" />
             </label>
           </>
         )}

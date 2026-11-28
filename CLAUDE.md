@@ -53,7 +53,8 @@ Read before changing anything substantial:
   (`docs/releasing.md`): installations take patches without reading release notes.
 - Every text and list a request takes has a maximum: request models use the types in
   `planlayer/api/limits.py` (`tests/test_limits.py` fails on one without), and every text field
-  in the frontend sets `maxLength` from `LIMIT` in `src/limits.ts`, which mirrors them
+  in the frontend sets `maxLength` from `src/limits.ts`: `FIELD` for names, comments and
+  searches people type (tighter than the API), otherwise `LIMIT`, which mirrors them
   (`npm run lint` fails on one without). A request body is capped at 2 MB, the salary upload
   excepted; numbers are checked against their column's size when parsed (`sheet.fits`).
 

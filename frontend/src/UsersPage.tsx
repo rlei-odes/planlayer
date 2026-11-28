@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { api, type User } from './api'
 import { initials } from './names'
 import PageHeader from './PageHeader'
-import { LIMIT } from './limits'
+import { FIELD, LIMIT } from './limits'
 
 // Users (admin): roles and accounts (ADR 0009). Roles combine; planners need no role, their rights
 // come from cost center ownership and deputies.
@@ -111,7 +111,7 @@ export default function UsersPage() {
             </label>
             <label className="su-field md-grow">
               Name
-              <input maxLength={LIMIT.name}
+              <input maxLength={FIELD.person}
                 className="su-input"
                 value={draft.display_name}
                 onChange={(e) => setDraft({ ...draft, display_name: e.target.value })}

@@ -3,7 +3,7 @@ import { assign, filterTree, inSet, setOf, type AccountSet, type ScopeRow } from
 import { thousands } from './amounts'
 import Select from './Select'
 import type { SetupDraft } from './setupTypes'
-import { LIMIT } from './limits'
+import { FIELD } from './limits'
 
 // The setup page's Cost centers and Accounts tabs (ADR 0014): what the round plans, each cost
 // center's account set, and last year's figures beside them. They edit the same draft as the
@@ -194,7 +194,7 @@ export function CostCentersTab({ draft, setDraft, rows, fiscalYear, sourceName }
               </button>
             ))}
           </div>
-          <input maxLength={LIMIT.name} className="su-input sc-filter" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filter" aria-label="Filter cost centers" />
+          <input maxLength={FIELD.search} className="su-input sc-filter" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filter" aria-label="Filter cost centers" />
         </div>
       </div>
       <div className="tbl-scroll">
@@ -341,7 +341,7 @@ export function AccountsTab({ draft, setDraft, rows, fiscalYear, sourceName }: P
           </p>
         </div>
         <div className="sc-tools">
-          <input maxLength={LIMIT.name} className="su-input sc-filter" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filter" aria-label="Filter accounts" />
+          <input maxLength={FIELD.search} className="su-input sc-filter" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filter" aria-label="Filter accounts" />
         </div>
       </div>
       <div className="sc-sets">
@@ -362,7 +362,7 @@ export function AccountsTab({ draft, setDraft, rows, fiscalYear, sourceName }: P
             addSet()
           }}
         >
-          <input maxLength={LIMIT.name} className="su-input" value={newSet} onChange={(e) => setNewSet(e.target.value)} placeholder="New set, e.g. Administration" aria-label="New account set" />
+          <input maxLength={FIELD.title} className="su-input" value={newSet} onChange={(e) => setNewSet(e.target.value)} placeholder="New set, e.g. Administration" aria-label="New account set" />
           <button type="submit" className="su-btn sm" disabled={!newSet.trim()}>
             Add set
           </button>

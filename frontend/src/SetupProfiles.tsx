@@ -4,7 +4,7 @@ import { Bars } from './PlannerPreview'
 import Select from './Select'
 import type { Profile } from './setupTypes'
 import { type ProfilePreset, setupApi } from './setupShared'
-import { LIMIT } from './limits'
+import { FIELD, LIMIT } from './limits'
 
 // Seasonality profiles on the setup page (E-03): add, edit, delete, start from working days.
 
@@ -152,7 +152,7 @@ export function Profiles({
             <div className="su-row">
               <label className="su-field" style={{ flex: 1 }}>
                 Name
-                <input maxLength={LIMIT.name} className="su-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Retail with Q4 peak" />
+                <input maxLength={FIELD.title} className="su-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Retail with Q4 peak" />
               </label>
               <div className="su-field su-w-select">
                 Entered as

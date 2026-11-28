@@ -1,6 +1,7 @@
 import { useEffect, useId, useState } from 'react'
 import { api, STATUS_LABEL, type Position, type TransferIn, type TransferTarget, type WorkforceSheet } from './api'
 import Select from './Select'
+import { FIELD } from './limits'
 
 // Transfer a position to another cost center (ADR 0021). The sending side proposes; the
 // position and its values stay here until the receiving side accepts. Two kinds:
@@ -234,7 +235,7 @@ export default function TransferDialog({
             <textarea
               className="su-input"
               rows={2}
-              maxLength={2000}
+              maxLength={FIELD.text}
               value={note}
               placeholder="e.g. moves with the new assembly line"
               onChange={(e) => setNote(e.target.value)}

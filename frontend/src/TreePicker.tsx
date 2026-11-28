@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react'
-import { LIMIT } from './limits'
+import { FIELD } from './limits'
 
 // Choose many members of a hierarchy at once: tick leaves, tick a node for everything below it,
 // shift-click for a range, filter to narrow the list. Members already chosen elsewhere show
@@ -94,7 +94,7 @@ export default function TreePicker({ nodes, taken, excluded, label, onAdd, onClo
   return (
     <div className="tp" role="group" aria-label={label}>
       <div className="tp-bar">
-        <input maxLength={LIMIT.name}
+        <input maxLength={FIELD.search}
           className="su-input tp-filter"
           value={filter}
           autoFocus

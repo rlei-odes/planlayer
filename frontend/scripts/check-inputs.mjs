@@ -1,5 +1,5 @@
 // Every text field sets maxLength: an <input> or <textarea> in src/ that takes text must have it,
-// from LIMIT in src/limits.ts (the API's bounds) or the field's own rule. Inputs of a type that
+// from FIELD or LIMIT in src/limits.ts. Inputs of a type that
 // takes no free text (checkbox, radio, date, month, file, number) are left out. Run by
 // `npm run lint`; fails with the fields that lack it.
 
@@ -34,7 +34,7 @@ for (const file of readdirSync(SRC).filter((f) => f.endsWith('.tsx'))) {
 }
 
 if (missing.length) {
-  console.error('Text fields without maxLength (use LIMIT from src/limits.ts):')
+  console.error('Text fields without maxLength (use FIELD or LIMIT from src/limits.ts):')
   for (const m of missing) console.error(`  ${m}`)
   process.exit(1)
 }

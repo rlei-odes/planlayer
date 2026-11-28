@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { api, type Me } from './api'
 import { LogoMark } from './icons'
-import { LIMIT } from './limits'
+import { FIELD, LIMIT } from './limits'
 import { initials } from './names'
 import type { DemoUser, LoginOptions } from './schema'
 
@@ -200,7 +200,7 @@ function SetupForm({ onSubmit }: { onSubmit: (body: { code: string; login: strin
       </label>
       <label className="su-field">
         Name
-        <input maxLength={LIMIT.name} className="su-input" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} required />
+        <input maxLength={FIELD.person} className="su-input" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} required />
       </label>
       <label className="su-field">
         E-mail

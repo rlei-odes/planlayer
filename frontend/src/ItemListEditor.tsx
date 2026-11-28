@@ -10,7 +10,7 @@ import { api, type ItemList, type ItemRow, type Visibility } from './api'
 import { GripIcon } from './icons'
 import { VISIBILITY } from './itemLists'
 import Select from './Select'
-import { LIMIT } from './limits'
+import { FIELD, LIMIT } from './limits'
 
 // An item list in a large overlay (ADR 0017): the items behind a cost center × account's value.
 // Each item is quantity × unit price; typing only a name and a unit price is enough. The server
@@ -423,7 +423,7 @@ export default function ItemListEditor({
                 r.kind === 'heading' ? (
                   <tr key={r.key} data-key={r.key} className={rowClass(r, i)}>
                     <td colSpan={4}>
-                      <input maxLength={300} className="su-input" value={r.name} disabled={!editable}
+                      <input maxLength={FIELD.title} className="su-input" value={r.name} disabled={!editable}
                         placeholder="Category, e.g. ERP" aria-label="Category"
                         onChange={(e) => change(i, { name: e.target.value })} onKeyDown={onKeys(i)} />
                     </td>
@@ -436,11 +436,11 @@ export default function ItemListEditor({
                 ) : (
                   <tr key={r.key} data-key={r.key} className={rowClass(r, i)}>
                     <td>
-                      <input maxLength={300} className="su-input" value={r.name} disabled={!editable} placeholder="e.g. Cloud subscription"
+                      <input maxLength={FIELD.title} className="su-input" value={r.name} disabled={!editable} placeholder="e.g. Cloud subscription"
                         onChange={(e) => change(i, { name: e.target.value })} onKeyDown={onKeys(i)} />
                     </td>
                     <td>
-                      <input maxLength={300} className="su-input" value={r.supplier} disabled={!editable}
+                      <input maxLength={FIELD.title} className="su-input" value={r.supplier} disabled={!editable}
                         onChange={(e) => change(i, { supplier: e.target.value })} onKeyDown={onKeys(i)} />
                     </td>
                     <td>
@@ -460,7 +460,7 @@ export default function ItemListEditor({
                     </td>
                     <td className="num il-amount-cell">{format(amounts[i] ?? null)}</td>
                     <td>
-                      <input maxLength={LIMIT.longText} className="su-input" value={r.comment} disabled={!editable}
+                      <input maxLength={FIELD.comment} className="su-input" value={r.comment} disabled={!editable}
                         onChange={(e) => change(i, { comment: e.target.value })} onKeyDown={onKeys(i)} />
                     </td>
                     {handleCells(r, i)}

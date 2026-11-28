@@ -1,6 +1,6 @@
 import { useEffect, useEffectEvent, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { LIMIT } from './limits'
+import { FIELD } from './limits'
 
 // The app's dropdown (E-13): a button that opens a styled list, instead of the browser's native
 // popup. Keyboard: arrows, Home/End, Enter, Escape, Tab; typing jumps to an option, or filters
@@ -241,7 +241,7 @@ export default function Select<T extends string>(p: Props<T>) {
                   <circle cx="9" cy="9" r="5.5" fill="none" stroke="currentColor" strokeWidth="1.7" />
                   <path d="m13.5 13.5 3 3" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
                 </svg>
-                <input maxLength={LIMIT.name}
+                <input maxLength={FIELD.search}
                   value={query}
                   placeholder="Search…"
                   aria-label={`Search ${p.label}`}

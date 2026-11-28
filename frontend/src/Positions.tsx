@@ -3,7 +3,7 @@ import type { Position, PositionIn, Transfer, WorkforceSheet } from './api'
 import { span } from './periods'
 import Select from './Select'
 import Tile from './Tile'
-import { LIMIT } from './limits'
+import { FIELD, LIMIT } from './limits'
 import { defaultStaffType } from './staffTypes'
 
 // The positions of a cost center in a positions round (ADR 0020): the build-up of heads over the
@@ -262,11 +262,11 @@ export default function Positions({
             <div className="wf-grid">
               <label className="su-field wf-title">
                 Position (title)
-                <input maxLength={LIMIT.name} className="su-input" value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} required autoFocus />
+                <input maxLength={FIELD.title} className="su-input" value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} required autoFocus />
               </label>
               <label className="su-field">
                 Name
-                <input maxLength={LIMIT.name}
+                <input maxLength={FIELD.person}
                   className="su-input"
                   value={draft.person_name}
                   placeholder={draft.is_plan ? 'vacant' : ''}
@@ -352,7 +352,7 @@ export default function Positions({
               </div>
               <label className="su-field wf-desc">
                 Description
-                <textarea maxLength={LIMIT.longText}
+                <textarea maxLength={FIELD.text}
                   className="su-input"
                   rows={2}
                   value={draft.description}

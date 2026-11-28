@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { format, number, parse } from './amounts'
 import { api, type Me, type PayRule, type PayRules as Rules, type PayRulesPage } from './api'
 import Select from './Select'
-import { LIMIT } from './limits'
+import { FIELD, LIMIT } from './limits'
 
 // The round's personnel cost rules (ADR 0022), for HR and controllers: an account per staff type
 // and whether its amounts are typed; yearly extras, raises, long-service awards and
@@ -424,7 +424,7 @@ function RuleDialog({
           <div className="pc-grid">
             <label className="su-field">
               Name
-              <input maxLength={LIMIT.name} className="su-input" value={r.name} autoFocus onChange={(e) => setR({ ...r, name: e.target.value })} />
+              <input maxLength={FIELD.title} className="su-input" value={r.name} autoFocus onChange={(e) => setR({ ...r, name: e.target.value })} />
             </label>
             <div className="su-field">
               Account

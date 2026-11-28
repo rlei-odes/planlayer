@@ -4,7 +4,7 @@ import { detail, format, parse, sum } from './amounts'
 import { api, type LineNotes, type NoteEntry, type NoteLine, type NotepadRow, type Person, type Thread } from './api'
 import { initials } from './names'
 import Select from './Select'
-import { LIMIT } from './limits'
+import { FIELD, LIMIT } from './limits'
 
 // The notes of one line (ADR 0017): the line's gridnote, then its threads, open ones first.
 // Everyone who reads the line writes notes; a note can @mention people who read it and assign
@@ -472,7 +472,7 @@ function NotepadView({
             <tr key={i}>
               <td>
                 {editing ? (
-                  <input maxLength={500}
+                  <input maxLength={FIELD.comment}
                     className="su-input"
                     value={r.text}
                     placeholder="What"

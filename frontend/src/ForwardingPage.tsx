@@ -4,7 +4,7 @@ import { api, type Forwarding, type ForwardingIn, type ForwardingPage as Page } 
 import PageHeader from './PageHeader'
 import Select, { type Option } from './Select'
 import TreePicker from './TreePicker'
-import { LIMIT } from './limits'
+import { FIELD, LIMIT } from './limits'
 
 // Cost forwarding (ADR 0018), for the controller: a round's forwardings in a table, edited one at
 // a time with their receivers. Saving recomputes every forwarding of the round; the charges and
@@ -461,11 +461,11 @@ function Editor(p: {
         <div className="fw-grid">
           <label className="su-field fw-code">
             Code
-            <input maxLength={LIMIT.code} className="su-input" value={d.code} onChange={(e) => recode(e.target.value)} placeholder="TOOLS" />
+            <input maxLength={FIELD.code} className="su-input" value={d.code} onChange={(e) => recode(e.target.value)} placeholder="TOOLS" />
           </label>
           <label className="su-field fw-name">
             Name
-            <input maxLength={LIMIT.name} className="su-input" value={d.name} onChange={(e) => rename(e.target.value)} placeholder="Tooling" />
+            <input maxLength={FIELD.title} className="su-input" value={d.name} onChange={(e) => rename(e.target.value)} placeholder="Tooling" />
           </label>
           <div className="su-field fw-source">
             Source cost center
@@ -519,7 +519,7 @@ function Editor(p: {
               </label>
               <label className="su-field">
                 Unit
-                <input maxLength={LIMIT.code} className="su-input fw-unit" value={d.unit} onChange={(e) => set({ unit: e.target.value })} placeholder="m³, PC, licence" />
+                <input maxLength={FIELD.unit} className="su-input fw-unit" value={d.unit} onChange={(e) => set({ unit: e.target.value })} placeholder="m³, PC, licence" />
               </label>
             </>
           )}
@@ -536,15 +536,15 @@ function Editor(p: {
           <label className="su-field">
             Charge account (receivers)
             <span className="fw-account">
-              <input maxLength={LIMIT.code} className="su-input fw-acc-code" value={d.chargeCode} onChange={(e) => set({ chargeCode: e.target.value, codesTyped: true })} aria-label="Charge account code" />
-              <input maxLength={LIMIT.name} className="su-input" value={d.chargeName} onChange={(e) => set({ chargeName: e.target.value, namesTyped: true })} aria-label="Charge account name" placeholder="Name, if new" />
+              <input maxLength={FIELD.code} className="su-input fw-acc-code" value={d.chargeCode} onChange={(e) => set({ chargeCode: e.target.value, codesTyped: true })} aria-label="Charge account code" />
+              <input maxLength={FIELD.title} className="su-input" value={d.chargeName} onChange={(e) => set({ chargeName: e.target.value, namesTyped: true })} aria-label="Charge account name" placeholder="Name, if new" />
             </span>
           </label>
           <label className="su-field">
             Credit account (source)
             <span className="fw-account">
-              <input maxLength={LIMIT.code} className="su-input fw-acc-code" value={d.creditCode} onChange={(e) => set({ creditCode: e.target.value, codesTyped: true })} aria-label="Credit account code" />
-              <input maxLength={LIMIT.name} className="su-input" value={d.creditName} onChange={(e) => set({ creditName: e.target.value, namesTyped: true })} aria-label="Credit account name" placeholder="Name, if new" />
+              <input maxLength={FIELD.code} className="su-input fw-acc-code" value={d.creditCode} onChange={(e) => set({ creditCode: e.target.value, codesTyped: true })} aria-label="Credit account code" />
+              <input maxLength={FIELD.title} className="su-input" value={d.creditName} onChange={(e) => set({ creditName: e.target.value, namesTyped: true })} aria-label="Credit account name" placeholder="Name, if new" />
             </span>
           </label>
         </div>

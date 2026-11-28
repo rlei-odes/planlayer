@@ -17,7 +17,7 @@ import FilterBar, { FilterSearch } from './FilterBar'
 import PageHeader from './PageHeader'
 import Select, { type Option } from './Select'
 import Tile from './Tile'
-import { LIMIT } from './limits'
+import { FIELD, LIMIT } from './limits'
 import type * as S from './schema'
 
 // Master data (ADR 0012): the member tree with manual members and local overrides (Records),
@@ -644,7 +644,7 @@ function Sync() {
         <div className="su-body su-row">
           <label className="su-field">
             Actuals of entity
-            <input maxLength={LIMIT.code}
+            <input maxLength={FIELD.code}
               className="su-input md-entity"
               value={entity}
               onChange={(e) => setEntity(e.target.value)}
@@ -929,11 +929,11 @@ function Records() {
           <div className="su-row md-add-row">
             <label className="su-field">
               Code
-              <input maxLength={LIMIT.code} className="su-input md-w-code" value={draft.code} onChange={(e) => setDraft({ ...draft, code: e.target.value })} required />
+              <input maxLength={FIELD.code} className="su-input md-w-code" value={draft.code} onChange={(e) => setDraft({ ...draft, code: e.target.value })} required />
             </label>
             <label className="su-field md-grow">
               Name
-              <input maxLength={LIMIT.name} className="su-input" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} required />
+              <input maxLength={FIELD.title} className="su-input" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} required />
             </label>
             {tree && (
               <div className="su-field md-w-parent">
@@ -945,7 +945,7 @@ function Records() {
               <>
                 <label className="su-field">
                   Entity
-                  <input maxLength={LIMIT.code} className="su-input md-w-code" value={draft.entity_code} onChange={(e) => setDraft({ ...draft, entity_code: e.target.value })} />
+                  <input maxLength={FIELD.code} className="su-input md-w-code" value={draft.entity_code} onChange={(e) => setDraft({ ...draft, entity_code: e.target.value })} />
                 </label>
                 <label className="su-field md-grow">
                   Owner (e-mail)
@@ -956,7 +956,7 @@ function Records() {
             {dataset === 'work_centers' && (
               <label className="su-field">
                 Cost center
-                <input maxLength={LIMIT.code}
+                <input maxLength={FIELD.code}
                   className="su-input md-w-code"
                   value={draft.cost_center_code}
                   onChange={(e) => setDraft({ ...draft, cost_center_code: e.target.value })}
@@ -966,7 +966,7 @@ function Records() {
             {dataset === 'activity_types' && (
               <label className="su-field">
                 Credited account
-                <input maxLength={LIMIT.code}
+                <input maxLength={FIELD.code}
                   className="su-input md-w-code"
                   value={draft.account_code}
                   onChange={(e) => setDraft({ ...draft, account_code: e.target.value })}
@@ -1042,7 +1042,7 @@ function Records() {
                         }}
                       >
                         <span className="code">{r.code}</span>
-                        <input maxLength={LIMIT.name}
+                        <input maxLength={FIELD.title}
                           className="su-input"
                           value={editing.name}
                           onChange={(e) => setEditing({ ...editing, name: e.target.value })}

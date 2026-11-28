@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api, type CapexType } from './api'
+import { FIELD } from './limits'
 
 // The installation's investment types (ADR 0028), set by controllers: the balance sheet account
 // an investment is capitalised on and its default useful life for depreciation. A type that
@@ -72,10 +73,10 @@ export default function CapexTypes({ onSaved }: { onSaved: () => void }) {
                   />
                 </td>
                 <td>
-                  <input maxLength={100} className="su-input" value={t.name} aria-label="Name" onChange={(e) => change(i, { name: e.target.value })} />
+                  <input maxLength={FIELD.title} className="su-input" value={t.name} aria-label="Name" onChange={(e) => change(i, { name: e.target.value })} />
                 </td>
                 <td>
-                  <input maxLength={40}
+                  <input maxLength={FIELD.code}
                     className="su-input cx-code"
                     value={t.asset_account ?? ''}
                     aria-label="Asset account"
