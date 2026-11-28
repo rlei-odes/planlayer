@@ -22,12 +22,49 @@ jobs:
     outputs:
       created: ${{ steps.release.outputs.release_created }}
       tag: ${{ steps.release.outputs.tag_name }}
+      pr_updated: ${{ steps.release.outputs.prs_created }}
     steps:
       - id: release
         uses: googleapis/release-please-action@v5
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+
+  # New installations take the image version from deploy/.env.example (docs/install.md): the
+  # release PR sets it, and compose.yaml's default, to the minor version it releases, so they
+  # start on the newest release and receive its patches. release-please itself can write only
+  # a full version; it rewrites its branch on every update, so this runs after each one.
+  install-version:
+    needs: release-please
+    if: needs.release-please.outputs.pr_updated == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # a commit on the release PR's branch
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: release-please--branches--main
+      - name: The release's minor version for new installations
+        run: |
+          version=$(jq -r '."."' .release-please-manifest.json)
+          # A pre-release (1.0.0-rc.1) is published only under its own tag: nothing to set.
+          if ! echo "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "pre-release $version: install version unchanged"
+            exit 0
+          fi
+          minor=${version%.*}
+          sed -i -E "s/^PLANLAYER_VERSION=[0-9]+\.[0-9]+$/PLANLAYER_VERSION=$minor/" deploy/.env.example
+          sed -i -E "s/(PLANLAYER_VERSION:-)[0-9]+\.[0-9]+\}/\1$minor}/g" deploy/compose.yaml
+          grep -q "^PLANLAYER_VERSION=$minor$" deploy/.env.example
+          [ "$(grep -c "PLANLAYER_VERSION:-$minor}" deploy/compose.yaml)" -eq 2 ]
+          if git diff --quiet; then
+            echo "install version already $minor"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "chore(deploy): new installations start on $minor"
+          git push
 
   image:
     needs: release-please
