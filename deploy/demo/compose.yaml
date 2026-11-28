@@ -11,7 +11,8 @@ x-logging: &logging
     max-file: "3"
 
 x-planlayer: &planlayer
-  image: ${PLANLAYER_IMAGE:-ghcr.io/rlei-odes/planlayer:0.5}
+  # The newest release: the demo shows what Planlayer does now.
+  image: ${PLANLAYER_IMAGE:-ghcr.io/rlei-odes/planlayer:latest}
   logging: *logging
   environment: &env
     PLANLAYER_DEMO: "true"
