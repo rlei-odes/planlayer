@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.6.0](https://github.com/rlei-odes/planlayer/compare/v0.5.3...v0.6.0) (2026-11-28)
+
+
+### Features
+
+* **deploy:** the demo plans capacity, personnel costs and entry forms, publishes its approved cost centers, and adds a 6+6 forecast ([83ae967](https://github.com/rlei-odes/planlayer/commit/83ae9673c8852663be2bf7718f479d2a5748520d))
+* **frontend:** a Log page shows controllers every change in the round, one entry per save, with filters ([b60a130](https://github.com/rlei-odes/planlayer/commit/b60a130ef5b9bc70f0fe9d78bdfad3b3b5d146e5))
+* **frontend:** a new work center suggests the rate most of the cost center's lines of its activity type use ([5f524f0](https://github.com/rlei-odes/planlayer/commit/5f524f0015c1fd87f736970cb012e6d806f9be3a))
+* **frontend:** a projection comparison column extrapolates actuals through a month to the full year ([43c4ed3](https://github.com/rlei-odes/planlayer/commit/43c4ed34b57fc8263eacb1305f0427f6a93410a7))
+* **frontend:** categories and reordering in item lists ([d3aecff](https://github.com/rlei-odes/planlayer/commit/d3aecffcbd1884d7a9f321f328e7b07cb46c42ef))
+* **frontend:** export item lists to Excel, your own or all you can see, one sheet per list ([8f5bb7d](https://github.com/rlei-odes/planlayer/commit/8f5bb7d3c2c1a52cdea0bc1590d158d8057e8265))
+* **frontend:** export the investments you see, with their cash out, to Excel ([1fc03ab](https://github.com/rlei-odes/planlayer/commit/1fc03ab571373230f5eda380cea3d4cba37ea8d0))
+* **frontend:** planners recall a submission and see why it came back; closing a round with open cost centers asks first; an unstarted round goes back to setup ([bcd0d74](https://github.com/rlei-odes/planlayer/commit/bcd0d74d3a9ce8c64403d27b272ace487ccdac9e))
+* **frontend:** start item lists from My item lists, see which lines a round doesn't plan, move lists, and let controllers take over a disabled owner's lists ([5edf0bd](https://github.com/rlei-odes/planlayer/commit/5edf0bd30870b00d9d3621b78cbc7fe885d9ce9f))
+
+
+### Bug Fixes
+
+* **backend:** project lines are indented in the investments export ([70cd2ff](https://github.com/rlei-odes/planlayer/commit/70cd2ffd72dbac3f032cae19304ef56b1e6206c0))
+* **deploy:** the demo's app reports healthy only once it answers ([88606f8](https://github.com/rlei-odes/planlayer/commit/88606f8e2f79afb112146780218a1a82b6f21f32))
+* **frontend:** Home's sheet buttons wrap instead of covering a cost center's status ([55bd022](https://github.com/rlei-odes/planlayer/commit/55bd022b723fe2d2abf7a304218e9b1a9d8a04f7))
+
 ## [0.5.3](https://github.com/rlei-odes/planlayer/compare/v0.5.2...v0.5.3) (2026-11-22)
 
 
