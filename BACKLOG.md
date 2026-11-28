@@ -110,6 +110,7 @@ Each item lists the options and how to decide. Items marked ⚙ are decided by a
 - [x] **D-21 Permissions model.** Decided: [ADR 0009](docs/adr/0009-roles-and-scopes.md). Roles admin, controller and viewer as flags; planners from the matched owner (e-mail or login), the controller's override and deputies on cost centers or nodes; approvers read below their node; forced RLS over a per-user access view; hashed session tokens in a cookie.
 - [x] **D-22 Workflow.** Decided: [ADR 0008](docs/adr/0008-workflow.md). One-step approval per round × cost center (not started → in progress → submitted → approved, reject and reopen with comment); approvers assigned to hierarchy nodes, nearest one above wins, controller as fallback; round status setup / open / closed; the lock trigger reads the status.
 - [x] **D-23 Audit / change log.** Decided: [ADR 0005](docs/adr/0005-request-context-rls-audit.md). Statement-level triggers with transition tables; actor and batch from the per-transaction context. Retention and partitioning: E-14.
+- [ ] **D-32 Review: totals, overview and deviations.** Proposed: [ADR 0037](docs/adr/0037-review-totals-overview-deviations.md). Total lines on the sheet (primary costs, forwarded in, total costs, forwarded out, activity credits, balance), decided by use; an *Overview* of a hierarchy node against a reference with deviations; a *Deviations* list of the largest lines with notes from each row; the sidebar grouped Plan, Review, Release. Built as E-16.
 - [ ] **D-24 Background jobs.** Syncs, exports and large spreads need a job runner. Options: in-process scheduler (APScheduler), a Postgres-backed queue (procrastinate, pgqueuer), or Celery/RQ + Redis. Recommendation: Postgres-backed, so there's no extra service in compose.
 - [x] **D-25 Deployment shape.** Decided: [ADR 0031](docs/adr/0031-deployment-shape.md). One image for amd64 and arm64 on GHCR with the Postgres 18 client and the demo's generator; the install script, optional source part and backup role; three connection URLs plus the backup role's; migrations at start, after a backup; rollback by restoring that backup with the previous image, no downgrades in production.
 - [x] **D-30 Backup and restore.** Decided: [ADR 0032](docs/adr/0032-backup-and-restore.md). `pg_dump` of the app schema as a read-only `BYPASSRLS` backup role into a volume, the newest 14 kept; before every upgrade and daily from the host's scheduler until D-24; `planlayer restore` into an empty schema of the same name, then migrations and a republish; tested in CI. Open: S3-compatible targets; the last backup on the admin UI (with D-24).
@@ -308,6 +309,13 @@ Mid-size manufacturer of industrial pumps and valves, ~400 employees.
 - [ ] **E-15 Login and session log.** A table with time, login (or the name tried), outcome, IP and user agent, read by admins on the *Users* page, also written as one server log line each; covered by E-14's retention. Repeated failed logins for one name are visible at a glance. Built (ADR 0030): `login_event` and the server log line for every login attempt, and the limit on failed password logins.
     - [ ] Logouts and ended sessions in the log.
     - [ ] The log on the *Users* page for admins, with repeated failures per login at a glance.
+
+- [ ] **E-16 Review** ([ADR 0037](docs/adr/0037-review-totals-overview-deviations.md)): the basis for approving, in amounts.
+    - [ ] Total lines at the bottom of the cost center sheet, classified by one domain function.
+    - [ ] *Overview*: a node's tree or its accounts, plan against a reference, deviation in amount and percent, one total line at a time, status per row.
+    - [ ] *Deviations*: cost center × account (or account group) lines by size of deviation, with thresholds, *New* and *Dropped*, the line's notes, Excel export.
+    - [ ] The sidebar grouped Plan, Review, Release.
+    - [ ] The open points of ADR 0037 decided.
 
 ### Cost center accounting (after v1)
 

@@ -22,6 +22,7 @@ A mid-sized company whose actuals and master data already sit in a Postgres ware
 | Percentage mode | A line entered as a percentage of one reference line (e.g. COGS = 62% of sales). |
 | Versions | Budget, forecast and scenario versions; copy with period shift and uplift. |
 | Workflow | Submit → approve → lock per version and cost center. Locks are enforced by the database. A status page rolls progress up by department. |
+| Review | Total lines on the cost center sheet (primary costs, forwarded in and out, credits, balance). An overview of any hierarchy node and a list of the largest deviations, plan against a reference, for approvers and controllers ([ADR 0037](adr/0037-review-totals-overview-deviations.md)). |
 | Audit | Every change records actor, time, old and new value. Cell comments. |
 | Access | OIDC or LDAPS login, roles, and edit rights scoped to hierarchy members (e.g. "cost centers under Production"). |
 | Setup | Admin pages for connection, sign rules, fiscal calendar, seasonality profiles, roles. A yearly planning setup composes what is planned and in what form: full-year only, monthly, or a full-year value spread evenly, by a seasonality profile or by a reference. |
