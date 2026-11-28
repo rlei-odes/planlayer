@@ -168,8 +168,11 @@ Running the image another way, set rotation there:
 
 ## Upgrades
 
-Admins see a notice in Planlayer when a newer release is out. To upgrade, on the server, in the
-directory with `compose.yaml`:
+Admins see a notice in Planlayer when a newer release is out. Upgrade between planning rounds:
+during a round, only for a patch that fixes something planners can't work without; after it,
+any release, a major included. Only the newest release receives patches.
+
+To upgrade, on the server, in the directory with `compose.yaml`:
 
 1. Read the release notes: https://github.com/rlei-odes/planlayer/releases
 2. For a new minor version (0.5 → 0.6), set it in `.env`: `PLANLAYER_VERSION=0.6`. A patch

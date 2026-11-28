@@ -15,6 +15,19 @@ The release mechanics are in [ADR 0031](adr/0031-deployment-shape.md).
 
 Before 1.0.0 a breaking change goes into a minor release, marked *Action required* in its notes.
 
+## Supported versions
+
+Only the newest release receives patches. A fix for an older version is the upgrade to the
+newest one; there are no maintenance branches.
+
+Patches come from main. While main holds only fixes since the last release, the release PR makes
+a patch. The first `feat` merged turns it into the next minor (or major) release, and the
+current version receives no more patches. A feature that is done while the current version may
+still need fixes waits on its branch.
+
+Planning runs in rounds, so installations upgrade between them ([Installing](install.md#upgrades)): during a
+round only a patch that lets planners work again, after it any release, a major included.
+
 ## Rules for every change
 
 - **Migrations go forward only.** A released migration is never edited; a fix is a new
@@ -61,7 +74,9 @@ release-please (`.github/workflows/release-please.yml`, `release-please-config.j
 release PR open on main, titled `chore: release 0.6.0`. On every push it recomputes the next
 version from the commits since the last release (`fix` → patch, `feat` → minor) and updates the
 PR: the version in `backend/pyproject.toml`, `backend/uv.lock`, `frontend/package.json` and its
-lock file, `version.txt`, and the new section of `CHANGELOG.md`.
+lock file, `version.txt`, and the new section of `CHANGELOG.md`. A job after it sets the minor
+version new installations start on (`PLANLAYER_VERSION` in `deploy/.env.example` and the default
+in `deploy/compose.yaml`) to the one the PR releases; a pre-release leaves it.
 
 1. Just before releasing, edit the release PR: the `CHANGELOG.md` section and the PR's
    description, which becomes the release notes. Add whether it migrates and *Action required*.
