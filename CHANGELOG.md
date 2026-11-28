@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.6.1](https://github.com/rlei-odes/planlayer/compare/v0.6.0...v0.6.1) (2026-11-28)
+
+
+### Bug Fixes
+
+* **deploy:** new installations start on 0.6 ([d0459be](https://github.com/rlei-odes/planlayer/commit/d0459be448d4d31c5c29b6c561490a4338973575))
+* **deploy:** the demo starts the newest release ([cf91612](https://github.com/rlei-odes/planlayer/commit/cf916124bd4b5085960c41a996a3c9e4e04d7b1b))
+* **frontend:** names, comments and searches are capped at lengths that fit their fields ([db8cbfd](https://github.com/rlei-odes/planlayer/commit/db8cbfdc3668bcefb7168ca39849b520374901e6))
+
 ## [0.6.0](https://github.com/rlei-odes/planlayer/compare/v0.5.3...v0.6.0) (2026-11-28)
 
 
