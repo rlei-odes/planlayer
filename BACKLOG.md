@@ -315,7 +315,9 @@ Mid-size manufacturer of industrial pumps and valves, ~400 employees.
     - [ ] *Overview*: a node's tree or its accounts, plan against a reference, deviation in amount and percent, one total line at a time, status per row.
     - [ ] *Deviations*: cost center × account (or account group) lines by size of deviation, with thresholds, *New* and *Dropped*, the line's notes, Excel export.
     - [ ] The sidebar grouped Plan, Review, Release.
-    - [ ] The open points of ADR 0037 decided.
+    - [ ] A design for collapsible rows (the Overview's tree, perhaps the Deviations list grouped by node).
+    - [ ] Decide how actuals on the ERP's own forwarding accounts are split into forwarded in and out.
+    - [ ] Decide whether *Close round* moves from Status to the Publish page.
 
 ### Cost center accounting (after v1)
 

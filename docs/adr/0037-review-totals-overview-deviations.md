@@ -71,6 +71,8 @@ The *Overview* page aggregates a hierarchy node.
   Columns are the plan, the reference, the deviation (plan − reference) and the deviation in
   percent, for one total line chosen on the page (Total costs at first), and the status
   (counts on nodes, the status on cost centers). A cost center opens its sheet.
+- **Actions:** cost center rows carry the Status page's actions for the reader (submit, approve,
+  reject, reopen), so a reviewer decides where the amounts are.
 - **Accounts view:** rows are the node's account groups and accounts, summed over its cost
   centers, with the same columns.
 - **A selected row** shows all its total lines with plan, reference and deviation.
@@ -96,8 +98,9 @@ The *Deviations* page lists the lines that explain a node's totals, largest firs
 - **Favourable or not:** a deviation is coloured by role (T-7): costs above the reference are
   unfavourable, credits and revenue above it favourable.
 - **Rights:** the reads run as the user under row-level security, so every sum holds only what
-  the reader may read. Personnel costs of a small group stay hidden from readers other than HR;
-  a row missing them says so.
+  the reader may read, and two readers of the same node can see different totals. Both pages say
+  so in their hint: the totals are those of the cost centers the reader sees. Personnel costs of
+  a small group stay hidden from readers other than HR; a row missing them says so.
 - **Every status counts:** not started, in progress, submitted and approved alike; the status
   filter narrows it.
 - **Computed in SQL, classified in the domain:** plan and reference are summed per cost center ×
@@ -126,14 +129,16 @@ The *Deviations* page lists the lines that explain a node's totals, largest firs
   total lines.
 - Forwardings between two cost centers of one node cancel in its Balance but appear in its Total
   costs twice, once as primary costs on the sender and once as forwarded in on the receiver.
-  The Overview's hint says so.
+  The plan keeps both sides visible: each forwarding charges and credits accounts of its own
+  (ADR 0018), so a node's Forwarded in and Forwarded out lines show what moves inside it.
 - Actuals booked on the ERP's own forwarding accounts (in the demo 8800–8820, both sides on the
   same accounts) aren't charge or credit accounts of a forwarding, so in a comparison column
   they count as primary costs until they are classified.
+- Collapsible rows are new to the app: neither the grid nor the tables have them yet. The
+  Overview's tree needs them, and the Deviations list may group its lines by node the same way;
+  both need a design in the app's look before they are built.
 - The Overview reads every cost center below a node at once, like the Status page; F-09's
   measurement on the `large` dataset covers it.
 - Open, to decide before building:
   - how actuals on the ERP's forwarding accounts are split into forwarded in and out;
-  - whether *Close round* moves from Status to the Release group's Publish page;
-  - whether cost center rows on the Overview carry the Status page's actions (approve, reject),
-    or the Overview links to Status for them.
+  - whether *Close round* moves from Status to the Release group's Publish page.
